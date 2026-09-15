@@ -220,6 +220,134 @@ export async function seed(db: Db): Promise<{ workspaceId: string; userId: strin
     if (!existing) await db.insert(t.agents).values(a);
   }
 
+  // ---- demo agent runs for PR #482 (+ their traces) ----
+  // Without these the run timeline, the trace drawer and the PR list's COST
+  // column are all empty on a fresh clone. The last entry deliberately reports
+  // NO cost: it is the fixture for the "—" branch (unknown ≠ free).
+  const [anyRun] = await db
+    .select({ id: t.agentRuns.id })
+    .from(t.agentRuns)
+    .where(eq(t.agentRuns.prId, pr!.id));
+  if (!anyRun) {
+    const agentRows = await db
+      .select({ id: t.agents.id, name: t.agents.name })
+      .from(t.agents)
+      .where(eq(t.agents.workspaceId, workspaceId));
+    const byName = new Map(agentRows.map((a) => [a.name, a.id]));
+
+    const demoRuns: {
+      agent: string;
+      durationMs: number;
+      tokensIn: number;
+      tokensOut: number;
+      costUsd: number | null;
+      findings: number;
+      blockers: number;
+      score: number;
+      grounding: string;
+      minutesAgo: number;
+    }[] = [
+      {
+        agent: 'Security Reviewer',
+        durationMs: 8200,
+        tokensIn: 7891,
+        tokensOut: 1228,
+        costUsd: 0.0013,
+        findings: 3,
+        blockers: 2,
+        score: 38,
+        grounding: '3/3 passed',
+        minutesAgo: 12,
+      },
+      {
+        agent: 'Performance Reviewer',
+        durationMs: 6400,
+        tokensIn: 10460,
+        tokensOut: 1551,
+        costUsd: 0.0014,
+        findings: 2,
+        blockers: 0,
+        score: 64,
+        grounding: '2/2 passed',
+        minutesAgo: 18,
+      },
+      {
+        agent: 'General Reviewer',
+        durationMs: 5100,
+        tokensIn: 6204,
+        tokensOut: 988,
+        costUsd: null, // provider returned no usage → the UI must show "—"
+        findings: 1,
+        blockers: 0,
+        score: 72,
+        grounding: '1/1 passed',
+        minutesAgo: 24,
+      },
+    ];
+
+    for (const r of demoRuns) {
+      const agentId = byName.get(r.agent) ?? null;
+      const ranAt = new Date(Date.now() - r.minutesAgo * 60_000);
+      const [run] = await db
+        .insert(t.agentRuns)
+        .values({
+          workspaceId,
+          agentId,
+          prId: pr!.id,
+          ranAt,
+          provider: DEFAULT_PROVIDER,
+          model: DEFAULT_MODEL,
+          durationMs: r.durationMs,
+          tokensIn: r.tokensIn,
+          tokensOut: r.tokensOut,
+          costUsd: r.costUsd,
+          status: 'done',
+          source: 'local',
+          findingsCount: r.findings,
+          grounding: r.grounding,
+          score: r.score,
+          blockers: r.blockers,
+        })
+        .returning({ id: t.agentRuns.id });
+
+      await db.insert(t.runTraces).values({
+        runId: run!.id,
+        trace: {
+          config: {
+            agent: r.agent,
+            version: '1',
+            provider: DEFAULT_PROVIDER,
+            model: DEFAULT_MODEL,
+            pr: 482,
+            source: 'local',
+          },
+          stats: {
+            duration_ms: r.durationMs,
+            tokens_in: r.tokensIn,
+            tokens_out: r.tokensOut,
+            cost_usd: r.costUsd,
+            findings: r.findings,
+            grounding: r.grounding,
+          },
+          prompt_assembly: {
+            system: `${r.agent} — seeded demo prompt.`,
+            user: 'Review the following diff for PR #482.',
+          },
+          tool_calls: [
+            { tool: 'review_file', args: 'src/middleware/ratelimit.ts', meta: 'single-pass', ms: r.durationMs },
+          ],
+          raw_output: '{"verdict":"request_changes","findings":[]}',
+          memory_pulled: [],
+          specs_read: [],
+          log: [
+            { t: '00.00', kind: 'info', msg: 'Seeded demo run' },
+            { t: '00.01', kind: 'result', msg: `${r.findings} finding(s) after grounding` },
+          ],
+        },
+      });
+    }
+  }
+
   return { workspaceId, userId };
 }
 

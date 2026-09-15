@@ -129,6 +129,36 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
       }
     }
 
+    // COST per PR for the list's cost column: the newest completed run PER
+    // AGENT, summed — i.e. what the PR's current verdict cost. Deduping by
+    // agent (not just taking the single newest run) keeps the number stable
+    // when one agent is re-run: that agent's share is replaced, the others
+    // still count. Only status='done' runs qualify.
+    const costByPr = new Map<string, number>();
+    if (prIds.length > 0) {
+      const runRows = await container.db
+        .select({
+          prId: t.agentRuns.prId,
+          agentId: t.agentRuns.agentId,
+          costUsd: t.agentRuns.costUsd,
+        })
+        .from(t.agentRuns)
+        .where(and(inArray(t.agentRuns.prId, prIds), eq(t.agentRuns.status, 'done')))
+        .orderBy(desc(t.agentRuns.ranAt));
+      const seen = new Set<string>();
+      // Newest-first → the first row per (PR, agent) is that agent's current run.
+      for (const run of runRows) {
+        if (!run.prId) continue;
+        const key = `${run.prId}:${run.agentId ?? 'none'}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        // Unknown cost is NOT zero — skip it rather than adding 0. A PR whose
+        // runs all have unknown cost stays absent from the map → null → "—".
+        if (run.costUsd == null) continue;
+        costByPr.set(run.prId, (costByPr.get(run.prId) ?? 0) + run.costUsd);
+      }
+    }
+
     const now = Date.now();
     return rows.map((r) => {
       const review = latestReviewByPr.get(r.id);
@@ -153,6 +183,7 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
         opened_at: r.openedAt?.toISOString() ?? null,
         updated_at: r.updatedAt?.toISOString() ?? null,
         score: review ? review.score : null,
+        cost_usd: costByPr.get(r.id) ?? null,
       };
     });
   });
