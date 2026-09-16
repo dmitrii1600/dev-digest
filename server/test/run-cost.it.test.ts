@@ -170,7 +170,7 @@ d('run cost badge (Testcontainers pg)', () => {
     await a.close();
   });
 
-  it('the PR list sums the newest completed run per agent', async () => {
+  it('the PR list sums EVERY completed run, including re-runs of the same agent', async () => {
     const a = await app();
     const { repo, pr } = await setupRepoAndPr(pg.handle.db, workspaceId, 602);
     const [ag1] = await pg.handle.db
@@ -182,8 +182,10 @@ d('run cost badge (Testcontainers pg)', () => {
       .values({ workspaceId, name: 'Perf 602', provider: 'openai', model: 'gpt-4.1', systemPrompt: 's' })
       .returning({ id: t.agents.id });
 
-    // Agent 1 ran twice: only the newer run counts. Agent 2 ran once.
-    await insertRun(pr.id, { agentId: ag1!.id, costUsd: 0.005, minutesAgo: 60 }); // superseded
+    // Agent 1 ran twice. BOTH count: re-running an agent really did spend the
+    // money again, and this column reports total spend, not the price of the
+    // current verdict. Agent 2 ran once.
+    await insertRun(pr.id, { agentId: ag1!.id, costUsd: 0.005, minutesAgo: 60 });
     await insertRun(pr.id, { agentId: ag1!.id, costUsd: 0.002, minutesAgo: 5 });
     await insertRun(pr.id, { agentId: ag2!.id, costUsd: 0.003, minutesAgo: 8 });
     // A failed run never contributes, whatever it claims to have cost.
@@ -193,7 +195,7 @@ d('run cost badge (Testcontainers pg)', () => {
       await a.inject({ method: 'GET', url: `/repos/${repo.id}/pulls` })
     ).json();
     const row = list.find((p) => p.number === 602)!;
-    expect(row.cost_usd).toBeCloseTo(0.005, 6); // 0.002 + 0.003, not 0.005 + …
+    expect(row.cost_usd).toBeCloseTo(0.01, 6); // 0.005 + 0.002 + 0.003; the failed 9.99 is excluded
 
     await a.close();
   });

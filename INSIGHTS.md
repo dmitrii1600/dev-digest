@@ -45,9 +45,27 @@ append-only. Empty sections are expected — append under the one that fits.
   a contract change into both in the same commit — a typecheck in one package
   cannot see drift in the other.
 
+- 2026-09-16 — The PR-list row deliberately carries **two** aggregation rules, and
+  this is not visible from the screen: `score` + `findings_counts` describe the
+  single latest review, `cost_usd` sums every completed run. Each is right for the
+  question it answers — "what does the current verdict say" vs "what has this PR
+  cost". Before making a fourth column consistent with the others, decide which
+  of those two it answers.
+
 ## Tool & Library Notes
 
 ## Recurring Errors & Fixes
+
+- 2026-09-16 — `28P01 auth_failed` connecting to the dev Postgres from the host on
+  Windows: `localhost` resolves to `::1` first, where a WSL relay answers, while
+  the container is published on IPv4. The container is fine — `docker exec psql`
+  with the same URL succeeds. Use `127.0.0.1` in `DATABASE_URL` for anything run
+  against the dev DB from the host.
+- 2026-09-16 — `runMigrations` takes a **URL string**, not a `Db`
+  (`server/src/db/migrate.ts:19`), while `seed` takes a `Db`. Passing the handle
+  to the first yields a confusing `28P01` rather than a type error. This bites
+  precisely because the documented Windows workaround is to import both from a
+  script — get the argument types right or you will chase a phantom auth problem.
 
 ## Session Notes
 
@@ -63,5 +81,40 @@ tables at all rather than merely a missing column.
 Documenting the `CLAUDE.md` set surfaced that the "shared" contracts package is
 vendored twice rather than shared. Recorded the canonical-copy rule above so the
 next contract change mirrors instead of drifting further.
+
+### 2026-09-16 — findings by severity, and closing the HW-1 criteria
+Built the severity counters and filter across three screens, then closed the
+grading-criteria gaps around them. Two things cost the most time and are recorded
+above: the IPv4/`::1` split that made the dev DB look like an auth failure, and
+the `borderColor`-is-a-shorthand rerender warning that only appeared once the
+filter made the cards rerender.
+
+Two findings about the audit itself. A `src/`-only grep declared a helper dead
+when it had a live test. And the seed is idempotent per-PR, so new fixtures never
+reach an already-seeded dev DB — visual verification had to run against a scratch
+database rather than the developer's own.
+
+ESLint went in across all four packages and found far less than feared: 7 real
+issues on the server (all dead imports or an unused catch binding), 1 in
+`reviewer-core`, 0 in `e2e`. The client's 11 remaining warnings are pre-existing
+hydration patterns, left visible rather than silenced.
+
+### 2026-09-16 — follow-up: Reject label, timeline previews, collapsed drawer
+Four corrections after driving the finished severity UI: renamed Dismiss →
+Reject (label only — the action and `dismissed_at` are untouched), seeded a
+review per demo run so every timeline row shows icons instead of a word,
+collapsed the trace drawer's Findings section, and gave the timeline rows the
+same read-only hover preview the PR list has.
+
+The preview work paid for itself twice: extracting `useFindingsPreview` and
+`sortBySeverity` meant the timeline reused the PR list's anchor/timer logic
+rather than growing a second copy of a timer that must be cleared on unmount.
+
+Half an hour went to a phantom regression — the PR-list popover appeared dead in
+screenshots after the refactor. It was not: screenshot coordinates and page
+coordinates differ by the zoom factor, so every `hover` was missing the cell. RTL
+and a `javascript_tool` DOM check both showed it working. Recorded in
+client/INSIGHTS.md; the session also left behind the PRRow hover test that was
+missing all along.
 
 ## Open Questions

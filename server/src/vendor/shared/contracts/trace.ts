@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { SeverityCounts } from './findings.js';
 
 /**
  * Run trace. The ENTIRE trace of one run is persisted as a SINGLE
@@ -110,6 +111,11 @@ export const RunSummary = z.object({
    *  null when unknown — the UI shows "—", never "$0.00". */
   cost_usd: z.number().nullable(),
   findings_count: z.number().int().nullable(),
+  /** Severity breakdown of the review this run produced, counted from the
+   *  `findings` rows. Null when the run produced no review (failed, cancelled,
+   *  or the review was deleted). Built per-request from columns, so `.nullable()`
+   *  is safe here — unlike `RunStats`, nothing persisted predates the field. */
+  findings_counts: SeverityCounts.nullable(),
   grounding: z.string().nullable(),
   ran_at: z.string().nullable(),
   // Review outcome, denormalized onto the run row at completion (the timeline

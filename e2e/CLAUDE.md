@@ -11,6 +11,7 @@ npm i -g agent-browser && agent-browser install   # once
 ./scripts/e2e.sh      # hermetic: own Postgres :5433, API :3101, web :3100
 npm test              # runs flows against E2E_BASE_URL (default :3000)
 npm run typecheck
+npm run lint          # eslint
 ```
 
 Uses **npm**, not pnpm.
@@ -47,6 +48,8 @@ browser session; `lib/assert.ts` holds the assertion helpers.
 
 ## Read when
 
+- Writing a flow that will not flake, and what this suite cannot assert →
+  `docs/writing-a-flow.md` — **read before adding or debugging a flow**
 - Routes and selectors the flows depend on → `../client/README.md`
 - Seeded fixture data → `../server/src/db/seed.ts`
 - Learned decisions → `INSIGHTS.md` — **read it before changing a flow**, and run

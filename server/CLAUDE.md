@@ -14,6 +14,7 @@ pnpm db:generate         # new migration from schema changes
 pnpm test                # unit + integration
 pnpm exec vitest run --exclude '**/*.it.test.ts'   # unit only, no Docker
 pnpm typecheck
+pnpm lint                # eslint — dead code + no stray console (pino is the logger)
 ```
 
 ## Layout
@@ -61,6 +62,9 @@ per domain · `src/vendor/shared/` canonical Zod contracts.
   `src/modules/repo-intel/README.md` — **read before consuming repo context**
 - What the reviewer actually sends the model →
   `README.md#review-context-non-obvious` — **read before changing prompt inputs**
+- How the PR list's per-PR aggregates are computed (and why `score`,
+  `findings_counts` and `cost_usd` do not share one rule) →
+  `docs/read-aggregates.md` — **read before adding a column to that endpoint**
 - Test strategy and the unit/integration split → `../TESTING.md`
 - Feature specs → `specs/` · learned decisions → `INSIGHTS.md` — **read it before
   changing code here**, and run `/engineering-insights` at the end of the task to

@@ -1,5 +1,10 @@
 /* FindingsSection — the persisted findings of THIS run (same data as the
-   "Review runs" list), rendered inside a collapsible TraceSection. */
+   "Review runs" list), rendered inside a collapsible TraceSection.
+
+   Collapsed by default, like Prompt assembly and Raw output: the drawer's job is
+   Stats first, and the findings themselves are already the main event one level
+   up, in the Review-runs card. TraceSection defaults to open, so this has to be
+   said explicitly. */
 "use client";
 
 import React from "react";
@@ -22,6 +27,7 @@ export function FindingsSection({ findings }: { findings: FindingRecord[] }) {
       icon="AlertOctagon"
       title={t("trace.findings")}
       right={<Badge color="var(--text-muted)">{findings.length}</Badge>}
+      defaultOpen={false}
     >
       {findings.length === 0 ? (
         <span style={s.noToolCalls}>{t("trace.noFindings")}</span>

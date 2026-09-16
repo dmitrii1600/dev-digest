@@ -11,6 +11,7 @@ pnpm dev          # :3000
 pnpm build
 pnpm test         # vitest + jsdom, fetch mocked — no API needed
 pnpm typecheck
+pnpm lint         # eslint — mainly react-hooks; see ../CLAUDE.md#commands
 ```
 
 ## Layout
@@ -51,6 +52,9 @@ primitives · `src/vendor/shared` (`@devdigest/shared`) contracts.
 
 ## Read when
 
+- How data and styles reach a component (hook → `lib/api.ts`, the `SEV` token
+  map, ICU plurals) → `docs/data-flow.md` — **read before adding a screen, a
+  hook, or a severity-coloured element**
 - Real browser journeys and what they cover → `../e2e/README.md`
 - API contracts and route shapes → `../server/README.md#api-map-starter`
 - Test strategy → `../TESTING.md`

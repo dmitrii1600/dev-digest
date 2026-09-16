@@ -1,13 +1,20 @@
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { and, desc, eq, inArray } from 'drizzle-orm';
-import type { PrMeta, PrDetail, GitHubClient, PrReviewComment } from '@devdigest/shared';
+import type {
+  PrMeta,
+  PrDetail,
+  GitHubClient,
+  PrReviewComment,
+  SeverityCounts,
+} from '@devdigest/shared';
 import { PrCommentInput } from '@devdigest/shared';
 import * as t from '../../db/schema.js';
 import { getContext } from '../_shared/context.js';
 import { IdParams } from '../_shared/schemas.js';
 import { AppError, NotFoundError } from '../../platform/errors.js';
 import { deriveReviewStatus } from './status.js';
+import { rollupSeverities } from '../_shared/severity.js';
 
 /**
  * F1 — pulls module. PR import via Octokit (list + per-PR detail).
@@ -111,47 +118,67 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
       }
     }
 
-    // Latest-review SCORE per PR for the list's score ring. Computed on read
-    // from reviews (no FK denorm); the list is small, so one IN-query + JS
-    // grouping is cheap. (The per-severity FINDINGS breakdown is intentionally
-    // not surfaced on the list — findings live on the PR detail page.)
+    // Latest-review SCORE and FINDINGS breakdown per PR. Computed on read from
+    // reviews (no FK denorm); the list is small, so IN-queries + JS grouping are
+    // cheap. Both come from the SAME review, so the score ring and the severity
+    // chips in a row can never contradict each other.
     const prIds = rows.map((r) => r.id);
-    const latestReviewByPr = new Map<string, { score: number | null }>();
+    const latestReviewByPr = new Map<string, { id: string; score: number | null }>();
     if (prIds.length > 0) {
       const reviewRows = await container.db
-        .select({ prId: t.reviews.prId, score: t.reviews.score })
+        .select({ prId: t.reviews.prId, id: t.reviews.id, score: t.reviews.score })
         .from(t.reviews)
         .where(and(inArray(t.reviews.prId, prIds), eq(t.reviews.kind, 'review')))
         .orderBy(desc(t.reviews.createdAt));
       // Rows are newest-first → first seen per PR is the latest review.
       for (const rv of reviewRows) {
-        if (!latestReviewByPr.has(rv.prId)) latestReviewByPr.set(rv.prId, { score: rv.score });
+        if (!latestReviewByPr.has(rv.prId)) {
+          latestReviewByPr.set(rv.prId, { id: rv.id, score: rv.score });
+        }
       }
     }
 
-    // COST per PR for the list's cost column: the newest completed run PER
-    // AGENT, summed — i.e. what the PR's current verdict cost. Deduping by
-    // agent (not just taking the single newest run) keeps the number stable
-    // when one agent is re-run: that agent's share is replaced, the others
-    // still count. Only status='done' runs qualify.
+    // One severity tally per PR, counted from the `findings` rows of exactly
+    // those latest reviews — a plain COUNT over data we already have, never a
+    // model call. Dismissed findings are INCLUDED: the score is computed from
+    // the same population, so excluding them here would make the chips disagree
+    // with the ring beside them.
+    const findingsByPr = new Map<string, SeverityCounts>();
+    const latestReviewIds = [...latestReviewByPr.values()].map((rv) => rv.id);
+    if (latestReviewIds.length > 0) {
+      const reviewIdToPr = new Map<string, string>();
+      for (const [prId, rv] of latestReviewByPr) reviewIdToPr.set(rv.id, prId);
+      const findingRows = await container.db
+        .select({ reviewId: t.findings.reviewId, severity: t.findings.severity })
+        .from(t.findings)
+        .where(inArray(t.findings.reviewId, latestReviewIds));
+      const byReview = new Map<string, { severity: string }[]>();
+      for (const f of findingRows) {
+        const bucket = byReview.get(f.reviewId);
+        if (bucket) bucket.push(f);
+        else byReview.set(f.reviewId, [f]);
+      }
+      // Every latest review gets an entry, including one with no findings at
+      // all: a clean review is a genuine {0,0,0}, not "unknown". Only a PR with
+      // NO review stays absent from the map → null → "—".
+      for (const [reviewId, prId] of reviewIdToPr) {
+        findingsByPr.set(prId, rollupSeverities(byReview.get(reviewId) ?? []));
+      }
+    }
+
+    // COST per PR: EVERY completed run, summed — total money this PR has spent,
+    // not what its current verdict cost. Re-running an agent ADDS to the total
+    // rather than replacing that agent's share, because a re-run really did
+    // cost more. This is a different rule from `score` / `findings_counts`
+    // above, which describe only the latest review; see INSIGHTS.md.
     const costByPr = new Map<string, number>();
     if (prIds.length > 0) {
       const runRows = await container.db
-        .select({
-          prId: t.agentRuns.prId,
-          agentId: t.agentRuns.agentId,
-          costUsd: t.agentRuns.costUsd,
-        })
+        .select({ prId: t.agentRuns.prId, costUsd: t.agentRuns.costUsd })
         .from(t.agentRuns)
-        .where(and(inArray(t.agentRuns.prId, prIds), eq(t.agentRuns.status, 'done')))
-        .orderBy(desc(t.agentRuns.ranAt));
-      const seen = new Set<string>();
-      // Newest-first → the first row per (PR, agent) is that agent's current run.
+        .where(and(inArray(t.agentRuns.prId, prIds), eq(t.agentRuns.status, 'done')));
       for (const run of runRows) {
         if (!run.prId) continue;
-        const key = `${run.prId}:${run.agentId ?? 'none'}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
         // Unknown cost is NOT zero — skip it rather than adding 0. A PR whose
         // runs all have unknown cost stays absent from the map → null → "—".
         if (run.costUsd == null) continue;
@@ -184,6 +211,7 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
         updated_at: r.updatedAt?.toISOString() ?? null,
         score: review ? review.score : null,
         cost_usd: costByPr.get(r.id) ?? null,
+        findings_counts: findingsByPr.get(r.id) ?? null,
       };
     });
   });

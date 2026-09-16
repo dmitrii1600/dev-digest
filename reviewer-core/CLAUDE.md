@@ -8,6 +8,7 @@ and public API → `./README.md` — **read before changing any stage**.
 ```sh
 npm test          # vitest, hermetic, stubbed LLMProvider — no keys, no network
 npm run typecheck # doubles as the build
+npm run lint      # eslint
 ```
 
 Uses **npm**, not pnpm. The package never emits JS: the server consumes
@@ -52,6 +53,9 @@ reduce · `src/index.ts` the public surface.
 - Prompt conventions, severity rubric, verdict semantics →
   `../docs/agent-prompts/README.md` — **read before editing prompt assembly or an
   agent prompt**
+- What severity actually decides — score, blockers, grounding, verdict →
+  `docs/severity-score-and-gates.md` — **read before changing scoring, the CI
+  gate, or anything that counts findings**
 - How the server feeds this engine → `../server/README.md#review-context-non-obvious`
 - Feature specs → `specs/` · learned decisions → `INSIGHTS.md` — **read it before
   changing code here**, and run `/engineering-insights` at the end of the task to
