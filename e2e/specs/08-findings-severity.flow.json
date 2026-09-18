@@ -1,0 +1,22 @@
+{
+  "name": "Severity counters and the severity filter on findings",
+  "description": "Walks the two graded severity surfaces on seeded data. On the PR list, the FINDINGS column is present. On the PR page, the Review-runs card carries a pill row under the verdict; clicking a pill filters the findings below it and reveals the 'Show all findings' escape hatch, and clicking that restores the full list. Assertions are positive only — agent-browser's `wait --text` has no negative form, so 'the WARNING finding disappeared' is covered where it belongs, in ReviewRunAccordion.test.tsx. Read-only seeded data, no model call. Assumes a freshly-seeded DB where acme/payments-api (PR #482) is the first repo — guaranteed by e2e-web.yml; run locally via the hermetic stack (see e2e/README.md).",
+  "steps": [
+    { "cmd": ["open", "{BASE}/"], "label": "load the app root" },
+    { "cmd": ["wait", "--url", "/pulls"], "label": "land on the PR list" },
+    { "cmd": ["wait", "--load", "networkidle"], "label": "PR list data settles" },
+    { "cmd": ["wait", "--text", "Findings"], "label": "the FINDINGS column header is present" },
+    { "cmd": ["find", "text", "Add rate limiting to public API endpoints", "click"], "label": "open the PR row" },
+    { "cmd": ["wait", "--url", "/pulls/482"], "label": "navigate to the PR detail route" },
+    { "cmd": ["wait", "--load", "networkidle"], "label": "PR detail data settles" },
+    { "cmd": ["find", "role", "button", "click", "--name", "Agent runs"], "label": "switch to the Agent runs tab" },
+    { "cmd": ["wait", "--url", "tab=findings"], "label": "findings tab is active in the URL" },
+    { "cmd": ["wait", "--text", "Hardcoded Stripe secret key in commit"], "label": "the CRITICAL finding is listed (newest run is open by default)" },
+    { "cmd": ["wait", "--text", "N+1 query in user list endpoint"], "label": "the WARNING finding is listed too" },
+    { "cmd": ["find", "role", "button", "click", "--name", "Show only this severity"], "label": "click the first severity pill (CRITICAL)" },
+    { "cmd": ["wait", "--text", "Show all findings"], "label": "the filter engaged — the clear control appeared" },
+    { "cmd": ["wait", "--text", "Hardcoded Stripe secret key in commit"], "label": "the CRITICAL finding survives the filter" },
+    { "cmd": ["find", "role", "button", "click", "--name", "Show all findings"], "label": "clear the severity filter" },
+    { "cmd": ["wait", "--text", "N+1 query in user list endpoint"], "label": "the full list of findings is restored" }
+  ]
+}

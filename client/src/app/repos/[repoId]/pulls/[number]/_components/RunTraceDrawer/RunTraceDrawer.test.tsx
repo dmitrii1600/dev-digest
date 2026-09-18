@@ -19,6 +19,27 @@ const TRACE: RunTrace = {
   ],
 };
 
+const FINDINGS_FIXTURE = [
+  {
+    id: "f1",
+    severity: "CRITICAL",
+    category: "security",
+    title: "Hardcoded Stripe secret key in commit",
+    file: "src/config.ts",
+    start_line: 12,
+    end_line: 12,
+    rationale: "A live key is committed.",
+    suggestion: null,
+    confidence: 0.98,
+    kind: "finding",
+    trifecta_components: null,
+    evidence: null,
+    review_id: "rev",
+    accepted_at: null,
+    dismissed_at: null,
+  },
+] as never;
+
 vi.mock("../../../../../../../lib/hooks/trace", () => ({
   useRunTrace: () => ({ data: TRACE, isLoading: false }),
 }));
@@ -52,5 +73,35 @@ describe("A5 Run Trace drawer (smoke)", () => {
     fireEvent.click(screen.getByText("log"));
     // LiveLogStream renders its filter input
     expect(screen.getByPlaceholderText("Filter log…")).toBeInTheDocument();
+  });
+
+  it("keeps the Findings section collapsed — the drawer leads with Stats", () => {
+    renderWithIntl(
+      <RunTraceDrawer
+        runId="r1"
+        agentName="Security"
+        prNumber={482}
+        findings={FINDINGS_FIXTURE}
+        onClose={() => {}}
+      />,
+    );
+    // The header is there (criterion: findings ARE reachable from the drawer)…
+    expect(screen.getByText("Findings")).toBeInTheDocument();
+    // …but the list underneath is not rendered until it is asked for.
+    expect(screen.queryByText("Hardcoded Stripe secret key in commit")).toBeNull();
+  });
+
+  it("reveals the findings when the section is opened", () => {
+    renderWithIntl(
+      <RunTraceDrawer
+        runId="r1"
+        agentName="Security"
+        prNumber={482}
+        findings={FINDINGS_FIXTURE}
+        onClose={() => {}}
+      />,
+    );
+    fireEvent.click(screen.getByText("Findings"));
+    expect(screen.getByText("Hardcoded Stripe secret key in commit")).toBeInTheDocument();
   });
 });

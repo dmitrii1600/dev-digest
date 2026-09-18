@@ -7,8 +7,9 @@
 
 import React from "react";
 import { Icon, Badge } from "@devdigest/ui";
-import type { ReviewRecord, Verdict } from "@devdigest/shared";
+import type { ReviewRecord, Severity, Verdict } from "@devdigest/shared";
 import { FindingsPanel } from "../FindingsPanel";
+import { SeverityPills, countBySeverity } from "../SeverityPills";
 import { VerdictBanner } from "../VerdictBanner";
 import { useDeleteReview } from "../../../../../../../lib/hooks/reviews";
 
@@ -53,6 +54,14 @@ export function ReviewRunAccordion({
   }, [targetRunId, targetNonce, review.run_id]);
   const del = useDeleteReview(prId);
   const findings = review.findings;
+  // Severity filter lives here, not in FindingsPanel, so the pills and the list
+  // they filter share one source of truth.
+  const [severity, setSeverity] = React.useState<Severity | null>(null);
+  const counts = React.useMemo(() => countBySeverity(findings), [findings]);
+  const toggleSeverity = React.useCallback(
+    (sev: Severity) => setSeverity((cur) => (cur === sev ? null : sev)),
+    [],
+  );
   const blockers = findings.filter((f) => f.severity === "CRITICAL" && !f.dismissed_at).length;
   const verdictColor = review.verdict ? VERDICT_COLOR[review.verdict] ?? "var(--text-muted)" : "var(--text-muted)";
 
@@ -147,8 +156,10 @@ export function ReviewRunAccordion({
               />
             </div>
           )}
+          <SeverityPills counts={counts} active={severity} onToggle={toggleSeverity} />
           <FindingsPanel
             findings={findings}
+            severity={severity}
             prId={prId}
             repoFullName={repoFullName}
             headSha={headSha}

@@ -131,6 +131,10 @@ export function FindingsTab({
           <RunHistory
             runs={prRuns ?? []}
             commits={prCommits}
+            /* `runs` here is ReviewRecord[] (carries findings[]), NOT the
+               RunSummary[] passed as `runs` above — see the naming trap in
+               client/INSIGHTS.md. The timeline's hover preview needs the former. */
+            reviews={runs}
             onOpenTrace={handleOpenTrace}
             onGoToReview={handleGoToReview}
             onDelete={handleDelete}

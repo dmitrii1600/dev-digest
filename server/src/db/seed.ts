@@ -172,6 +172,19 @@ export async function seed(db: Db): Promise<{ workspaceId: string; userId: strin
         suggestion: 'Use a single IN query and group in memory.',
         confidence: 0.86,
       },
+      {
+        reviewId: review!.id,
+        file: 'src/middleware/ratelimit.ts',
+        startLine: 63,
+        endLine: 69,
+        severity: 'SUGGESTION',
+        category: 'style',
+        title: 'Magic numbers for the bucket refill rate',
+        rationale:
+          'The refill interval and burst size are inline literals, so the limiter cannot be tuned without a redeploy.',
+        suggestion: 'Lift both into named constants or config.',
+        confidence: 0.71,
+      },
     ]);
   }
 
@@ -218,6 +231,254 @@ export async function seed(db: Db): Promise<{ workspaceId: string; userId: strin
       .from(t.agents)
       .where(and(eq(t.agents.workspaceId, workspaceId), eq(t.agents.name, a.name)));
     if (!existing) await db.insert(t.agents).values(a);
+  }
+
+  // ---- demo agent runs for PR #482 (+ their traces) ----
+  // Without these the run timeline, the trace drawer and the PR list's COST
+  // column are all empty on a fresh clone. The last entry deliberately reports
+  // NO cost: it is the fixture for the "—" branch (unknown ≠ free).
+  const [anyRun] = await db
+    .select({ id: t.agentRuns.id })
+    .from(t.agentRuns)
+    .where(eq(t.agentRuns.prId, pr!.id));
+  if (!anyRun) {
+    const agentRows = await db
+      .select({ id: t.agents.id, name: t.agents.name })
+      .from(t.agents)
+      .where(eq(t.agents.workspaceId, workspaceId));
+    const byName = new Map(agentRows.map((a) => [a.name, a.id]));
+
+    /** A finding to seed alongside a demo run, minus the ids the loop fills in. */
+    type DemoFinding = {
+      file: string;
+      startLine: number;
+      endLine: number;
+      severity: 'CRITICAL' | 'WARNING' | 'SUGGESTION';
+      category: string;
+      title: string;
+      rationale: string;
+      suggestion?: string;
+      confidence: number;
+    };
+
+    const demoRuns: {
+      agent: string;
+      durationMs: number;
+      tokensIn: number;
+      tokensOut: number;
+      costUsd: number | null;
+      findings: number;
+      blockers: number;
+      score: number;
+      grounding: string;
+      minutesAgo: number;
+      /** Verdict + findings for a review created for this run. Omitted for the
+       *  Security Reviewer, which adopts the standalone seeded review instead. */
+      review?: { verdict: string; summary: string; findings: DemoFinding[] };
+    }[] = [
+      {
+        agent: 'Security Reviewer',
+        durationMs: 8200,
+        tokensIn: 7891,
+        tokensOut: 1228,
+        costUsd: 0.0013,
+        // Matches the seeded review this run is linked to below: 3 findings,
+        // one of them CRITICAL. Keeping them in step is what lets the timeline
+        // row, the Review-runs card and the PR list all show the same numbers.
+        findings: 3,
+        blockers: 1,
+        score: 61,
+        grounding: '3/3 passed',
+        minutesAgo: 12,
+      },
+      {
+        agent: 'Performance Reviewer',
+        durationMs: 6400,
+        tokensIn: 10460,
+        tokensOut: 1551,
+        costUsd: 0.0014,
+        findings: 2,
+        blockers: 0,
+        score: 64,
+        grounding: '2/2 passed',
+        minutesAgo: 18,
+        review: {
+          verdict: 'comment',
+          summary:
+            'The limiter itself is sound, but it adds a synchronous Redis round-trip to every public request and the user-list query it guards is unbounded.',
+          findings: [
+            {
+              file: 'src/middleware/ratelimit.ts',
+              startLine: 28,
+              endLine: 34,
+              severity: 'WARNING',
+              category: 'perf',
+              title: 'Redis round-trip on every request, including cache hits',
+              rationale:
+                'The token check awaits Redis before the handler runs, so a burst of cheap reads pays full network latency each time.',
+              suggestion: 'Keep a short-lived in-process bucket and reconcile with Redis asynchronously.',
+              confidence: 0.82,
+            },
+            {
+              file: 'src/api/users.ts',
+              startLine: 12,
+              endLine: 18,
+              severity: 'SUGGESTION',
+              category: 'perf',
+              title: 'User list has no upper bound on page size',
+              rationale:
+                'The endpoint honours any `limit` the caller sends, so one request can pull the whole table past the new limiter.',
+              suggestion: 'Clamp `limit` to a sane maximum.',
+              confidence: 0.68,
+            },
+          ],
+        },
+      },
+      {
+        agent: 'General Reviewer',
+        durationMs: 5100,
+        tokensIn: 6204,
+        tokensOut: 988,
+        costUsd: null, // provider returned no usage → the UI must show "—"
+        findings: 1,
+        blockers: 0,
+        score: 72,
+        grounding: '1/1 passed',
+        minutesAgo: 24,
+        review: {
+          verdict: 'comment',
+          summary:
+            'Reads clearly and the middleware is well placed. One naming nit in the webhook handler.',
+          findings: [
+            {
+              file: 'src/api/public/webhooks.ts',
+              startLine: 61,
+              endLine: 74,
+              severity: 'SUGGESTION',
+              category: 'style',
+              title: 'Handler name says "process", body only validates',
+              rationale:
+                'processWebhook() validates the payload and enqueues it; the name promises work it does not do, which is how the retry path got misread.',
+              suggestion: 'Rename to enqueueWebhook().',
+              confidence: 0.64,
+            },
+          ],
+        },
+      },
+    ];
+
+    // The seeded review has no run of its own (it predates the timeline), so the
+    // severity icons on the timeline and the Review-runs card would have nothing
+    // to read. Adopt it into the Security Reviewer run below.
+    const [seededReview] = await db
+      .select({ id: t.reviews.id })
+      .from(t.reviews)
+      .where(and(eq(t.reviews.prId, pr!.id), eq(t.reviews.kind, 'review')));
+
+    for (const r of demoRuns) {
+      const agentId = byName.get(r.agent) ?? null;
+      const ranAt = new Date(Date.now() - r.minutesAgo * 60_000);
+      const [run] = await db
+        .insert(t.agentRuns)
+        .values({
+          workspaceId,
+          agentId,
+          prId: pr!.id,
+          ranAt,
+          provider: DEFAULT_PROVIDER,
+          model: DEFAULT_MODEL,
+          durationMs: r.durationMs,
+          tokensIn: r.tokensIn,
+          tokensOut: r.tokensOut,
+          costUsd: r.costUsd,
+          status: 'done',
+          source: 'local',
+          findingsCount: r.findings,
+          grounding: r.grounding,
+          score: r.score,
+          blockers: r.blockers,
+        })
+        .returning({ id: t.agentRuns.id });
+
+      if (r.agent === 'Security Reviewer' && seededReview) {
+        await db
+          .update(t.reviews)
+          .set({ runId: run!.id, agentId })
+          .where(eq(t.reviews.id, seededReview.id));
+      } else if (r.review) {
+        // A review per run, so every timeline row has severity icons and a
+        // hover preview instead of a bare "N finding(s)". `createdAt` is the
+        // run's own `ranAt`, NOT now(): the PR list takes the LATEST review
+        // (modules/pulls/routes.ts), and defaulting to now() would let the
+        // oldest run win and change the FINDINGS column.
+        const [review] = await db
+          .insert(t.reviews)
+          .values({
+            workspaceId,
+            prId: pr!.id,
+            agentId,
+            runId: run!.id,
+            kind: 'review',
+            verdict: r.review.verdict,
+            summary: r.review.summary,
+            score: r.score,
+            model: DEFAULT_MODEL,
+            createdAt: ranAt,
+          })
+          .returning({ id: t.reviews.id });
+
+        await db.insert(t.findings).values(
+          r.review.findings.map((f) => ({
+            reviewId: review!.id,
+            file: f.file,
+            startLine: f.startLine,
+            endLine: f.endLine,
+            severity: f.severity,
+            category: f.category,
+            title: f.title,
+            rationale: f.rationale,
+            suggestion: f.suggestion ?? null,
+            confidence: f.confidence,
+          })),
+        );
+      }
+
+      await db.insert(t.runTraces).values({
+        runId: run!.id,
+        trace: {
+          config: {
+            agent: r.agent,
+            version: '1',
+            provider: DEFAULT_PROVIDER,
+            model: DEFAULT_MODEL,
+            pr: 482,
+            source: 'local',
+          },
+          stats: {
+            duration_ms: r.durationMs,
+            tokens_in: r.tokensIn,
+            tokens_out: r.tokensOut,
+            cost_usd: r.costUsd,
+            findings: r.findings,
+            grounding: r.grounding,
+          },
+          prompt_assembly: {
+            system: `${r.agent} — seeded demo prompt.`,
+            user: 'Review the following diff for PR #482.',
+          },
+          tool_calls: [
+            { tool: 'review_file', args: 'src/middleware/ratelimit.ts', meta: 'single-pass', ms: r.durationMs },
+          ],
+          raw_output: '{"verdict":"request_changes","findings":[]}',
+          memory_pulled: [],
+          specs_read: [],
+          log: [
+            { t: '00.00', kind: 'info', msg: 'Seeded demo run' },
+            { t: '00.01', kind: 'result', msg: `${r.findings} finding(s) after grounding` },
+          ],
+        },
+      });
+    }
   }
 
   return { workspaceId, userId };

@@ -2,8 +2,20 @@
 
 import React from "react";
 import { useTranslations } from "next-intl";
-import { Badge, Icon, CircularScore, type IconName } from "@devdigest/ui";
-import type { RunSummary, PrCommit } from "@devdigest/shared";
+import { Badge, Icon, CircularScore, SEV, type IconName } from "@devdigest/ui";
+import type {
+  RunSummary,
+  PrCommit,
+  FindingRecord,
+  ReviewRecord,
+  Severity,
+} from "@devdigest/shared";
+import { RunCostBadge } from "@/components/run-cost-badge";
+import {
+  FindingsPreviewCard,
+  sortBySeverity,
+  useFindingsPreview,
+} from "@/components/findings-preview";
 
 /**
  * PR timeline — every agent run interleaved with the PR's commits, newest-first
@@ -84,15 +96,84 @@ function tsOf(s: string | null | undefined): number {
   return Number.isNaN(n) ? 0 : n;
 }
 
+/** Severity levels, most severe first. */
+const TIMELINE_SEVERITIES: Severity[] = ["CRITICAL", "WARNING", "SUGGESTION"];
+
+/**
+ * Read-only severity icons for one timeline row, with a hover preview of the
+ * findings behind them.
+ *
+ * The icons are deliberately NOT interactive — plain spans, no handler, no
+ * pointer cursor. The timeline is a chronology; filtering happens in the
+ * "Review runs" card below, where the findings actually live. Hovering only
+ * reveals, it does not select, so nothing here invites a click that would do
+ * nothing.
+ */
+function TimelineSeverities({
+  counts,
+  findings,
+}: {
+  counts: RunSummary["findings_counts"];
+  /** This run's findings, already sorted. Empty when its review is gone. */
+  findings: FindingRecord[];
+}) {
+  const { anchor, open, scheduleClose, cancelClose } = useFindingsPreview();
+  if (!counts) return null;
+  const present = TIMELINE_SEVERITIES.filter((sev) => counts[sev] > 0);
+  if (present.length === 0) return null;
+  return (
+    <span
+      style={{ display: "inline-flex", alignItems: "center", gap: 8 }}
+      onMouseEnter={(e) => {
+        // Nothing to show for a run whose review was deleted — the counts are
+        // gone with it, so this branch is unreachable today, but a preview card
+        // reading "no findings" over a row that shows icons would be a lie.
+        if (findings.length > 0) open(e.currentTarget);
+      }}
+      onMouseLeave={() => scheduleClose()}
+    >
+      {present.map((sev) => {
+        const tok = SEV[sev];
+        const I = Icon[tok.icon];
+        return (
+          <span
+            key={sev}
+            title={tok.label}
+            style={{ display: "inline-flex", alignItems: "center", gap: 3, color: tok.c }}
+          >
+            <I size={12} />
+            <span className="tnum">{counts[sev]}</span>
+          </span>
+        );
+      })}
+      {anchor && (
+        <FindingsPreviewCard
+          findings={findings}
+          top={anchor.top}
+          left={anchor.left}
+          titleKey="titleShort"
+          onMouseEnter={cancelClose}
+          onMouseLeave={() => scheduleClose()}
+        />
+      )}
+    </span>
+  );
+}
+
 export function RunHistory({
   runs,
   commits = [],
+  reviews = [],
   onOpenTrace,
   onGoToReview,
   onDelete,
 }: {
   runs: RunSummary[];
   commits?: PrCommit[];
+  /** Reviews for this PR, already fetched by the page. Used only to fill the
+   *  hover preview — a run row is matched by `review.run_id`. Passing them in
+   *  rather than fetching keeps this component request-free. */
+  reviews?: ReviewRecord[];
   /** Open the trace + log drawer for a run (the logs icon). */
   onOpenTrace: (runId: string) => void;
   /** Jump to this run's inline review accordion below (clicking the agent name). */
@@ -100,6 +181,14 @@ export function RunHistory({
   onDelete?: (runId: string) => void;
 }) {
   const t = useTranslations("prReview");
+  // One pass over the reviews instead of a find() per row.
+  const findingsByRun = React.useMemo(() => {
+    const m = new Map<string, FindingRecord[]>();
+    for (const rv of reviews) {
+      if (rv.run_id) m.set(rv.run_id, sortBySeverity(rv.findings));
+    }
+    return m;
+  }, [reviews]);
   if (runs.length === 0 && commits.length === 0) return null;
 
   const items: TimelineItem[] = [
@@ -189,14 +278,33 @@ export function RunHistory({
                 </div>
               )}
               {settled && (
-                <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                  {t("runStatus.findings", { count: r.findings_count ?? 0 })}
-                  {(r.blockers ?? 0) > 0 ? t("runStatus.blockers", { count: r.blockers ?? 0 }) : ""}
+                <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 12, color: "var(--text-muted)" }}>
+                  {/* Severity icons when we know the breakdown; the plain count
+                      otherwise (a run whose review was deleted still renders). */}
+                  {r.findings_counts ? (
+                    <TimelineSeverities
+                      counts={r.findings_counts}
+                      findings={findingsByRun.get(r.run_id) ?? []}
+                    />
+                  ) : (
+                    <span>{t("runStatus.findings", { count: r.findings_count ?? 0 })}</span>
+                  )}
+                  {(r.blockers ?? 0) > 0 ? (
+                    <span>{t("runStatus.blockers", { count: r.blockers ?? 0 })}</span>
+                  ) : null}
                 </div>
               )}
             </div>
             <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2, fontSize: 11, color: "var(--text-muted)", flexShrink: 0 }}>
               {r.ran_at && <span>{new Date(r.ran_at).toLocaleTimeString()}</span>}
+              {settled && (
+                <RunCostBadge
+                  variant="timeline"
+                  costUsd={r.cost_usd}
+                  tokensIn={r.tokens_in}
+                  tokensOut={r.tokens_out}
+                />
+              )}
             </div>
             <button
               type="button"

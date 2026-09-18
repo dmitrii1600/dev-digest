@@ -1,7 +1,8 @@
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, isNotNull } from 'drizzle-orm';
 import type { Db } from '../../../db/client.js';
 import * as t from '../../../db/schema.js';
-import type { RunSummary, RunTrace } from '@devdigest/shared';
+import type { RunSummary, RunTrace, SeverityCounts } from '@devdigest/shared';
+import { rollupSeverities } from '../../_shared/severity.js';
 
 // ---- in-flight / history --------------------------------------------------
 
@@ -48,6 +49,33 @@ export async function listRunsForPull(
     .leftJoin(t.agents, eq(t.agents.id, t.agentRuns.agentId))
     .where(and(eq(t.agentRuns.workspaceId, workspaceId), eq(t.agentRuns.prId, prId)))
     .orderBy(desc(t.agentRuns.ranAt));
+
+  // Severity breakdown per run, counted from the findings of the review that
+  // run produced. `reviews.run_id` has no FK to `agent_runs`, so this is a join
+  // on the column, scoped to the PR — one extra query for the whole timeline,
+  // not one per row. A run with no review (failed, cancelled, review deleted)
+  // simply has no entry here and reports null.
+  const severityByRun = new Map<string, SeverityCounts>();
+  const findingRows = await db
+    .select({ runId: t.reviews.runId, severity: t.findings.severity })
+    .from(t.reviews)
+    .innerJoin(t.findings, eq(t.findings.reviewId, t.reviews.id))
+    .where(
+      and(
+        eq(t.reviews.workspaceId, workspaceId),
+        eq(t.reviews.prId, prId),
+        isNotNull(t.reviews.runId),
+      ),
+    );
+  const byRun = new Map<string, { severity: string }[]>();
+  for (const f of findingRows) {
+    if (!f.runId) continue;
+    const bucket = byRun.get(f.runId);
+    if (bucket) bucket.push(f);
+    else byRun.set(f.runId, [f]);
+  }
+  for (const [runId, fs] of byRun) severityByRun.set(runId, rollupSeverities(fs));
+
   return rows.map(({ run, agentName }) => ({
     run_id: run.id,
     agent_id: run.agentId,
@@ -59,7 +87,9 @@ export async function listRunsForPull(
     duration_ms: run.durationMs,
     tokens_in: run.tokensIn,
     tokens_out: run.tokensOut,
+    cost_usd: run.costUsd,
     findings_count: run.findingsCount,
+    findings_counts: severityByRun.get(run.id) ?? null,
     grounding: run.grounding,
     ran_at: run.ranAt ? run.ranAt.toISOString() : null,
     score: run.score,
@@ -146,6 +176,9 @@ export async function completeAgentRun(
     durationMs: number;
     tokensIn: number;
     tokensOut: number;
+    /** USD spent (provider-reported usage.cost, else the price book); null when
+     *  unknown. Null — NOT 0 — on failed/cancelled runs: no meaningful spend. */
+    costUsd?: number | null;
     findingsCount: number;
     grounding: string;
     /** Review score (0-100); null on failed/cancelled runs. */
@@ -163,6 +196,7 @@ export async function completeAgentRun(
       durationMs: values.durationMs,
       tokensIn: values.tokensIn,
       tokensOut: values.tokensOut,
+      costUsd: values.costUsd ?? null,
       findingsCount: values.findingsCount,
       grounding: values.grounding,
       score: values.score ?? null,

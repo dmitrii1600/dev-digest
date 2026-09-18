@@ -11,6 +11,22 @@ import { z } from 'zod';
 export const Severity = z.enum(['CRITICAL', 'WARNING', 'SUGGESTION']);
 export type Severity = z.infer<typeof Severity>;
 
+/**
+ * Per-severity tally of a set of findings. Keys match the `Severity` enum
+ * exactly, so a count can never drift from the level it counts.
+ *
+ * Used for read-only aggregates (`PrMeta.findings_counts`,
+ * `RunSummary.findings_counts`). Absent/null means "nothing known" — a PR that
+ * was never reviewed — which the UI renders as "—". An all-zero object is a
+ * genuine clean review and renders as zeros.
+ */
+export const SeverityCounts = z.object({
+  CRITICAL: z.number().int(),
+  WARNING: z.number().int(),
+  SUGGESTION: z.number().int(),
+});
+export type SeverityCounts = z.infer<typeof SeverityCounts>;
+
 export const FindingCategory = z.enum(['bug', 'security', 'perf', 'style', 'test']);
 export type FindingCategory = z.infer<typeof FindingCategory>;
 

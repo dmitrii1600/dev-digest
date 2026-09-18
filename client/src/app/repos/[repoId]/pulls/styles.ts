@@ -45,6 +45,35 @@ export const s = {
     color: "var(--text-muted)",
     textAlign: "right",
   } satisfies CSSProperties,
+  findingsCell: {
+    display: "flex",
+    alignItems: "center",
+    gap: 9,
+    minWidth: 0,
+  } satisfies CSSProperties,
+  findingsChip: (color: string, active: boolean): CSSProperties => ({
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 3,
+    padding: "1px 4px",
+    marginLeft: -4,
+    borderRadius: 4,
+    background: "none",
+    borderStyle: "none",
+    font: "inherit",
+    fontSize: 12,
+    color,
+    cursor: "pointer",
+    // Filtered chip is underlined, not just tinted — the three chips are
+    // already colour-coded, so colour cannot also carry "selected".
+    textDecoration: active ? "underline" : "none",
+    textUnderlineOffset: 3,
+  }),
+  costCell: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "flex-end",
+  } satisfies CSSProperties,
   muted: { color: "var(--text-muted)" } satisfies CSSProperties,
   filterBar: {
     display: "flex",

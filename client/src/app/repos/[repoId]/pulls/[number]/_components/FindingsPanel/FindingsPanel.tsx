@@ -5,7 +5,7 @@
 import React from "react";
 import { useTranslations } from "next-intl";
 import { Toggle, EmptyState } from "@devdigest/ui";
-import type { FindingRecord } from "@devdigest/shared";
+import type { FindingRecord, Severity } from "@devdigest/shared";
 import { FindingCard } from "../FindingCard";
 import { useFindingAction } from "../../../../../../../lib/hooks/reviews";
 import { KEY_TO_ACTION } from "./constants";
@@ -17,18 +17,30 @@ export function FindingsPanel({
   prId,
   repoFullName,
   headSha,
+  severity = null,
 }: {
   findings: FindingRecord[];
   prId: string;
   repoFullName?: string | null;
   headSha?: string | null;
+  /** Severity filter driven by the pills above; null shows everything. Owned by
+   *  the accordion so the pills and this list read the same state. */
+  severity?: Severity | null;
 }) {
   const t = useTranslations("prReview");
   const action = useFindingAction();
   const [hideLow, setHideLow] = React.useState(false);
   const [focusIdx, setFocusIdx] = React.useState(0);
 
-  const shown = React.useMemo(() => visibleFindings(findings, hideLow), [findings, hideLow]);
+  const shown = React.useMemo(
+    () => visibleFindings(findings, hideLow, severity),
+    [findings, hideLow, severity],
+  );
+
+  // Narrowing the list can strand the j/k cursor past the end. Clamp it here
+  // rather than resetting it from an effect: derived during render, so there is
+  // no second render pass and no frame where the highlight points at nothing.
+  const focused = Math.min(focusIdx, Math.max(0, shown.length - 1));
 
   // j/k navigation + a/d shortcuts on the focused finding (keyboard).
   React.useEffect(() => {
@@ -37,13 +49,13 @@ export function FindingsPanel({
       if (tag === "INPUT" || tag === "TEXTAREA") return;
       if (e.key === "j") setFocusIdx((i) => Math.min(i + 1, shown.length - 1));
       else if (e.key === "k") setFocusIdx((i) => Math.max(i - 1, 0));
-      else if (KEY_TO_ACTION[e.key] && shown[focusIdx]) {
-        action.mutate({ findingId: shown[focusIdx]!.id, action: KEY_TO_ACTION[e.key]!, prId });
+      else if (KEY_TO_ACTION[e.key] && shown[focused]) {
+        action.mutate({ findingId: shown[focused]!.id, action: KEY_TO_ACTION[e.key]!, prId });
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [shown, focusIdx, action, prId]);
+  }, [shown, focused, action, prId]);
 
   return (
     <div>
@@ -62,7 +74,7 @@ export function FindingsPanel({
             <FindingCard
               key={f.id}
               f={f}
-              focused={i === focusIdx}
+              focused={i === focused}
               defaultExpanded={i === 0}
               pending={action.isPending}
               repoFullName={repoFullName}

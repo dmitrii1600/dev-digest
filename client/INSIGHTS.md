@@ -1,0 +1,95 @@
+# Insights — @devdigest/web
+
+Client-local facts that are not visible from the code: why a choice was made,
+what we tried that did not work, what surprised us. Cross-package findings go in
+`../INSIGHTS.md`.
+
+Not architecture (that is `README.md`), not rules (that is `CLAUDE.md`).
+
+How to read and append: `/engineering-insights`
+(`../.claude/skills/engineering-insights/SKILL.md`). Sections are fixed and
+append-only. Empty sections are expected — append under the one that fits.
+
+---
+
+## What Works
+
+## What Doesn't Work
+
+- 2026-09-15 — The PR-list header right-aligned its last column by index
+  (`i === COLUMN_KEYS.length - 1`), so inserting any column before `updated`
+  silently left the new one left-aligned while the rows' cell was right-aligned.
+  Replaced with an explicit key set, `RIGHT_ALIGNED_COLUMNS`
+  (`src/app/repos/[repoId]/pulls/constants.ts:56`). Adding a column means
+  editing three things in step: `GRID`, `COLUMN_KEYS`, and the cell in `PRRow`.
+
+- 2026-09-16 — `borderColor` is **itself a shorthand** for the four sides, so
+  pairing it with `borderLeftColor` trips React's "updating a style property
+  during rerender" warning exactly as `border` + `borderLeft` would. The comment
+  at `src/app/repos/[repoId]/pulls/[number]/_components/FindingCard/styles.ts:7`
+  warned about the shorthand and then used `borderColor` anyway; it now sets
+  `borderTop/Right/BottomColor` per side. Invisible until something rerenders the
+  card with `focused` changing — the severity filter is what surfaced it.
+
+## Codebase Patterns
+
+- 2026-09-15 — There are two token formatters and they are not interchangeable:
+  `formatTokens(in, out)` → `"8k→1.2k"` for the trace drawer
+  (`src/app/repos/[repoId]/pulls/[number]/_components/RunTraceDrawer/helpers.ts:27`)
+  and `formatTokenCount(n)` → `"15.2K"` for one count
+  (`src/components/run-cost-badge/RunCostBadge.tsx:33`). The second is
+  deliberately NOT called `formatTokens` — same name, different arity is a trap.
+
+- 2026-09-16 — `SEV` (`src/vendor/ui/primitives/tokens.ts:6`) is the canonical
+  severity map: colour, background, icon **and** label in one place. Reuse it
+  even when you cannot reuse `<SeverityBadge>` — that primitive renders
+  label-then-count ("CRITICAL 2"), so a count-first pill hand-rolls the layout
+  while still reading colours and icon from `SEV`. Three local `SEV_COLOR` copies
+  already exist; do not add a fourth.
+- 2026-09-16 — A pill's count and the cards it filters to are derived from the
+  **same** `review.findings` array in `ReviewRunAccordion`
+  (`.../_components/ReviewRunAccordion/ReviewRunAccordion.tsx:55`), which is why
+  they cannot disagree. Counting from `agent_runs.findings_count` instead would
+  reintroduce exactly the drift the denormalized `blockers` column already has.
+- 2026-09-16 — A lazily-`enabled` hook is how to defer a fetch, not an effect.
+  The PR-list hover preview calls `usePrReviews(prId)` with `enabled` tied to
+  hover (`.../pulls/_components/PRRow/PRRow.tsx:60`); it is keyed
+  `["reviews", prId]` — the same key the PR page uses — so hovering warms the
+  cache and the click that follows renders with no second request.
+
+- 2026-09-16 — Hover-preview state (anchor from `getBoundingClientRect()` plus a
+  ~120 ms close grace period) lives in `useFindingsPreview`
+  (`src/components/findings-preview/useFindingsPreview.ts`), shared by the PR
+  list and the run timeline. The grace period is not polish: the card is
+  `position: fixed`, so it is not a DOM child of its trigger and a plain
+  `mouseleave` would snatch it away as the pointer crosses the gap. The card's
+  own `onMouseEnter` calls `cancelClose` for the same reason.
+- 2026-09-16 — The timeline's severity icons open the same preview on **hover**
+  but stay inert to clicks — filtering belongs to the Review-runs card below.
+  The handlers therefore go on the wrapping element, never on the chips
+  (`.../RunHistory/RunHistory.tsx`), which is what keeps "icons are not
+  clickable" true while hover works.
+
+## Tool & Library Notes
+
+- 2026-09-16 — `@testing-library/user-event` is **not** installed; the suite uses
+  `fireEvent` from `@testing-library/react` (`FindingCard.test.tsx:2`). Write new
+  interaction tests with `fireEvent` rather than adding the dependency.
+- 2026-09-16 — `eslint-plugin-react-hooks` v6 adds `set-state-in-effect`, which
+  fires on the app's theme/localStorage hydration pattern in several places
+  (`src/lib/theme.tsx:19`, `src/lib/repo-context.tsx:31`, …). It is `warn` in
+  `eslint.config.mjs` — rewriting those is a separate, hydration-sensitive
+  change. Do not silence the rule and do not half-fix it.
+
+- 2026-09-16 — Screenshot coordinates from the Chrome MCP tools are NOT page
+  coordinates. A page reporting `window.innerWidth` 1254 came back as a 1568-wide
+  screenshot, so `hover` at a coordinate read off the image lands somewhere else
+  entirely and a working popover looks broken. Verify a hover with
+  `javascript_tool` (dispatch `mouseover`, then read `[role="tooltip"]`) or with
+  an RTL test — do not conclude "regression" from a screenshot that shows nothing.
+
+## Recurring Errors & Fixes
+
+## Session Notes
+
+## Open Questions
