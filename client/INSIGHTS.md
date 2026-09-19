@@ -4,7 +4,7 @@ Client-local facts that are not visible from the code: why a choice was made,
 what we tried that did not work, what surprised us. Cross-package findings go in
 `../INSIGHTS.md`.
 
-Not architecture (that is `README.md`), not rules (that is `CLAUDE.md`).
+Not architecture (that is `README.md`), not rules (that is `AGENTS.md`).
 
 How to read and append: `/engineering-insights`
 (`../.claude/skills/engineering-insights/SKILL.md`). Sections are fixed and
@@ -31,7 +31,30 @@ append-only. Empty sections are expected — append under the one that fits.
   `borderTop/Right/BottomColor` per side. Invisible until something rerenders the
   card with `focused` changing — the severity filter is what surfaced it.
 
+- 2026-09-18 — `pnpm test` passing does not mean the app compiles. Moving
+  `lib/providers.tsx` → `providers/AppProviders.tsx` left one unresolved sibling
+  import (`./api`), and all 82 tests still went green because no test mounts the
+  provider stack — `pnpm typecheck` and `pnpm build` were the only things that
+  caught it. After moving or renaming a module, `build` is the gate, not `test`.
+
 ## Codebase Patterns
+
+- 2026-09-18 — The provider stack lives in `src/providers/`, not `src/lib/`
+  (`AppProviders.tsx` + `theme` / `toast` / `repo-context`, re-exported by
+  `index.ts`). `src/lib` is now only the API layer (`api.ts`, `hooks/*`) plus two
+  shared modules, so the folder name finally describes its contents. Two rules
+  keep it that way, both in `AGENTS.md`: cross-folder imports use `@/`, and
+  `src/components` / `src/lib` may not import `src/app` (enforced by
+  `no-restricted-imports` in `eslint.config.mjs`, core rule — this package has no
+  `eslint-plugin-import`).
+
+- 2026-09-18 — `src/lib/feature-models.ts` looks like a one-consumer module that
+  should be demoted into `SettingsModels/`, and it should not be. Its header
+  explains it is a hand-kept mirror of the server's `FEATURE_MODELS`, needed
+  because importing a runtime *value* from `vendor/shared` breaks the webpack
+  build. It is a cross-package sync point, so burying it seven folders deep would
+  hide the "keep in sync" instruction from whoever changes the server registry.
+  Placement rules lose to discoverability for contract mirrors.
 
 - 2026-09-15 — There are two token formatters and they are not interchangeable:
   `formatTokens(in, out)` → `"8k→1.2k"` for the trace drawer
@@ -69,6 +92,33 @@ append-only. Empty sections are expected — append under the one that fits.
   The handlers therefore go on the wrapping element, never on the chips
   (`.../RunHistory/RunHistory.tsx`), which is what keeps "icons are not
   clickable" true while hover works.
+
+- 2026-09-18 — `src/lib/types.ts` is a re-export shim over `@devdigest/shared`,
+  but it has already acquired one locally-declared interface, `PrRowView`
+  (`src/lib/types.ts:38`). That is how a shim turns into a global types folder:
+  `import { PrRowView } from "@/lib/types"` is indistinguishable at the call site
+  from the contract re-exports around it, so nothing signals that this one is
+  local and free to drift. A view model belongs with the view — keep the file a
+  pure re-export and `AGENTS.md`'s "types come from `@devdigest/shared`" stays
+  true by inspection.
+
+- 2026-09-18 — `src/lib/hooks/index.ts` is the app's only `export *` barrel, and
+  its own header comment blesses **both** `@/lib/hooks` and
+  `@/lib/hooks/reviews` as correct. Both forms are live, so "who calls
+  `useRunReview`?" is a two-grep question with no single right answer. Contrast
+  the 30 `index.ts` files under `src/app`: every one re-exports a single
+  component and none uses `export *` — that forwarding form is fine and should
+  stay the pattern. Import the domain file directly in new code.
+
+- 2026-09-18 — `AGENTS.md`’s "cross-folder imports use `@/`" splits on
+  **sibling vs parent**, not on folder depth. In `TraceBody.tsx`
+  (`src/app/repos/[repoId]/pulls/[number]/_components/RunTraceDrawer/_components/TraceBody/TraceBody.tsx:13`)
+  a sibling component folder stays relative (`../TraceSection`) while the
+  parent segment's own modules take the alias
+  (`@/app/…/RunTraceDrawer/constants`, same file `:10`). The two forms sitting
+  four lines apart is correct, not a half-done migration — read as
+  "relative = same folder only", the compliant import gets filed as a
+  violation.
 
 ## Tool & Library Notes
 

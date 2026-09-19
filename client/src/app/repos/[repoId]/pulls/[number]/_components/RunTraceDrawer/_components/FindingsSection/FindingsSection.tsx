@@ -11,7 +11,7 @@ import React from "react";
 import { useTranslations } from "next-intl";
 import { Badge } from "@devdigest/ui";
 import type { FindingRecord } from "@devdigest/shared";
-import { s } from "../../styles";
+import { s } from "@/app/repos/[repoId]/pulls/[number]/_components/RunTraceDrawer/styles";
 import { TraceSection } from "../TraceSection";
 
 const SEV_COLOR: Record<string, string> = {

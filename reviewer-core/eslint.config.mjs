@@ -10,7 +10,7 @@ import tseslint from 'typescript-eslint';
  * opinion on the same files.
  *
  * This is not a monorepo, so each package owns its own config and install
- * (see ../CLAUDE.md). This one installs with **npm**, matching its lockfile.
+ * (see ../AGENTS.md). This one installs with **npm**, matching its lockfile.
  */
 export default tseslint.config(
   { ignores: ['node_modules/**', 'dist/**', 'test-results/**'] },

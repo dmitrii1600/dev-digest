@@ -3,7 +3,7 @@
 Flakiness causes, agent-browser quirks, and fixture assumptions that are not
 visible from the flow JSON. Cross-package findings go in `../INSIGHTS.md`.
 
-Not architecture (that is `README.md`), not rules (that is `CLAUDE.md`).
+Not architecture (that is `README.md`), not rules (that is `AGENTS.md`).
 
 How to read and append: `/engineering-insights`
 (`../.claude/skills/engineering-insights/SKILL.md`). Sections are fixed and
@@ -37,6 +37,16 @@ append-only. Empty sections are expected — append under the one that fits.
   positional selector.
 
 ## Tool & Library Notes
+
+- 2026-09-18 — `agent-browser` is **not** a declared dependency of this package
+  (`package.json` lists only tsx/eslint/typescript) — it is an external binary
+  expected on `PATH`. On a machine without it, `./scripts/e2e.sh` brings the
+  whole hermetic stack up successfully and then every flow fails identically with
+  `spawn agent-browser ENOENT`, before any page loads, for a final `0/8 flows
+  passed`. That output looks like a total application regression and is not one:
+  identical failures across all eight flows at the *first* step is the signature
+  of a missing driver, not of broken UI. Verify the app another way (curl the
+  routes against a running stack) before believing it.
 
 ## Recurring Errors & Fixes
 

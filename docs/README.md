@@ -14,5 +14,5 @@ package stays in that package's `README.md`.
   run before shipping a prompt.
 
 When you add a document here, add one line to this list and, if an agent must
-read it under a specific condition, a pointer in the root `CLAUDE.md`
+read it under a specific condition, a pointer in the root `AGENTS.md`
 (`## Read when`).

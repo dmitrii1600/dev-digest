@@ -4,7 +4,7 @@ Engine-local facts that are not visible from the code: prompt behaviours we
 observed, model quirks, gating decisions and why they hold. Cross-package
 findings go in `../INSIGHTS.md`.
 
-Not architecture (that is `README.md`), not rules (that is `CLAUDE.md`).
+Not architecture (that is `README.md`), not rules (that is `AGENTS.md`).
 
 How to read and append: `/engineering-insights`
 (`../.claude/skills/engineering-insights/SKILL.md`). Sections are fixed and

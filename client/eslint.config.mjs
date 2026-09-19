@@ -11,7 +11,7 @@ import reactHooks from 'eslint-plugin-react-hooks';
  * `exhaustive-deps` are the reason this config exists at all.
  *
  * This is not a monorepo, so each package owns its own config and install
- * (see ../CLAUDE.md).
+ * (see ../AGENTS.md).
  */
 export default tseslint.config(
   {
@@ -61,11 +61,40 @@ export default tseslint.config(
     rules: { 'no-undef': 'off' },
   },
   {
+    // ---- Layer boundary: shared may not import routes ---------------------
+    // `src/components` and `src/lib` are the shared layer; `src/app` is the
+    // route layer above them. Imports flow downward only, so shared code that
+    // reaches back into a route is what turns a structured app into a cycle —
+    // and it is invisible in review, because each such import looks reasonable
+    // on its own. The rings and the reasoning live in
+    // `.claude/skills/frontend-ui-architecture/` (SKILL.md → boundaries.md).
+    //
+    // Core `no-restricted-imports` rather than `import/no-restricted-paths`:
+    // this package does not carry eslint-plugin-import, and the server already
+    // expresses its onion zones the same way.
+    files: ['src/components/**/*.{ts,tsx}', 'src/lib/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['@/app/*', '@/app', '**/app/*'],
+              message:
+                'Shared code cannot import a route. Move what both need down into src/components or src/lib, or compose them in the route — see .claude/skills/frontend-ui-architecture/references/boundaries.md.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
     // Tests reach for casts and partial fixtures on purpose.
     files: ['**/*.test.{ts,tsx}'],
     rules: {
       '@typescript-eslint/no-explicit-any': 'off',
       '@typescript-eslint/no-non-null-assertion': 'off',
+      'no-restricted-imports': 'off',
     },
   },
 );

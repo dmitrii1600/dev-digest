@@ -4,8 +4,8 @@
 import React from "react";
 import { useTranslations } from "next-intl";
 import { Chip, Button, TextInput, SelectInput } from "@devdigest/ui";
-import { STATUS_FILTERS } from "../../constants";
-import { s } from "../../styles";
+import { STATUS_FILTERS } from "@/app/repos/[repoId]/pulls/constants";
+import { s } from "@/app/repos/[repoId]/pulls/styles";
 
 export function FilterBar({
   active,

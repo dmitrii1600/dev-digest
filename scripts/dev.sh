@@ -37,6 +37,13 @@ warn() { printf '\033[1;33m! %s\033[0m\n' "$*"; }
 command -v docker >/dev/null || { echo "docker not found"; exit 1; }
 command -v pnpm   >/dev/null || { echo "pnpm not found (npm i -g pnpm)"; exit 1; }
 
+# --- git hooks ---------------------------------------------------------------
+# The pr-self-review gate's git half (.githooks/pre-push). Idempotent; see AGENTS.md.
+if [ "$(git config --get core.hooksPath || true)" != ".githooks" ]; then
+  git config core.hooksPath .githooks
+  log "enabled .githooks (pr-self-review pre-push gate)"
+fi
+
 # --- env files ---------------------------------------------------------------
 for dir in server client; do
   if [ ! -f "$dir/.env" ] && [ -f "$dir/.env.example" ]; then

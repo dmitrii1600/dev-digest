@@ -3,7 +3,7 @@
 
 import React from "react";
 import { Icon } from "@devdigest/ui";
-import { s } from "../../styles";
+import { s } from "@/app/repos/[repoId]/pulls/[number]/_components/RunTraceDrawer/styles";
 
 export function TraceSection({
   icon,
