@@ -66,11 +66,13 @@ append-only. Empty sections are expected — append under the one that fits.
   `timeout`, a closed wrapper). `scripts/dev.sh:105-141` now refuses to start on
   a busy port and names the PID to kill; to stop an already-orphaned stack,
   resolve owners by port (`netstat -ano | grep LISTENING`) and kill the whole
-  chain, not just the listener. Second signature of the same orphan (2026-09-20):
-  an orphaned `next dev` keeps serving its **old module graph**, so after files
-  are deleted or moved it answers 404 on routes that exist (`/agents`) and 500 on
-  the changed one while `pnpm build` is green. A 404 on a route you did not touch
-  means "restart the web process", not "find the bug".
+  chain, not just the listener. Corollary (2026-09-20): because the orphan lives
+  in no terminal, a later session cannot see that it is there and runs
+  `pnpm build` in `client/` against it — the very thing `client/INSIGHTS.md`
+  (*What Doesn't Work*, 2026-09-20) forbids — and then reads the resulting 404 on
+  `/agents` and 500 on `/skills` as an application bug. Check
+  `netstat -ano | grep -E ":3000 "` **before** building; if something already
+  serves the port, stop it first or skip the build.
 
 - 2026-09-18 — A real symlink is not usable as the `CLAUDE.md` → `AGENTS.md`
   link here, and its failure mode is silent. `New-Item -ItemType SymbolicLink`
@@ -426,8 +428,11 @@ The conventions modal got its missing body padding and agents became optional
 live in ring 1 because the ring-2 lint blocks even type imports from
 `adapters/**`; a service reading `container.skillsRepo` instead of `new`-ing
 it is what unlocks no-DB service tests; `Modal` gives `children` no padding;
-an orphaned `next dev` serves a dead module graph (404 on existing routes)
-and must be killed, not debugged. `./scripts/e2e.sh` still cannot run here
+and this session itself repeated a recorded mistake — `pnpm build` in
+`client/` while an (orphaned, invisible) `next dev` was serving :3000 — and
+spent a detour blaming the 404/500 on the orphan before the existing
+`client/INSIGHTS.md` entry explained it; read *What Doesn't Work* before
+verifying, not after. `./scripts/e2e.sh` still cannot run here
 (`agent-browser` not on PATH); the flows were updated and the UI verified
 through the browser pane instead.
 
