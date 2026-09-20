@@ -123,6 +123,15 @@ append-only. Empty sections are expected — append under the one that fits.
   a spec, grep the grading criteria for the surface it touches; "matches the
   mock" is not the same as "matches the rubric".
 
+- 2026-09-20 — The gate's `test-naming` static rule is a false positive for every
+  integration test that reaches Postgres through the shared fixture: its regex
+  (`pr-self-review-gate.mjs:634`) looks for `testcontainers`, `db/client`,
+  `withPostgres` or `startPostgres`, but `skills.it.test.ts`,
+  `conventions.it.test.ts`, `agent-skills.it.test.ts` and
+  `settings-models.it.test.ts` import `startPg` from `./helpers/pg.js` and get
+  the container from there. The four WARNINGs it emits are noise, not a naming
+  bug — add `startPg|helpers\/pg` to that regex when the gate is next touched.
+
 ## Codebase Patterns
 
 - 2026-09-15 — Unknown cost renders "—", never "$0.00", on every surface. The
