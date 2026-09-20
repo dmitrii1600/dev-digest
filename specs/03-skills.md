@@ -4,7 +4,8 @@
 Child specs:
 [`../server/specs/02-skills-module.md`](../server/specs/02-skills-module.md) and
 [`../client/specs/02-skills-lab.md`](../client/specs/02-skills-lab.md). The
-Conventions extractor (L02's second half) is still out of scope — see below.
+Conventions extractor (L02's second half) is out of scope here — it is
+specified in [`04-conventions-extractor.md`](./04-conventions-extractor.md).
 
 ## Problem
 
@@ -46,6 +47,9 @@ In:
 - A Skills Lab page and a Skills tab in the agent editor.
 - Two new seeded agents — Test Quality Reviewer, API Contract Reviewer — with
   skills bound, at least one of them arriving through the import path.
+- **Added 2026-09-20:** import from a URL (`POST /skills/import/url(/preview)`)
+  through a guarded `UrlFetcher` port, and a heuristic **injection scan** of
+  every `imported_*` body that blocks enabling until the body is edited clean.
 
 Out:
 
@@ -58,8 +62,8 @@ Out:
   `prompt_assembly.skills` the moment the server sends one.
 - **The Conventions extractor** — `source: 'extracted'`, `evidence_files`, and
   `repoIntel.getConventionSamples`. Same lesson, separate feature.
-- **Import from a URL, and the community catalog.** `skills.json` carries strings
-  for both; they stay unused, like every other pre-written lesson namespace.
+- **The community catalog.** Its strings were dropped from `skills.json`
+  on 2026-09-20; it is a later lesson. (URL import moved to *In* the same day.)
 - **An Evals tab**, on a skill or on an agent. Eval is L06.
 - **Per-agent performance.** L08. One exception is called out in the client spec.
 - **Automating the control experiment.** It needs a real model call; `e2e/` is
@@ -129,6 +133,39 @@ the same bytes and accepts only `name` / `description` / `type` from the client 
 never a body. A caller cannot preview one thing and save another. Extraction is
 in memory; nothing is written to disk and nothing is executed.
 
+**URL import is the same two steps with a fetch in front (2026-09-20).**
+`POST /skills/import/url/preview { url }` and `POST /skills/import/url { url,
+name?, description?, type? }` both fetch through `container.urlFetcher` — a
+port in `@devdigest/shared`, never a bare `fetch` in a service — and hand the
+bytes to the same `parseImport`, stamped `imported_url`. Commit re-fetches
+rather than trusting the preview. The adapter (`adapters/url-fetcher/`) owns
+the safety rules: http(s) only, no `localhost`/`.local`/`.internal`, no
+loopback / private / link-local / unique-local / CGNAT address (literal **or**
+resolved — every DNS answer is checked), at most three redirects each re-run
+through the guard, a 10 s timeout, `content-length` checked before reading and
+the body streamed and aborted past the 1 MiB import cap. `text/html` is refused
+with a message that says to link the raw file. Known gap, accepted: DNS is
+resolved before `fetch` resolves it again, so a rebinding host has a window;
+pinning would need a custom dispatcher.
+
+**The injection scan is a vetting gate, not the prompt defence.** Every
+`imported_url` / `imported_file` body is run through `modules/skills/injection-scan.ts`
+— seven high-signal line patterns (instruction override, role/system markers,
+system-prompt exfiltration, data exfiltration via links/`curl`, zero-width and
+bidi characters, a forged `<untrusted>` delimiter, "do not tell the user") —
+**on every read**: the `Skill` and `SkillImportPreview` DTOs carry
+`security: { status: clean | flagged | not_scanned, findings: [{ rule, line,
+excerpt }] }`, never persisted, so editing the line clears the flag with no
+state to keep in sync. `manual` and `extracted` bodies are `not_scanned`: the
+user wrote or accepted them. The gate: `PUT /skills/:id` that would leave a
+scanned skill enabled with a flagged body is a 422 carrying the findings
+(`restore` onto a flagged snapshot likewise); import still lands (disabled,
+as always) so the user can read and fix it. Prompt-time wrapping and
+`INJECTION_GUARD` are untouched — a flagged-then-fixed imported skill is
+still `<untrusted>`-wrapped when it runs. Keyword scanning is deliberately
+**not** how the prompt is protected (`reviewer-core/src/prompt.ts`); this scan
+only decides what the user is told and what may be switched on.
+
 ## Acceptance
 
 - An agent with no skills linked produces a prompt byte-identical to today's. The
@@ -151,11 +188,23 @@ in memory; nothing is written to disk and nothing is executed.
   with a traversal path, a symlink, too many entries, an oversized member or a
   compression bomb is rejected with a stated reason.
 - An imported skill is stored disabled and shows the "needs vetting" badge.
+- `POST /skills/import/url` with `http://127.0.0.1:3001/health`, a `10.x`
+  host, a link-local address or a redirect into one is a 422 and nothing is
+  fetched past the guard; a raw `.md` URL previews and lands `imported_url`,
+  disabled.
+- A body containing `Ignore all previous instructions` previews as `flagged`
+  with rule `instruction_override` and its line; enabling it is a 422 whose
+  `details.findings` names the line; saving a clean body and enabling
+  succeeds. A `manual` skill with the same text is `not_scanned` and enables.
 - Stats never claim per-skill attribution: every number counts the runs of the
   agents the skill is attached to, and the UI says so.
 - Covered by `server/test/skills.it.test.ts`, `server/test/agent-skills.it.test.ts`
   (real Postgres, `.it.` suffix mandatory), `server/test/skills-import.test.ts`,
-  `server/test/prompt-skills.test.ts`, the client component tests, and
+  `server/test/skills-injection-scan.test.ts`, `server/test/url-fetcher.test.ts`,
+  `server/test/skills-service.test.ts` (the enable gate and URL import on an
+  in-memory repository — the service takes `container.skillsRepo`, which is
+  what makes that possible), `server/test/prompt-skills.test.ts`, the client
+  component tests, and
   `e2e/specs/09-skills.flow.json`. `skills-resolve.test.ts` was planned as a
   standalone hermetic file but folded into `skills.it.test.ts` instead — there
   is no precedent anywhere in this codebase for hermetically faking a chained

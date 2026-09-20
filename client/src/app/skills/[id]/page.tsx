@@ -1,20 +1,20 @@
-/* /skills/:id — Skill Editor (L02). Left skill rail + Config/Preview/Versions/
+/* /skills/:id — Skill Editor (L02). Left skill rail (`SkillsRail` — the same
+   tiles and Add Skill modal as the `/skills` grid) + Config/Preview/Versions/
    Stats tabs. Tab state lives in ?tab=. Master-detail layout copied from
-   /agents/[id]/page.tsx — same idiom, same 280px rail. */
+   /agents/[id]/page.tsx; the rail is 320px so a full SkillCard fits. */
 "use client";
 
 import React from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { Badge, Button, ErrorState, Icon, Skeleton } from "@devdigest/ui";
+import { Badge, ErrorState, Icon, Skeleton } from "@devdigest/ui";
 import { AppShell } from "@/components/app-shell";
-import { SkillListItem } from "@/app/skills/_components/SkillListItem";
-import { AddSkillDrawer } from "@/app/skills/_components/SkillsListView/_components/AddSkillDrawer";
-import { useSkills, useSkill, useUpdateSkill } from "@/lib/hooks/skills";
+import { useSkill } from "@/lib/hooks/skills";
 import { SKILL_TYPE_COLOR, SKILL_TYPE_COLOR_FALLBACK } from "@/lib/skill-tokens";
 import { useTranslations } from "next-intl";
 import { ApiError } from "@/lib/api";
 import { SkillEditor } from "./_components/SkillEditor";
 import { VALID_TABS } from "./_components/SkillEditor/constants";
+import { SkillsRail } from "./_components/SkillsRail";
 
 export default function SkillEditorPage() {
   const t = useTranslations("skills");
@@ -23,10 +23,7 @@ export default function SkillEditorPage() {
   const router = useRouter();
   const { id } = params;
 
-  const { data: skills } = useSkills();
   const { data: skill, isLoading, isError, error, refetch } = useSkill(id);
-  const update = useUpdateSkill();
-  const [drawerOpen, setDrawerOpen] = React.useState(false);
 
   const tab = VALID_TABS.includes(search.get("tab") ?? "") ? search.get("tab")! : "config";
   const setTab = (tb: string) => {
@@ -56,39 +53,8 @@ export default function SkillEditorPage() {
 
   return (
     <AppShell crumb={crumb}>
-      {drawerOpen && <AddSkillDrawer onClose={() => setDrawerOpen(false)} />}
       <div style={{ display: "flex", height: "calc(100vh - 52px)" }}>
-        {/* left: skill rail */}
-        <div
-          style={{
-            width: 280,
-            flexShrink: 0,
-            borderRight: "1px solid var(--border)",
-            display: "flex",
-            flexDirection: "column",
-            background: "var(--bg-surface)",
-          }}
-        >
-          <div style={{ padding: "16px 16px 12px" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
-              <h1 style={{ fontSize: 18, fontWeight: 700, flex: 1 }}>{t("page.heading")}</h1>
-              <Button kind="primary" size="sm" icon="Plus" onClick={() => setDrawerOpen(true)}>
-                {t("page.addSkill")}
-              </Button>
-            </div>
-          </div>
-          <div style={{ flex: 1, overflow: "auto", padding: "0 12px 12px" }}>
-            {(skills ?? []).map((sk) => (
-              <SkillListItem
-                key={sk.id}
-                skill={sk}
-                active={sk.id === id}
-                onClick={() => router.push(`/skills/${sk.id}?tab=${tab}`)}
-                onToggle={(enabled) => update.mutate({ id: sk.id, patch: { enabled } })}
-              />
-            ))}
-          </div>
-        </div>
+        <SkillsRail activeId={id} tab={tab} />
 
         {/* editor */}
         {isLoading || !skill ? (

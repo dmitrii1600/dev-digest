@@ -45,7 +45,24 @@ append-only. Empty sections are expected — append under the one that fits.
   provider stack — `pnpm typecheck` and `pnpm build` were the only things that
   caught it. After moving or renaming a module, `build` is the gate, not `test`.
 
+- 2026-09-20 — `Modal` (`src/vendor/ui/kit/Modal.tsx:60`) pads its header and
+  footer but renders `children` in a bare `<div style={{flex:1, overflow:"auto"}}>`.
+  A consumer that forgets `padding: 24` on its own body wrapper gets fields flush
+  against the dialog edge while the title and footer are inset — exactly what the
+  conventions modal shipped with (`ConventionSkillModal/styles.ts:5`, fixed).
+  Every other consumer (`CreateAgentModal`, `ConfirmModal`, `AddSkillModal`)
+  carries `body: { padding: 24 }`; copy that line first when you build a modal.
+- 2026-09-20 — Clicking a `Modal` by screenshot coordinates from the browser
+  pane can land on the backdrop and silently close it (the backdrop is a
+  full-screen `div` with `onClick={onClose}`, `Modal.tsx:22`). Drive modals with
+  `find` refs and `form_input`, not coordinates from a scaled screenshot.
+
 ## Codebase Patterns
+
+- 2026-09-20 — `Checkbox` in `src/vendor/ui/kit` is a `<button role="checkbox"
+  aria-checked>`, not an `<input>`: in a test, `getAllByRole("checkbox")`
+  returns buttons whose `.checked` is `undefined` — assert on
+  `getAttribute("aria-checked")` (`ConventionSkillModal.test.tsx`).
 
 - 2026-09-18 — The provider stack lives in `src/providers/`, not `src/lib/`
   (`AppProviders.tsx` + `theme` / `toast` / `repo-context`, re-exported by
@@ -140,6 +157,28 @@ append-only. Empty sections are expected — append under the one that fits.
   and `globals.css` already `@import`s it, so one app-side rule reaches every
   consumer.
 
+- 2026-09-20 — `Modal` and `Drawer` in `src/vendor/ui/kit` render in place, not
+  through a portal. A modal mounted *inside* a clickable card
+  (`AgentCard` owns its delete `ConfirmModal`) therefore bubbles every click
+  in it — Confirm, Cancel, the backdrop — up to the card's `onClick`, and the
+  confirm dialog silently navigates into the editor. Wrap the modal in a
+  `<div onClick={(e) => e.stopPropagation()}>` exactly as the card already
+  does for its `Toggle`; or mount the modal in the parent list (`SkillsListView`
+  owns `deletingId`), which is the cleaner shape when the parent already exists.
+
+- 2026-09-20 — `Toggle` (`src/vendor/ui/primitives/Toggle.tsx`) has no
+  `disabled` prop and the vendored tree is do-not-touch, so an inert toggle is a
+  wrapper (`aria-disabled`, `title`, `SkillCard/styles.ts` `toggleDisabled`)
+  **plus** a no-op `onChange`. The no-op is the part that matters: jsdom's
+  `fireEvent.click` ignores `pointer-events: none`, so a test asserting "the
+  toggle did nothing" only passes because the handler is swapped out
+  (`SkillCard.tsx`, `ConfigTab.tsx`; both use the same style token).
+- 2026-09-20 — `AddSkillModal` keeps each tab's form state inside the tab
+  component and lets each tab render its own action row inside the body instead
+  of lifting `canSubmit`/`submit` into a shared `Modal.footer`. Three sources with
+  three different mutations do not want one footer; switching tabs discarding
+  the draft is the intended semantics, not a bug (`AddSkillModal.tsx`).
+
 ## Tool & Library Notes
 
 - 2026-09-16 — `@testing-library/user-event` is **not** installed; the suite uses
@@ -165,6 +204,24 @@ append-only. Empty sections are expected — append under the one that fits.
   returns the whole page scaled down (region cropping is unsupported), so it is
   the way to see a wide layout. Confirm layout facts with `javascript_tool`
   (`getComputedStyle(grid).gridTemplateColumns`) rather than from the image.
+
+- 2026-09-20 — `getByPlaceholderText("a
+b")` never matches a multi-line
+  placeholder: Testing Library normalises whitespace in the *element's*
+  attribute before comparing, but not in the string you pass, so an exact
+  match with an embedded newline is impossible. Query with a regex
+  (`/Describe the rule/`) — `CreateSkillModal.test.tsx`.
+- 2026-09-20 — When a test mocks `useXMutation` as `{ mutate }` and later
+  invokes the captured `opts.onSuccess(...)` by hand, wrap that call in
+  `act()`: it runs outside React's event path, so the `setState` it triggers
+  (a toast, a close) is not flushed before the next `expect`. `fireEvent` is
+  already wrapped; a callback you call yourself is not.
+
+- 2026-09-20 — `IconName` (`src/vendor/ui/icons.tsx:167`) is `keyof typeof Icon`,
+  and the `Icon` map exposes the lucide pencil only under the alias `Edit`
+  (`icons.tsx:146-147`) — `icon: "Pencil"` typechecks nowhere even though the
+  glyph exists. Use `"Edit"`. `ShieldAlert` does not exist either; `AlertOctagon`
+  is the "blocked" glyph.
 
 ## Recurring Errors & Fixes
 

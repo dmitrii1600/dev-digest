@@ -11,11 +11,17 @@ import type {
 } from '@devdigest/shared';
 import type { SkillRow, SkillVersionRow } from './repository.js';
 import {
+  DEFAULT_URL_IMPORT_FILENAME,
+  DEFAULT_URL_IMPORT_ZIP_FILENAME,
   EXECUTABLE_EXTENSIONS,
   MAX_ENTRIES,
   MAX_ENTRY_BYTES,
   MAX_TOTAL_UNCOMPRESSED,
+  SCANNED_SOURCES,
+  URL_IMPORT_ACCEPTED_CONTENT_TYPES,
+  ZIP_CONTENT_TYPES,
 } from './constants.js';
+import { NOT_SCANNED, securityReport } from './injection-scan.js';
 
 /**
  * Pure helpers for the skills module — DB row ⇄ DTO mapping and the `.md` /
@@ -25,7 +31,10 @@ import {
 
 // ---------------------------------------------------------------- DTO mapping
 
-export function toSkillDto(row: SkillRow): Skill {
+/** `agentCount` is built per request from `agent_skills`; it is never persisted.
+ *  So is `security`: an `imported_*` body is re-scanned on every read, which is
+ *  what lets an edit clear the flag with no extra state to keep in sync. */
+export function toSkillDto(row: SkillRow, agentCount = 0): Skill {
   return {
     id: row.id,
     name: row.name,
@@ -36,7 +45,41 @@ export function toSkillDto(row: SkillRow): Skill {
     enabled: row.enabled,
     version: row.version,
     evidence_files: row.evidenceFiles ?? null,
+    agent_count: agentCount,
+    security: SCANNED_SOURCES.has(row.source) ? securityReport(row.body) : NOT_SCANNED,
   };
+}
+
+// ---------------------------------------------------------------- URL import
+
+/** Strip parameters (`; charset=…`) and lower-case; `null` when no header. */
+function mediaType(contentType: string | null): string | null {
+  if (!contentType) return null;
+  return contentType.split(';')[0]!.trim().toLowerCase();
+}
+
+/** A missing header is allowed (raw hosts often omit it); `text/html` is not. */
+export function isAcceptedContentType(contentType: string | null): boolean {
+  const mt = mediaType(contentType);
+  return mt === null || URL_IMPORT_ACCEPTED_CONTENT_TYPES.has(mt);
+}
+
+function lastPathSegment(url: string): string {
+  try {
+    const path = new URL(url).pathname;
+    return decodeURIComponent(path.split('/').filter(Boolean).pop() ?? '');
+  } catch {
+    return '';
+  }
+}
+
+/** The filename `parseImport` dispatches on: the URL's last path segment when
+ *  it looks like one, else a default keyed on whether the body is a zip. */
+export function deriveImportFilename(finalUrl: string, contentType: string | null): string {
+  const last = lastPathSegment(finalUrl);
+  if (/\.(md|markdown|txt|zip)$/i.test(last)) return last;
+  const mt = mediaType(contentType);
+  return mt && ZIP_CONTENT_TYPES.has(mt) ? DEFAULT_URL_IMPORT_ZIP_FILENAME : DEFAULT_URL_IMPORT_FILENAME;
 }
 
 export function toSkillVersionDto(row: SkillVersionRow): SkillVersion {
@@ -133,14 +176,19 @@ function deriveFromHeading(markdown: string): { name: string; description: strin
   return { name, description };
 }
 
-/** Top-level dispatcher used by the service: `.zip` vs a raw `.md` upload. */
-export function parseImport(filename: string, bytes: Uint8Array): SkillImportPreview {
-  if (filename.toLowerCase().endsWith('.zip')) return parseZipImport(bytes);
+/** Top-level dispatcher used by the service: `.zip` vs a raw `.md` upload.
+ *  `source` only stamps the DTO — a URL and a file go through the same parse. */
+export function parseImport(
+  filename: string,
+  bytes: Uint8Array,
+  source: SkillSource = 'imported_file',
+): SkillImportPreview {
+  if (filename.toLowerCase().endsWith('.zip')) return parseZipImport(bytes, source);
   const raw = new TextDecoder('utf-8').decode(bytes);
-  return parseMarkdownImport(raw);
+  return parseMarkdownImport(raw, source);
 }
 
-function parseMarkdownImport(raw: string): SkillImportPreview {
+function parseMarkdownImport(raw: string, source: SkillSource): SkillImportPreview {
   const meta = extractMetadata(raw);
   const entry: SkillImportEntry = {
     path: 'skill.md',
@@ -152,11 +200,12 @@ function parseMarkdownImport(raw: string): SkillImportPreview {
     name: meta.name,
     description: meta.description,
     type: meta.type,
-    source: 'imported_file',
+    source,
     body: meta.body,
     entries: [entry],
     discarded: 0,
     warnings: [],
+    security: securityReport(meta.body),
   };
 }
 
@@ -224,7 +273,7 @@ function selectCorePath(mdPaths: string[]): string | undefined {
   return byName('SKILL.md') ?? byName('README.md') ?? (mdPaths.length === 1 ? mdPaths[0] : undefined);
 }
 
-function parseZipImport(bytes: Uint8Array): SkillImportPreview {
+function parseZipImport(bytes: Uint8Array, source: SkillSource): SkillImportPreview {
   const entries: SkillImportEntry[] = [];
   const attrsByName = readExternalAttrs(bytes);
   let seen = 0;
@@ -315,11 +364,12 @@ function parseZipImport(bytes: Uint8Array): SkillImportPreview {
       name: '',
       description: '',
       type: 'custom',
-      source: 'imported_file',
+      source,
       body: '',
       entries,
       discarded,
       warnings: ['no markdown core found'],
+      security: securityReport(''),
     };
   }
 
@@ -329,10 +379,11 @@ function parseZipImport(bytes: Uint8Array): SkillImportPreview {
     name: meta.name,
     description: meta.description,
     type: meta.type,
-    source: 'imported_file',
+    source,
     body: meta.body,
     entries,
     discarded,
     warnings: [],
+    security: securityReport(meta.body),
   };
 }

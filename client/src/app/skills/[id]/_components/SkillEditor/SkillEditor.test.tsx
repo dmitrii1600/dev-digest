@@ -25,6 +25,8 @@ const SKILL: Skill = {
   enabled: true,
   version: 1,
   evidence_files: null,
+  agent_count: 0,
+  security: { status: "not_scanned", findings: [] },
 };
 
 afterEach(cleanup);

@@ -121,8 +121,40 @@ Two breaking changes: a missing order now returns `200 null` instead of
 Reviewer's skills unlinked/disabled (expect it to pass a diff that "looks"
 like a small rename), once with them enabled (expect it to flag both the
 status-code change on the not-found path and the field rename as breaking
-changes to existing callers, per `api-contract-gate`'s guidance). Check the
+changes to existing callers, per `breaking-change`'s and
+`semver-discipline`'s guidance — the four API Contract skills are
+`breaking-change`, `response-schema`, `semver-discipline`,
+`deprecation-policy`, seeded in `server/src/db/seed-skills.ts`). Check the
 same three things in the run trace.
+
+## Fixture 3 — `repo-conventions` (extracted skill)
+
+**Skills attached:** the skill you create on **Skills Lab → Conventions**.
+
+1. Open **Conventions** for the real repo you added in Setup and click **Run
+   Scan** (the repo must show the **Indexed** badge first — the sampler reads
+   the ranked index). Expect a list of candidates, each with a `file:line`
+   that really exists in the clone; the header names how many sample files
+   went in and how many candidates were dropped for citing something that was
+   not there.
+2. **Reject** at least one candidate, **Edit** another, **Accept** two or
+   three. Click **ReScan**: the rejected rule does not come back, the edited
+   rule keeps your text.
+3. Click **Create skill**, tick **General Reviewer** (nothing is preselected;
+   you may also create it unbound and attach it later from the agent's Skills
+   tab — do attach it before step 4), edit the body if you like, **Create**.
+   You land on the new skill's Preview tab; the `/skills` grid lists it with
+   source *extracted* and `1 agent`.
+4. Open a PR in that repo that violates one accepted rule (for example a
+   `.then()` chain when the rule says async/await) and run **General
+   Reviewer** twice: once with the skill's binding **disabled** on the agent's
+   Skills tab, once **enabled**. Expect the violation flagged only in the
+   second run.
+5. In the second run's trace, the **Skills** block contains the rule text
+   **unwrapped** (it is an instruction) and each quoted evidence line inside
+   `<untrusted source="convention-evidence">` (it is repo content). Compare
+   with the seeded `no-then-chains` skill, which — as an imported file — is
+   wrapped whole.
 
 ## What this demonstrates
 

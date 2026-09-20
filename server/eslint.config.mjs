@@ -115,6 +115,7 @@ const RING_2 = [
   'src/modules/*/service.ts',
   'src/modules/*/helpers.ts',
   'src/modules/*/constants.ts',
+  'src/modules/skills/injection-scan.ts',
   'src/modules/reviews/run-executor.ts',
   'src/modules/reviews/findings.ts',
   'src/modules/reviews/diff-loader.ts',

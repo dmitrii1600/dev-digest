@@ -1,7 +1,12 @@
 {
   "card": {
     "noDescription": "No description",
-    "skillCount": "{count} skills"
+    "skillCount": "{count} skills",
+    "deleteTitle": "Delete agent?",
+    "deleteBody": "\"{name}\" and its skill bindings will be removed. This cannot be undone.",
+    "deleteConfirm": "Delete",
+    "deleteCancel": "Cancel",
+    "deleteLabel": "Delete agent"
   },
   "list": {
     "breadcrumbLab": "Skills Lab",
@@ -91,7 +96,7 @@
     "title": "Skills",
     "enabledCount": "{linked} of {total} enabled",
     "filterPlaceholder": "Filter skills…",
-    "orderHint": "Order matters — earlier skills appear earlier in the assembled prompt. Toggle to attach.",
+    "orderHint": "Order matters — earlier skills appear earlier in the assembled prompt. Toggle to attach; only enabled skills can be reordered.",
     "dragHandle": "Reorder {name}"
   },
   "mount": {

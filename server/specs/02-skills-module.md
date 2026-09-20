@@ -32,13 +32,18 @@ In:
 - One generated migration: `agent_skills.enabled`, `skill_versions.note`,
   `skills_ws_idx`.
 - `fflate` as a dependency, used only for in-memory archive parsing.
+- **Added 2026-09-20:** `POST /skills/import/url(/preview)`; the `UrlFetcher`
+  port (`vendor/shared/adapters.ts`) with `adapters/url-fetcher/` (guard +
+  `FetchUrlFetcher`) and `MockUrlFetcher`; `modules/skills/injection-scan.ts`;
+  `security` on the `Skill` / `SkillImportPreview` DTOs; the enable gate in
+  `SkillsService.update` / `restore`.
 
 Out:
 
 - New tables. Two columns and one index on tables that already exist.
 - A change to `reviewer-core`. The slot and its semantics are already right.
-- An HTTP adapter for URL import. Not this lesson, and when it arrives it goes
-  through the DI container, not a bare `fetch` in a service.
+- ~~An HTTP adapter for URL import.~~ Arrived 2026-09-20, and as promised it
+  goes through the DI container (`container.urlFetcher`), not a bare `fetch`.
 - Denormalizing skill bodies onto `agent_runs`. The run trace already records the
   assembled text; a second copy is one more thing to keep in step.
 
@@ -116,6 +121,34 @@ cannot bite us because nothing is written to disk; it is checked anyway.
 Core selection inside an archive, shallowest first: `SKILL.md`, then `README.md`,
 then the only `.md` if there is exactly one, otherwise reject.
 
+**URL import (2026-09-20).** `previewUrlImport(url)` and
+`commitUrlImport(workspaceId, url, overrides)` call
+`container.urlFetcher.fetch(url, { maxBytes: MAX_UPLOAD_BYTES })`, refuse a
+non-accepted `content-type` (`text/html` in particular — the "GitHub blob page,
+not raw" mistake — with a message that says so), derive the filename from the
+final URL's last path segment (`.md`/`.markdown`/`.txt`/`.zip`, else `SKILL.md`
+or `SKILL.zip` by content type) and hand the bytes to the same `parseImport`,
+now taking a `source` argument. Commit re-fetches; nothing from the preview is
+trusted back. The port lives in `vendor/shared/adapters.ts` and not next to the
+adapter like `Tokenizer` does, because the ring-2 lint zone forbids *any*
+import from `adapters/**` in a service — type-only included. The adapter cannot
+import `MAX_UPLOAD_BYTES` either (`adapter-not-to-feature`), so the service
+passes `maxBytes` in. Guard rules — protocol, hostname, literal and resolved
+address classes, redirect re-check, timeout, declared and streamed size — are
+in `adapters/url-fetcher/guard.ts` / `fetch.ts` and `test/url-fetcher.test.ts`.
+
+**Injection scan and the enable gate (2026-09-20).** `injection-scan.ts` is a
+ring-2 pure module (added to `RING_2` in `eslint.config.mjs` so the zone rules
+cover it) exporting `INJECTION_RULES` and `scanSkillBody`. `toSkillDto` attaches
+`security` — computed on read for `SCANNED_SOURCES` (`imported_url`,
+`imported_file`), `not_scanned` otherwise — and `parseImport` attaches it to the
+preview. `SkillsService.update` loads the row first and, when the result would
+be an enabled scanned skill with a flagged body, throws `ValidationError` with
+`{ findings }`; `restore` applies the same check to the snapshot. The service
+now takes its repository from `container.skillsRepo` instead of constructing
+one over `container.db`, which is what lets `test/skills-service.test.ts` run
+the gate on an in-memory fake without Postgres.
+
 **Frontmatter is read with a key-value line parser, not a YAML library.** Three
 optional string keys off untrusted input do not justify anchors, aliases, tags
 and a parser's CVE history.
@@ -152,11 +185,25 @@ prompt has no skills block, and that is the truth.
 - Archive rejection cases each fail with their own reason and touch no file:
   traversal path, symlink entry, 300 entries, a 10 MiB member, a bomb.
 - `POST /skills/import` ignores a client-supplied body and re-derives it.
+- `POST /skills/import/url/preview` with an injected body returns
+  `security.status: 'flagged'`; `POST /skills/import/url` lands `imported_url`,
+  disabled, and `PUT { enabled: true }` on it is a 422 whose `details.findings`
+  names the rule and line; a clean body edit in the same `PUT` succeeds.
+  `not a url` is a 422 before the fetcher is touched.
+- `assertPublicHttpUrl` rejects `ftp:`, `file:`, `localhost`, `*.local`,
+  `127.0.0.1`, `10/8`, `172.16/12`, `192.168/16`, `169.254/16`, `0.0.0.0`,
+  `[::1]`, IPv4-mapped IPv6, `fe80::/10`, `fc00::/7` and embedded credentials;
+  `FetchUrlFetcher` refuses a redirect hop or a DNS answer into any of those,
+  more than three hops, a `content-length` over the cap, and a streamed body
+  over the cap.
 - Covered by `test/skills.it.test.ts` and `test/agent-skills.it.test.ts` (real
   Postgres, `.it.` suffix mandatory), plus `test/skills-import.test.ts` and
   `test/prompt-skills.test.ts`. `blocksForAgent`'s filter/order coverage lives
   in `skills.it.test.ts` rather than a separate `skills-resolve.test.ts` — see
-  the cross-package spec's Acceptance section for why.
+  the cross-package spec's Acceptance section for why. The URL import and the
+  injection scan add `test/skills-injection-scan.test.ts`,
+  `test/url-fetcher.test.ts`, `test/skills-service.test.ts` and a
+  `routes-smoke.test.ts` case (auth + fetcher mocked, no DB).
 - `pnpm lint`, `pnpm arch`, `pnpm typecheck` and `pnpm test` stay green. Every new
   file uses a conventional name — an unrecognized one matches no onion zone and
   leaves the architecture without failing anything.

@@ -1,6 +1,6 @@
 {
-  "name": "Skills Lab — list, editor preview, and an agent's attached skills",
-  "description": "Walks the three read surfaces the Skills feature added. On /skills, the card grid lists a seeded skill and clicking its card navigates into the editor at /skills/:id on the Config tab — the same flow as /agents, so the list never renders a skill body of its own. The editor's Preview tab is where the rendered Markdown lives. On /agents, opening the seeded Test Quality Reviewer and switching to its Skills tab shows every workspace skill with its attached ones checked, including the 'N of M enabled' count computed from the seeded bindings (pr-quality-rubric and test-coverage-nudge enabled, no-then-chains disabled). Assertions are positive only — agent-browser's `wait --text` has no negative form — so the drag/keyboard reorder and the disabled no-then-chains row are left to SkillsTab.test.tsx and SkillListItem.test.tsx, which can assert absence and simulate keyboard reordering directly. No review run is triggered; this suite is read-only against seeded data. Assumes a freshly-seeded DB carrying the Skills Lab seed data from server/src/db/seed.ts (the four skills — pr-quality-rubric, test-coverage-nudge, api-contract-gate, no-then-chains — and their agent bindings) — guaranteed by e2e-web.yml; run locally via the hermetic stack (see e2e/README.md).",
+  "name": "Skills Lab — list, editor, and an agent's attached skills",
+  "description": "Walks the three read surfaces the Skills feature added. On /skills, the card grid lists a seeded skill; clicking its card opens the editor directly at /skills/:id on the Config tab (revised 2026-09-20 — the side-panel preview is gone; the editor rail shows the same SkillCard tiles as the grid). The editor's Preview tab is where the rendered Markdown lives. On /agents, opening the seeded Test Quality Reviewer and switching to its Skills tab shows every workspace skill with its attached ones checked, including the 'N of M enabled' count computed from the seeded bindings (pr-quality-rubric and test-coverage-nudge enabled, no-then-chains disabled). Assertions are positive only — agent-browser's `wait --text` has no negative form — so the drag/keyboard reorder and the disabled no-then-chains row are left to SkillsTab.test.tsx and SkillCard.test.tsx, which can assert absence and simulate keyboard reordering directly. No review run is triggered; this suite is read-only against seeded data. Assumes a freshly-seeded DB carrying the Skills Lab seed data from server/src/db/seed.ts (the seven skills in server/src/db/seed-skills.ts — pr-quality-rubric, test-coverage-nudge, the four API Contract skills, no-then-chains — and their agent bindings) — guaranteed by e2e-web.yml; run locally via the hermetic stack (see e2e/README.md).",
   "steps": [
     {
       "cmd": [
@@ -40,7 +40,7 @@
         "pr-quality-rubric",
         "click"
       ],
-      "label": "open the skill editor from its card"
+      "label": "click the card — opens the editor directly"
     },
     {
       "cmd": [
@@ -48,7 +48,7 @@
         "--url",
         "tab=config"
       ],
-      "label": "the editor opens in edit mode (Config tab)"
+      "label": "the editor opens in edit mode (Config tab) — no preview panel in between"
     },
     {
       "cmd": [
@@ -172,7 +172,7 @@
       "cmd": [
         "wait",
         "--text",
-        "2 of 4 enabled"
+        "2 of 7 enabled"
       ],
       "label": "enabled-count badge reflects the seeded bindings"
     },

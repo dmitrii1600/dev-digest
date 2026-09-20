@@ -14,6 +14,16 @@ append-only. Empty sections are expected — append under the one that fits.
 
 ## What Works
 
+- 2026-09-20 — To stub ONE `RepoIntel` method in an integration test, patch
+  the real facade instead of replacing it:
+  `Object.assign(Object.create(app.container.repoIntel), { getConventionSamples })`
+  assigned to `app.container['overrides'].repoIntel` after `buildApp`
+  (`test/conventions.it.test.ts`). A whole-object fake
+  (`{ getConventionSamples } as RepoIntel`) made every review run in the same
+  test fail with a `TypeError` in `run-executor.ts` (`getRepoMap` /
+  `getCallerSignatures` missing) — a failure that shows up as an empty trace,
+  three assertions away from its cause.
+
 ## What Doesn't Work
 
 - 2026-09-15 — Do not add a required field to `RunStats`, even a nullable one.
@@ -52,6 +62,15 @@ append-only. Empty sections are expected — append under the one that fits.
   (`src/db/seed.ts:419`). The general rule: when a table has a companion history
   table that only the repository maintains, seeding past the repository silently
   drops the history — seed both or go through the repository.
+
+- 2026-09-20 — Do not build from a starter's leftover hooks. `adapters/mocks.ts:49`
+  describes `structuredBySchema` as support for a two-step conventions dialogue
+  (`'ConventionFileSelection'` then `'ConventionExtraction'`), i.e. the model
+  picking which files to read. The lab's grading criterion 39 requires sample
+  selection with **no** model call (`repoIntel.getConventionSamples` + config
+  files, in code). Following the mock's comment would have failed the lesson.
+  The hook is still useful — one schema name, one fixture — but the design it
+  hints at is not a requirement.
 
 ## Codebase Patterns
 
@@ -107,7 +126,75 @@ append-only. Empty sections are expected — append under the one that fits.
   adds the 12 that a real query or a cascade asks for. When adding a table, an FK
   needs a deliberate yes/no on an index — the default is no index.
 
+- 2026-09-20 — The ring-2 zones (`eslint.config.mjs`) forbid `node:fs` and a
+  runtime `zod` import in `modules/*/helpers.ts`, and the zone glob for ring 3
+  is `modules/*/repository*.ts`. So a module that must read files keeps its
+  reader in a second ring-3 file named `repository-<what>.ts`
+  (`modules/conventions/repository-samples.ts` — the clone reader) and its
+  model-output schema in `vendor/shared/contracts/` next to `Review`, which is
+  the precedent for a model schema living with the contracts. `helpers.ts`
+  stays pure and hermetically testable; the name is what puts the file in the
+  right ring.
+- 2026-09-20 — `no-cross-module-reach-in` (`.dependency-cruiser.cjs:73`) allows
+  a helper under `modules/<x>/` exactly one importing folder: its own. So
+  `modules/settings/feature-models.ts` (`resolveFeatureModel`) cannot be reached
+  from a second feature — the conventions module planned in
+  `specs/03-conventions-module.md` is that second consumer — and the rule's own
+  comment names the fix: move the file to `modules/_shared/`, beside
+  `context.ts`, the other DB-reading shared helper. That move also closes the
+  2026-09-18 note above about the file sitting outside every lint zone. The same
+  rule means a module cannot import another module's DTO mapper
+  (`modules/skills/helpers.ts` `toSkillDto`); a route that creates another
+  module's entity returns `{ skill_id }` and lets the owning module's `GET`
+  serve the DTO.
+
+- 2026-09-20 — A port for a new adapter goes in `src/vendor/shared/adapters.ts`
+  (ring 1), not next to its implementation the way `Tokenizer` sits in
+  `adapters/tokenizer/index.ts:17`. The ring-2 zone (`eslint.config.mjs:84-87`)
+  forbids *any* import from `**/adapters/**` in a `service.ts` — `import type`
+  included, because `no-restricted-imports` sees only the specifier — so a
+  service cannot even name a port declared beside the adapter. `Tokenizer` gets
+  away with it only because ring 4 (`platform/container.ts`) is its sole
+  importer. `UrlFetcher` (`vendor/shared/adapters.ts`, mirrored to the client)
+  is the shape to copy; the client mirror must move with it.
+- 2026-09-20 — An adapter cannot import a module's constants either
+  (`.dependency-cruiser.cjs` `adapter-not-to-feature`), so limits the adapter
+  must enforce travel in as call options: `SkillsService.fetchForImport` passes
+  `{ maxBytes: MAX_UPLOAD_BYTES }` to `container.urlFetcher.fetch`
+  (`modules/skills/service.ts`) rather than the adapter reading
+  `modules/skills/constants.ts`.
+- 2026-09-20 — A service takes its repository from the composition root
+  (`this.repo = container.skillsRepo`, `modules/skills/service.ts:50`), never
+  `new SkillsRepository(container.db)`. The why: it is the only thing that lets
+  a hermetic test hand in an in-memory fake (`{ skillsRepo: fake, urlFetcher:
+  mock } as unknown as Container`, `test/skills-service.test.ts`) — the enable
+  gate and the URL import are covered without Postgres because of it. The
+  switch broke the one caller that built the service with `{ db }`
+  (`test/skills.it.test.ts:277`); grep for `as unknown as Container` when you
+  change what a service reads off the container.
+- 2026-09-20 — Per-request DTO fields beat persisted ones when they are a pure
+  function of the row: `Skill.security` is `securityReport(row.body)` inside
+  `toSkillDto` (`modules/skills/helpers.ts`) for `SCANNED_SOURCES` only, like
+  `agent_count` before it. No migration, and an edit clears the flag with no
+  second column to keep in step. The cost is one regex pass per skill per read,
+  which for a seven-row list is nothing; revisit only if the list endpoint ever
+  pages thousands.
+
 ## Tool & Library Notes
+
+- 2026-09-20 — `drizzle-kit generate` asks interactively ("is `scan_id`
+  created or renamed from `accepted`?") whenever one table both gains and
+  loses a column, and the prompt reads a TTY — `yes '' |` and here-docs are
+  ignored, the run just hangs. Ship it as two generated migrations: declare
+  the new columns with the old one still present (`0013`, additive, no
+  prompt), then remove the old column from the schema (`0014`, drop-only, no
+  prompt). Never hand-write the SQL to dodge the prompt.
+- 2026-09-20 — A Fastify route with `schema.body: Schema.optional()` still
+  answers 422 to a POST that sends no body at all (`inject` without
+  `payload`, or the client's `api.post(path)`), so "optional body" is not a
+  thing on this stack. Declare the body required and send `{}` from every
+  caller (`modules/conventions/routes.ts` `SkillPreviewBody`,
+  `client/src/lib/hooks/conventions.ts`).
 
 - 2026-09-18 — `no-restricted-imports` matches the **import specifier as
   written**, never a resolved path — so one `{ group: ['**/db/schema*'] }` entry
@@ -131,6 +218,18 @@ append-only. Empty sections are expected — append under the one that fits.
   `src/db/migrate.ts` and `src/db/seed.ts` (`eslint.config.mjs:46`). That is what
   makes the pre-existing `// eslint-disable-next-line no-console` markers in
   `test/` mean something instead of being reported as unused directives.
+
+- 2026-09-20 — A new ring-2 file is invisible to the onion zones until its path
+  is added to `RING_2` in `eslint.config.mjs:114` — the globs are per-file
+  (`src/modules/*/service.ts`, `helpers.ts`, `constants.ts`), not per-folder.
+  `modules/skills/injection-scan.ts` had to be listed by hand; `pnpm lint` stays
+  green either way, so nothing tells you it was skipped.
+- 2026-09-20 — `AbortSignal.timeout()` + `redirect: 'manual'` on the global
+  `fetch` is enough to follow redirects by hand and re-run an SSRF guard per hop
+  (`adapters/url-fetcher/fetch.ts`); the body is read with `getReader()` and
+  cancelled past `maxBytes` because `content-length` is optional. In tests the
+  whole thing is driven by a stubbed `fetchImpl` returning `new Response(...)`
+  with a `location` header — no server, no network (`test/url-fetcher.test.ts`).
 
 ## Recurring Errors & Fixes
 

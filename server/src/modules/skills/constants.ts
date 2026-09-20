@@ -26,3 +26,33 @@ export const EXECUTABLE_EXTENSIONS = new Set([
   '.py', '.rb', '.pl', '.php', '.js', '.mjs', '.cjs', '.ts', '.jar', '.app',
   '.msi', '.com', '.scr', '.vbs', '.wsf', '.apk', '.deb', '.rpm',
 ]);
+
+// ---- Injection scan + URL import ----
+
+/** Sources whose bodies are scanned on read and gated on enable. `manual` and
+ *  `extracted` were authored or accepted by the user and are never scanned. */
+export const SCANNED_SOURCES: ReadonlySet<string> = new Set(['imported_url', 'imported_file']);
+
+/** Message of the 422 thrown when a flagged imported skill is enabled. */
+export const INJECTION_BLOCK_MESSAGE =
+  'Skill body contains possible prompt injection; edit the flagged lines before enabling';
+
+/** Content types a URL import accepts (parameters stripped). `text/html` is
+ *  rejected on purpose — the usual mistake is a GitHub blob page, not raw. */
+export const URL_IMPORT_ACCEPTED_CONTENT_TYPES: ReadonlySet<string> = new Set([
+  'text/markdown',
+  'text/x-markdown',
+  'text/plain',
+  'application/octet-stream',
+  'application/zip',
+  'application/x-zip-compressed',
+]);
+
+export const ZIP_CONTENT_TYPES: ReadonlySet<string> = new Set([
+  'application/zip',
+  'application/x-zip-compressed',
+]);
+
+/** Filename used when the URL path carries no recognisable one. */
+export const DEFAULT_URL_IMPORT_FILENAME = 'SKILL.md';
+export const DEFAULT_URL_IMPORT_ZIP_FILENAME = 'SKILL.zip';

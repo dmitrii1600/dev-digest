@@ -47,6 +47,8 @@ const SKILL: Skill = {
   enabled: true,
   version: 3,
   evidence_files: null,
+  agent_count: 0,
+  security: { status: "not_scanned", findings: [] },
 };
 
 afterEach(() => {
@@ -94,13 +96,21 @@ describe("VersionsTab", () => {
     expect(mutate).not.toHaveBeenCalled();
   });
 
-  it("expands a diff of that version against its predecessor, and collapses again", () => {
+  it("shows a Diff button on every row except the current one", () => {
     renderTab();
-    // v2 is the second row: it removed "Check everything." and added "Check correctness."
-    fireEvent.click(screen.getAllByText("Diff")[1]!);
-    expect(screen.getByText("v1 → v2 — what this version changed")).toBeInTheDocument();
+    expect(screen.getAllByText("Diff vs current")).toHaveLength(2);
+    expect(screen.queryByText("Diff")).toBeNull();
+  });
+
+  it("expands a diff of that version against the CURRENT version, and collapses again", () => {
+    renderTab();
+    // v1 is the last row: relative to current (v3) it lacks "Check correctness."
+    // and "Check tests." and has "Check everything." instead.
+    fireEvent.click(screen.getAllByText("Diff vs current")[1]!);
+    expect(screen.getByText("v1 → v3 — what the current version changed since this one")).toBeInTheDocument();
     expect(screen.getByText("Check everything.")).toBeInTheDocument();
     expect(screen.getByText("Check correctness.")).toBeInTheDocument();
+    expect(screen.getByText("Check tests.")).toBeInTheDocument();
 
     fireEvent.click(screen.getByText("Hide diff"));
     expect(screen.queryByText("Check everything.")).toBeNull();
@@ -108,17 +118,17 @@ describe("VersionsTab", () => {
 
   it("shows only one diff at a time", () => {
     renderTab();
-    fireEvent.click(screen.getAllByText("Diff")[0]!);
-    expect(screen.getByText("v2 → v3 — what this version changed")).toBeInTheDocument();
-    fireEvent.click(screen.getAllByText("Diff")[0]!);
-    expect(screen.queryByText("v2 → v3 — what this version changed")).toBeNull();
-    expect(screen.getByText("v1 → v2 — what this version changed")).toBeInTheDocument();
+    fireEvent.click(screen.getAllByText("Diff vs current")[0]!);
+    expect(screen.getByText("v2 → v3 — what the current version changed since this one")).toBeInTheDocument();
+    fireEvent.click(screen.getAllByText("Diff vs current")[0]!);
+    expect(screen.queryByText("v2 → v3 — what the current version changed since this one")).toBeNull();
+    expect(screen.getByText("v1 → v3 — what the current version changed since this one")).toBeInTheDocument();
   });
 
-  it("reads the oldest version as an addition of the whole body", () => {
+  it("diffs v2 against v3 as a single added line", () => {
     renderTab();
-    fireEvent.click(screen.getAllByText("Diff")[2]!);
-    expect(screen.getByText("Initial version — the whole body is new.")).toBeInTheDocument();
-    expect(screen.getByText("Check everything.")).toBeInTheDocument();
+    fireEvent.click(screen.getAllByText("Diff vs current")[0]!);
+    expect(screen.getByText("Check tests.")).toBeInTheDocument();
+    expect(screen.queryByText("Check everything.")).toBeNull();
   });
 });

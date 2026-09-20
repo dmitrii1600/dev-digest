@@ -1,0 +1,21 @@
+{
+  "name": "Conventions — seeded scan, candidate cards, and the ReScan control",
+  "description": "Walks the read surface of the Conventions extractor (L02 second half). From the sidebar's SKILLS LAB group, Conventions opens /repos/:repoId/conventions for the active repo; the page shows the seeded scan (server/src/db/seed-conventions.ts: one finished scan and the three mock candidates for acme/payments-api), each card with its rule, file:line evidence, confidence percentage and the Accept / Reject / Edit buttons, and — because a scan row exists — the header says ReScan rather than Run Scan. Nothing is clicked that writes: extraction needs a model and Accept/Reject/Edit are covered by CandidateCard.test.tsx, so this flow is read-only against seeded data. Assumes a freshly-seeded DB (guaranteed by e2e-web.yml).",
+  "steps": [
+    { "cmd": ["open", "{BASE}/"], "label": "load the app root" },
+    { "cmd": ["wait", "--url", "/pulls"], "label": "root redirects to the seeded repo's PR list" },
+    { "cmd": ["wait", "--load", "networkidle"], "label": "repos fetch settles" },
+    { "cmd": ["find", "text", "Conventions", "click"], "label": "open Conventions from the SKILLS LAB group" },
+    { "cmd": ["wait", "--url", "/conventions"], "label": "conventions route reached" },
+    { "cmd": ["wait", "--load", "networkidle"], "label": "conventions fetch settles" },
+    { "cmd": ["wait", "--text", "Conventions in"], "label": "page heading names the repo" },
+    { "cmd": ["wait", "--text", "ReScan"], "label": "a scan exists, so the control reads ReScan" },
+    { "cmd": ["wait", "--text", "Always use async/await instead of .then() chains"], "label": "seeded candidate rule is listed" },
+    { "cmd": ["wait", "--text", "src/api/users.ts:23"], "label": "its evidence file:line is shown" },
+    { "cmd": ["wait", "--text", "91% conf"], "label": "its confidence percentage is shown" },
+    { "cmd": ["wait", "--text", "Accept"], "label": "Accept button present" },
+    { "cmd": ["wait", "--text", "Reject"], "label": "Reject button present" },
+    { "cmd": ["wait", "--text", "Edit"], "label": "Edit button present" },
+    { "cmd": ["wait", "--text", "0 of 3 accepted"], "label": "selection bar counts the seeded candidates" }
+  ]
+}

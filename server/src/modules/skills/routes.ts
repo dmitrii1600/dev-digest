@@ -28,6 +28,8 @@ const VersionParams = z.object({
  *   GET    /skills/:id/stats              → usage aggregates (agent-attributed)
  *   POST   /skills/import/preview         → parse .md/.zip, write nothing
  *   POST   /skills/import                 → parse + create                201
+ *   POST   /skills/import/url/preview     → fetch (guarded) + parse, write nothing
+ *   POST   /skills/import/url             → fetch + parse + create        201
  */
 
 const CreateSkillBody = z.object({
@@ -58,6 +60,17 @@ const ImportBody = z.object({
   content_base64: z.string().min(1).max(MAX_B64_CHARS),
   // Preview-editable metadata, applied on commit only — the parse itself is
   // never trusted from the client.
+  name: z.string().min(1).optional(),
+  description: z.string().optional(),
+  type: SkillType.optional(),
+});
+
+/** The URL is validated for shape here; the SSRF/size rules live in the adapter. */
+const UrlPreviewBody = z.object({
+  url: z.string().url().max(2048),
+});
+
+const UrlImportBody = UrlPreviewBody.extend({
   name: z.string().min(1).optional(),
   description: z.string().optional(),
   type: SkillType.optional(),
@@ -172,6 +185,26 @@ export default async function skillsRoutes(appBase: FastifyInstance) {
     const { workspaceId } = await getContext(app.container, req);
     const bytes = decodeUpload(req.body.content_base64);
     const skill = await service.commitImport(workspaceId, req.body.filename, bytes, {
+      name: req.body.name,
+      description: req.body.description,
+      type: req.body.type,
+    });
+    reply.status(201);
+    return skill;
+  });
+
+  app.post(
+    '/skills/import/url/preview',
+    { schema: { body: UrlPreviewBody } },
+    async (req) => {
+      await getContext(app.container, req); // auth only — preview writes nothing
+      return service.previewUrlImport(req.body.url);
+    },
+  );
+
+  app.post('/skills/import/url', { schema: { body: UrlImportBody } }, async (req, reply) => {
+    const { workspaceId } = await getContext(app.container, req);
+    const skill = await service.commitUrlImport(workspaceId, req.body.url, {
       name: req.body.name,
       description: req.body.description,
       type: req.body.type,

@@ -286,3 +286,27 @@ export interface SecretsProvider {
    */
   set?(key: SecretKey, value: string): Promise<void>;
 }
+
+// ---------- URL fetch (skills import-from-URL) ----------
+export interface FetchedResource {
+  /** Final URL after redirects. */
+  url: string;
+  /** Raw `content-type` header, or null when the server sent none. */
+  contentType: string | null;
+  bytes: Uint8Array;
+}
+
+export interface UrlFetchOptions {
+  /** Hard cap on the response body; the adapter aborts past it. */
+  maxBytes: number;
+  timeoutMs?: number;
+}
+
+/**
+ * Fetches one public http(s) resource. Implementations own the SSRF guard
+ * (no loopback / private / link-local targets, redirects re-checked per hop)
+ * and the size/timeout limits; the service only chooses `maxBytes`.
+ */
+export interface UrlFetcher {
+  fetch(url: string, opts: UrlFetchOptions): Promise<FetchedResource>;
+}

@@ -33,3 +33,11 @@ export type {
 
 export type { Review, Finding, Severity, Verdict } from "@devdigest/shared";
 export type { PrBrief, SmartDiff } from "@devdigest/shared";
+export type {
+  ConventionCandidate,
+  ConventionCategory,
+  ConventionScan,
+  ConventionSkillDraft,
+  ConventionStatus,
+  ConventionsPage,
+} from "@devdigest/shared";

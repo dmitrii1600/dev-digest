@@ -56,6 +56,17 @@ export class SkillsRepository {
     return row;
   }
 
+  /** `skill_id → number of agent_skills rows` for the given ids (any binding, enabled or not). */
+  async agentCounts(skillIds: string[]): Promise<Map<string, number>> {
+    if (skillIds.length === 0) return new Map();
+    const rows = await this.db
+      .select({ skillId: t.agentSkills.skillId, n: sql<number>`count(*)::int` })
+      .from(t.agentSkills)
+      .where(inArray(t.agentSkills.skillId, skillIds))
+      .groupBy(t.agentSkills.skillId);
+    return new Map(rows.map((r) => [r.skillId, r.n]));
+  }
+
   /** Delete a skill (scoped to workspace). Versions/agent-links cascade. */
   async deleteById(workspaceId: string, id: string): Promise<boolean> {
     const rows = await this.db

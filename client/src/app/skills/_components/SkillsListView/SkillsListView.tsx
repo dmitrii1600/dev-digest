@@ -7,26 +7,39 @@ import { Button, EmptyState, ErrorState, Icon, Skeleton } from "@devdigest/ui";
 import { AppShell } from "@/components/app-shell";
 import { useSkills, useUpdateSkill } from "@/lib/hooks/skills";
 import { SkillCard } from "../SkillCard";
-import { AddSkillDrawer } from "./_components/AddSkillDrawer";
+import { AddSkillModal } from "../AddSkillModal";
+import { DeleteSkillConfirm } from "../DeleteSkillConfirm";
 import { filterSkills } from "./helpers";
 import { s } from "./styles";
 
-/** `/skills` — a card grid, same shape as `/agents`. Selecting a card opens the
- *  editor at `/skills/[id]` on its Config tab: the read-only body lives there
- *  behind the Preview tab, so the list does not render it a second time. */
+/** `/skills` — a card grid, same shape as `/agents`. A card click opens the
+ *  editor at `/skills/[id]?tab=config`; the toggle and the trash button stop
+ *  propagation so they never navigate. **Add Skill** opens `AddSkillModal`
+ *  (Create / From file / Import from URL) — the same modal the editor rail
+ *  opens. Delete goes through `DeleteSkillConfirm`, mounted here (not in the
+ *  card) because `Modal` renders in place. */
 export function SkillsListView() {
   const t = useTranslations("skills");
   const router = useRouter();
   const { data: skills, isLoading, isError, refetch } = useSkills();
   const update = useUpdateSkill();
   const [search, setSearch] = React.useState("");
-  const [drawerOpen, setDrawerOpen] = React.useState(false);
+  const [addOpen, setAddOpen] = React.useState(false);
+  const [deletingId, setDeletingId] = React.useState<string | null>(null);
 
   const list = filterSkills(skills ?? [], search);
+  const deleting = skills?.find((sk) => sk.id === deletingId) ?? null;
 
   return (
     <AppShell crumb={[{ label: t("page.crumbLab") }, { label: t("page.crumbSkills") }]}>
-      {drawerOpen && <AddSkillDrawer onClose={() => setDrawerOpen(false)} />}
+      {addOpen && <AddSkillModal onClose={() => setAddOpen(false)} />}
+      {deleting && (
+        <DeleteSkillConfirm
+          skill={deleting}
+          onDeleted={() => setDeletingId(null)}
+          onCancel={() => setDeletingId(null)}
+        />
+      )}
       <div style={s.page}>
         <div style={s.header}>
           <div style={s.headerText}>
@@ -42,7 +55,7 @@ export function SkillsListView() {
               style={s.searchInput}
             />
           </div>
-          <Button kind="primary" size="sm" icon="Plus" onClick={() => setDrawerOpen(true)}>
+          <Button kind="primary" size="sm" icon="Plus" onClick={() => setAddOpen(true)}>
             {t("page.addSkill")}
           </Button>
         </div>
@@ -61,7 +74,7 @@ export function SkillsListView() {
             title={t("page.empty.title")}
             body={t("page.empty.body")}
             cta={t("page.empty.cta")}
-            onCta={() => setDrawerOpen(true)}
+            onCta={() => setAddOpen(true)}
           />
         )}
         {list.length > 0 && (
@@ -72,6 +85,7 @@ export function SkillsListView() {
                 skill={sk}
                 onClick={() => router.push(`/skills/${sk.id}?tab=config`)}
                 onToggle={(enabled) => update.mutate({ id: sk.id, patch: { enabled } })}
+                onDelete={() => setDeletingId(sk.id)}
               />
             ))}
           </div>

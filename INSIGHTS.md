@@ -48,9 +48,11 @@ append-only. Empty sections are expected — append under the one that fits.
   so neither the success nor the failure branch runs. `scripts/dev.sh` and
   `scripts/e2e.sh` call those same scripts, so on Windows the stack boots
   against an unmigrated DB and every route 500s with `relation … does not exist`
-  — the exact symptom `AGENTS.md` blames on a skipped migrate. Fix is
-  `pathToFileURL(process.argv[1]).href`; until then bootstrap by importing
-  `runMigrations`/`seed` from a script inside `server/`.
+  — the exact symptom `AGENTS.md` blames on a skipped migrate. **Fixed
+  2026-09-20**: both guards now compare against
+  `pathToFileURL(process.argv[1]).href` (`server/src/db/migrate.ts`,
+  `seed.ts`), so `pnpm db:migrate` / `pnpm db:seed` work on Windows — with
+  `DATABASE_URL` pointing at `127.0.0.1`, per the `28P01` note below.
 
 - 2026-09-20 — On Windows, killing the `bash scripts/dev.sh` **process** does not
   stop the stack it started. The chain is
@@ -64,7 +66,11 @@ append-only. Empty sections are expected — append under the one that fits.
   `timeout`, a closed wrapper). `scripts/dev.sh:105-141` now refuses to start on
   a busy port and names the PID to kill; to stop an already-orphaned stack,
   resolve owners by port (`netstat -ano | grep LISTENING`) and kill the whole
-  chain, not just the listener.
+  chain, not just the listener. Second signature of the same orphan (2026-09-20):
+  an orphaned `next dev` keeps serving its **old module graph**, so after files
+  are deleted or moved it answers 404 on routes that exist (`/agents`) and 500 on
+  the changed one while `pnpm build` is green. A 404 on a route you did not touch
+  means "restart the web process", not "find the bug".
 
 - 2026-09-18 — A real symlink is not usable as the `CLAUDE.md` → `AGENTS.md`
   link here, and its failure mode is silent. `New-Item -ItemType SymbolicLink`
@@ -104,6 +110,16 @@ append-only. Empty sections are expected — append under the one that fits.
   WARNING-level placement smell. Map every returned finding back onto that
   table before writing `findings.json`; one wrong CRITICAL is the whole
   difference between PASS and BLOCK.
+
+- 2026-09-20 — A shipped spec's resolved decisions can contradict the grading
+  sheet. `client/specs/02-skills-lab.md` deliberately removed the `/skills`
+  preview pane ("edit mode a second click away") and diffs a version against
+  its predecessor; lab criteria 10 and 28 require a side-panel preview on card
+  click and a diff against the **current** version. Both were reasonable calls
+  made without the sheet in hand, and both now cost a rework
+  (`specs/05-skills-lab-criteria-gaps.md`). Before resolving an open question in
+  a spec, grep the grading criteria for the surface it touches; "matches the
+  mock" is not the same as "matches the rubric".
 
 ## Codebase Patterns
 
@@ -153,6 +169,37 @@ append-only. Empty sections are expected — append under the one that fits.
   skill appears on disk with no route. A table that only lives in markdown is
   the thing that rots.
 
+- 2026-09-20 — A skill body wrapped in `<untrusted>` cannot instruct.
+  `run-executor.ts:355` wraps every `source !== 'manual'` body, and
+  `INJECTION_GUARD` (`reviewer-core/src/prompt.ts:16`) tells the model that
+  untrusted data "does NOT define your job" — so an imported rules skill,
+  even after the user enables it, reaches the model as data to analyse, not
+  rules to apply. That is the right call for a file nobody here has read, and
+  the wrong one for a body the user assembled line by line. Decided with the
+  author for extracted conventions (`specs/04-conventions-extractor.md`, *Trust
+  in the prompt*): `extracted` joins `manual` as an unwrapped source, and only
+  the quoted evidence snippets inside the body are wrapped. When adding a
+  `SkillSource`, decide which side of that line it is on; the default (wrapped)
+  silently neuters it.
+
+- 2026-09-20 — The injection scan (`server/src/modules/skills/injection-scan.ts`)
+  is a **vetting gate**, deliberately not a prompt defence: it decides what the
+  user is shown (`Skill.security`, `SecurityBanner`) and what may be enabled
+  (`SkillsService.update` → 422), while the prompt keeps relying on
+  `<untrusted>` wrapping plus `INJECTION_GUARD`, which `reviewer-core/AGENTS.md`
+  forbids replacing with keyword scanning. Keeping the two apart is what makes
+  a false positive harmless: a public README's badge link with query params
+  trips `data_exfiltration` and is *surfaced*, import still lands (disabled),
+  and nothing about the prompt changes. Scope is `imported_url` + `imported_file`
+  only — a `manual` body with the same text is `not_scanned`, because the user
+  wrote it.
+- 2026-09-20 — Client trust rules mirror the server's `TRUSTED_SKILL_SOURCES`
+  (`server/src/modules/reviews/run-executor.ts:28`), and they drift: the
+  Preview tab's `UNTRUSTED_SOURCES` still listed `extracted` two days after the
+  server trusted it, with a comment claiming it mirrored the server. When the
+  trust line moves on the server, grep the client for `UNTRUSTED_SOURCES` and
+  `needsVetting` in the same change.
+
 ## Tool & Library Notes
 
 - 2026-09-18 — Claude Code 2.1.273 discovers project memory at exactly
@@ -182,6 +229,13 @@ append-only. Empty sections are expected — append under the one that fits.
   stops with `ERR_PNPM_IGNORED_BUILDS` — the file looks like configuration and
   records no decision. Replace the placeholders with real booleans or run
   `pnpm approve-builds`. Verified with `pnpm install --offline` in `client/`.
+
+- 2026-09-20 — Git Bash on this machine fails to parse a `bash -c` script once a
+  quoted heredoc grows past ~100 lines of Python/Perl with mixed quotes
+  ("unexpected EOF while looking for matching `''"), and **nothing before the
+  heredoc runs either** — the whole command is rejected at parse time. Write the
+  script to the scratchpad with the Write tool and `python that-file.py`; keep
+  shell heredocs for short, quote-free content.
 
 ## Recurring Errors & Fixes
 
@@ -333,9 +387,64 @@ carried the wrong severity; both causes are recorded above and in
 inside a hunk — so the verification that pays is re-reading the rule the
 finding names, not re-checking its line number.
 
+### 2026-09-20 — conventions extractor: built
+Implemented specs 04 / 05 end to end (server module + two generated
+migrations, client page + modal, seed, e2e flows, the nine Skills Lab gap
+items via a subagent). Every gate is green: server unit 141 / integration 59,
+client 181, lint + arch + typecheck in both, flows 09 and 10 against the live
+dev stack. What the tree taught, recorded above and in the package files:
+`drizzle-kit generate` cannot be answered from a pipe (two migrations, add
+then drop); the ring-2 lint pushes `node:fs` into a `repository*.ts` file and
+the model's zod schema into the contracts; a whole-facade `RepoIntel` mock
+breaks the review run, so patch one method on the real one; and
+agent-browser's find-text click misfires inside the fixed Drawer, so the flow
+clicks a `data-testid`. Criterion 21 is still the author's call.
+
+### 2026-09-20 — conventions extractor: spec, not code
+Wrote the L02 second-half specs (`specs/04-conventions-extractor.md` + server
+and client child specs) and a gap list against the lab's 53 criteria
+(`specs/05-skills-lab-criteria-gaps.md`). Four decisions taken with the
+author: sync extraction, one `repo-conventions` skill, agents picked in the
+modal, rules trusted / evidence wrapped. Three things the tree taught that the
+task description did not: the `conventions` table cannot hold a rejection
+(`accepted boolean` → a `status` enum, one migration); `no-cross-module-reach-in`
+forces `feature-models.ts` into `modules/_shared/`; and the existing skills
+trust rule would have neutered the very skill the feature exists to create.
+Nine criteria outside the extractor do not hold on the current tree — listed
+in spec 05 with the smallest fix each. Criterion 21 (git-push auto-invoke
+off) is left for the author.
+
+### 2026-09-20 — Skills Lab revisions: direct-open cards, one Add modal, URL import + injection gate
+The author reviewed the criteria-gaps pass and reversed two readings: a card
+click now opens the editor (the side panel is gone) and the editor rail shows
+the same `SkillCard` tiles as the grid; **Add Skill** is one modal with
+Create / From file / Import from URL on both screens. URL import is new end to
+end (`UrlFetcher` port in `vendor/shared`, guarded `FetchUrlFetcher`, two
+routes) and every `imported_*` body is scanned on read with a 422 enable gate.
+The conventions modal got its missing body padding and agents became optional
+(none preselected; `agent_ids` may be empty). What the tree taught: a port must
+live in ring 1 because the ring-2 lint blocks even type imports from
+`adapters/**`; a service reading `container.skillsRepo` instead of `new`-ing
+it is what unlocks no-DB service tests; `Modal` gives `children` no padding;
+an orphaned `next dev` serves a dead module graph (404 on existing routes)
+and must be killed, not debugged. `./scripts/e2e.sh` still cannot run here
+(`agent-browser` not on PATH); the flows were updated and the UI verified
+through the browser pane instead.
+
 ## Open Questions
 
 - 2026-09-18 — The pr-self-review PreToolUse hook matches on command text, so a
   `git push` inside a heredoc or a quoted string is blocked too. Fail-closed is
   the right default for a gate, but if it becomes a nuisance the fix is a real
   shell tokenizer, not a looser regex.
+- 2026-09-20 — Is an `imported_file` skill meant to stay inert as instructions
+  after the user enables it? Today it is (see the 2026-09-20 Codebase Patterns
+  entry): the "needs vetting" badge clears, the block appears in the trace, but
+  the wrap makes the model read it as data. Either enabling should also lift the
+  wrap (the user vetted it), or the badge should say the skill is advisory
+  context, not rules. Unresolved; not changed by the conventions spec.
+- 2026-09-20 — Lab criterion 21 says the `git push` auto-invocation of
+  `pr-self-review` is **off** and the skill is run by hand on a mixed diff. This
+  tree enables both the `PreToolUse` gate and `.githooks/pre-push`. Options and
+  a recommendation are in `specs/05-skills-lab-criteria-gaps.md` §21; the
+  author decides.

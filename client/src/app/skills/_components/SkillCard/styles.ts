@@ -42,4 +42,8 @@ export const s = {
     textOverflow: "ellipsis",
   } satisfies CSSProperties,
   metaRow: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" } satisfies CSSProperties,
+  /** `Toggle` has no `disabled` prop and `vendor/ui` is do-not-touch, so a
+   *  flagged skill's toggle is made inert by its wrapper (plus a no-op
+   *  `onChange`). Shared with ConfigTab's Enabled toggle. */
+  toggleDisabled: { opacity: 0.45, cursor: "not-allowed" } satisfies CSSProperties,
 } as const;

@@ -6,9 +6,14 @@ import { FormField, TextInput, SelectInput, Textarea, Toggle, Button } from "@de
 import type { Skill, SkillType } from "@devdigest/shared";
 import { useUpdateSkill } from "@/lib/hooks/skills";
 import { useToast } from "@/providers/toast";
+import { SecurityBanner } from "@/app/skills/_components/SecurityBanner";
+import { isFlagged } from "@/app/skills/_components/SkillCard/helpers";
+import { s as cardStyles } from "@/app/skills/_components/SkillCard/styles";
 import { SKILL_TYPE_VALUES } from "./constants";
 import { bodyChanged } from "./helpers";
 import { s } from "./styles";
+
+const noop = () => {};
 
 /** Config tab — name/description/type/body + enabled toggle + a "what
  *  changed" note (recorded on the version the save creates, only when the
@@ -38,6 +43,10 @@ export function ConfigTab({ skill }: { skill: Skill }) {
 
   const typeOptions = SKILL_TYPE_VALUES.map((v) => ({ value: v, label: t(`listItem.type.${v}`) }));
   const changed = bodyChanged(skill.body, body);
+  // The server's on-read scan: while flagged the Enabled toggle is inert and
+  // the save never asks to enable (the API would 422). Saving a clean body
+  // refetches the skill, which clears the flag — then the toggle works.
+  const flagged = isFlagged(skill);
 
   const save = () =>
     update.mutate(
@@ -48,7 +57,7 @@ export function ConfigTab({ skill }: { skill: Skill }) {
           description,
           type,
           body,
-          enabled,
+          enabled: flagged ? false : enabled,
           ...(changed && note.trim() ? { note: note.trim() } : {}),
         },
       },
@@ -64,11 +73,16 @@ export function ConfigTab({ skill }: { skill: Skill }) {
     <div style={s.wrap}>
       <div style={s.header}>
         <h2 style={s.h2}>{t("config.title")}</h2>
-        <label style={s.enabledLabel}>
+        <label
+          style={flagged ? { ...s.enabledLabel, ...cardStyles.toggleDisabled } : s.enabledLabel}
+          title={flagged ? t("security.toggleDisabled") : undefined}
+          aria-disabled={flagged || undefined}
+        >
           {t("config.enabled")}
-          <Toggle on={enabled} onChange={setEnabled} size={16} />
+          <Toggle on={flagged ? false : enabled} onChange={flagged ? noop : setEnabled} size={16} />
         </label>
       </div>
+      <SecurityBanner report={skill.security} />
       <FormField label={t("config.name")} required>
         <TextInput value={name} onChange={setName} />
       </FormField>

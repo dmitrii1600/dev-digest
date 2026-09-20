@@ -21,16 +21,19 @@ export const s = {
     background: "var(--bg-elevated)",
     opacity: enabled ? 1 : 0.6,
   }),
-  handle: {
+  /** The handle stays in the row when disabled (so the columns line up) but
+   *  loses its grab cursor and fades — an unchecked row cannot be moved. */
+  handle: (enabled: boolean): CSSProperties => ({
     background: "none",
     border: "none",
-    cursor: "grab",
+    cursor: enabled ? "grab" : "default",
     color: "var(--text-muted)",
+    opacity: enabled ? 1 : 0.35,
     fontSize: 16,
     lineHeight: 1,
     padding: "2px 4px",
     userSelect: "none",
-  } satisfies CSSProperties,
+  }),
   name: { fontSize: 13, flex: 1 } satisfies CSSProperties,
   typeBadge: { marginLeft: "auto", textTransform: "capitalize" } satisfies CSSProperties,
 } as const;

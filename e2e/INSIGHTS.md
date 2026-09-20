@@ -15,6 +15,17 @@ append-only. Empty sections are expected — append under the one that fits.
 
 ## What Doesn't Work
 
+- 2026-09-20 — `agent-browser find text "<label>" click` refuses to click a
+  button inside the `Drawer` from `@devdigest/ui` with *"covered by <div> at
+  its click point"*, although `document.elementFromPoint` at the button's
+  centre returns the button itself (verified in both the agent-browser page
+  and the in-app browser). The drawer is `position: fixed` inside a scrolling
+  `<main>`; whatever find-text uses as the click point disagrees with the
+  rendered box. `click @eNN` (a snapshot ref) and `click "[data-testid=…]"`
+  both work, so a flow clicks such a button by a `data-testid` on the element
+  (`09-skills.flow.json` → `SkillPreviewDrawer.tsx`). Waiting out the slide-in
+  animation does not help.
+
 - 2026-09-16 — There is no negative text assertion. `wait --text X` waits for X to
   appear; nothing waits for X to be *gone*, so a filter or delete flow cannot
   assert a disappearance directly. Assert a positive consequence instead —

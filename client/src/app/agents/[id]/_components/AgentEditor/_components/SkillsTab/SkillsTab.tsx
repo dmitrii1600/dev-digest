@@ -4,7 +4,9 @@
    adds/removes a row — an unchecked skill can sit between two checked ones.
    Checking a never-linked skill lazily creates its binding via one PATCH;
    dragging (or arrow-key reordering on the focused handle) persists the
-   whole ordered list via one POST. See client/specs/02-skills-lab.md. */
+   whole ordered list via one POST. Only ENABLED rows can be moved: an
+   unchecked row keeps its slot but its handle is disabled and it is not
+   draggable (criterion 31). See client/specs/02-skills-lab.md. */
 "use client";
 
 import React from "react";
@@ -44,8 +46,11 @@ export function SkillsTab({ agentId }: { agentId: string }) {
 
   // Reorders the FULL list (not just the filtered view) and persists it in
   // one call — this is what both native drag and arrow-key reordering call.
+  // A disabled row is never moved: it cannot start a drag, its handle ignores
+  // the keyboard, and a stale dragIndex pointing at one is dropped here too.
   const reorder = (from: number, to: number) => {
     if (from === to || from < 0 || to < 0 || to >= rows.length) return;
+    if (!rows[from]?.enabled) return;
     const next = moveRow(rows, from, to);
     setSkills.mutate({ skill_ids: next.map((row) => row.skill.id) });
   };
@@ -72,8 +77,12 @@ export function SkillsTab({ agentId }: { agentId: string }) {
             <div
               key={row.skill.id}
               style={s.row(row.enabled)}
-              draggable
-              onDragStart={() => {
+              draggable={row.enabled}
+              onDragStart={(e) => {
+                if (!row.enabled) {
+                  e.preventDefault();
+                  return;
+                }
                 dragIndex.current = index;
               }}
               onDragOver={(e) => e.preventDefault()}
@@ -85,9 +94,11 @@ export function SkillsTab({ agentId }: { agentId: string }) {
             >
               <button
                 type="button"
-                style={s.handle}
+                style={s.handle(row.enabled)}
                 aria-label={t("skills.dragHandle", { name: row.skill.name })}
+                aria-disabled={!row.enabled}
                 onKeyDown={(e) => {
+                  if (!row.enabled) return;
                   if (e.key === "ArrowUp") {
                     e.preventDefault();
                     reorder(index, index - 1);

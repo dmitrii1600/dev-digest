@@ -63,10 +63,20 @@ per domain · `src/vendor/shared/` canonical Zod contracts.
 - Tables for unbuilt lesson features already exist in the schema and stay empty.
 - `modules/skills/` (L02) is now live. `skills.source` is a plain `text` column
   with no CHECK constraint — the enum lives only in the Drizzle type and the Zod
-  contract — so `imported_file` (added for `.md`/`.zip` upload, distinct from the
-  still-unused `imported_url`) was a code-only change, no migration. Any skill
-  whose `source !== 'manual'` arrives `enabled: false` and is delimiter-wrapped
-  as untrusted in the prompt — see `server/specs/02-skills-module.md`.
+  contract — so `imported_file` (`.md`/`.zip` upload) and `imported_url`
+  (`POST /skills/import/url`, fetched through `container.urlFetcher`) were
+  code-only changes, no migration. Any skill whose `source !== 'manual'`
+  arrives `enabled: false` and is delimiter-wrapped as untrusted in the prompt
+  — see `server/specs/02-skills-module.md`. Both `imported_*` bodies are also
+  run through `modules/skills/injection-scan.ts` **on every read** (`security`
+  on the DTO, never persisted); a flagged one cannot be enabled (422). The one
+  exception is `source: 'extracted'` (`modules/conventions/`): its rules were
+  accepted one by one by the user, so it is trusted like `manual` and honours
+  the Enabled toggle — see `server/specs/03-conventions-module.md`.
+- `modules/conventions/` reads the clone in `repository-samples.ts` (ring 3 —
+  the filesystem) and keeps `helpers.ts` pure; `resolveFeatureModel` lives in
+  `modules/_shared/feature-models.ts` so any module can read the Settings
+  choice without a cross-module import.
 
 ## Read when
 

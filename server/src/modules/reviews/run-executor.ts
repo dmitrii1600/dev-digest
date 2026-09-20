@@ -17,6 +17,16 @@ import { taskLine } from './helpers.js';
 import { loadDiff } from './diff-loader.js';
 
 /** Thrown by a run when the user cancels it mid-flight (between map files). */
+/**
+ * Skill sources whose body reaches the model as instructions, unwrapped. `manual`
+ * is typed by the user; `extracted` is assembled from candidates the user
+ * accepted one by one and shown editable before save (the evidence snippets
+ * inside it are wrapped individually by the conventions body builder). Every
+ * other source — an imported file, a community skill — is someone else's text
+ * and is delimiter-wrapped as untrusted, like PR-author content.
+ */
+const TRUSTED_SKILL_SOURCES: ReadonlySet<string> = new Set(['manual', 'extracted']);
+
 export class RunCancelledError extends Error {
   constructor() {
     super('Run cancelled');
@@ -352,7 +362,7 @@ export class ReviewRunExecutor {
     const rows = await this.container.skillsRepo.blocksForAgent(agentId);
     if (rows.length === 0) return undefined;
     const bodies = rows.map((r) =>
-      r.source === 'manual' ? r.body : wrapUntrusted(`skill-${r.id}`, r.body),
+      TRUSTED_SKILL_SOURCES.has(r.source) ? r.body : wrapUntrusted(`skill-${r.id}`, r.body),
     );
     const tokens = bodies.reduce((n, b) => n + this.container.tokenizer.count(b), 0);
     runLog.info(`skills: ${bodies.length} skill(s) attached (${tokens} tokens)`);

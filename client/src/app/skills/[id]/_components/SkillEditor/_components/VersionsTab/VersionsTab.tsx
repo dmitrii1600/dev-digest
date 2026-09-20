@@ -8,13 +8,15 @@ import { lineRowFor, lineSignFor } from "@/components/diff-viewer";
 import { useSkillVersions, useRestoreSkillVersion } from "@/lib/hooks/skills";
 import { useToast } from "@/providers/toast";
 import { diffLines, isUnchanged } from "./diff";
-import { formatVersionDate, isCurrent, previousVersion } from "./helpers";
+import { currentVersion, formatVersionDate, isCurrent } from "./helpers";
 import { s } from "./styles";
 
 /** Version history, newest first, with Restore and an inline diff. Restore
  *  APPENDS a new version copying the chosen body — it never rewinds history, so
- *  it still gets a confirm even though nothing is destroyed. The diff reads
- *  v(N-1) → vN: what that version changed. */
+ *  it still gets a confirm even though nothing is destroyed. The diff on a
+ *  non-current row reads vN → v(current): what the current body changed since
+ *  that version, i.e. what restoring it would undo. The current row has no
+ *  diff — it would be empty. */
 export function VersionsTab({ skill }: { skill: Skill }) {
   const t = useTranslations("skills");
   const toast = useToast();
@@ -65,14 +67,16 @@ export function VersionsTab({ skill }: { skill: Skill }) {
                 <div style={s.note}>{v.note || t("versions.noNote")}</div>
               </div>
               <div style={s.actions}>
-                <Button
-                  kind="secondary"
-                  size="sm"
-                  icon="Eye"
-                  onClick={() => setOpenDiff(open ? null : v.version)}
-                >
-                  {open ? t("versions.hideDiff") : t("versions.diff")}
-                </Button>
+                {!current && (
+                  <Button
+                    kind="secondary"
+                    size="sm"
+                    icon="Eye"
+                    onClick={() => setOpenDiff(open ? null : v.version)}
+                  >
+                    {open ? t("versions.hideDiff") : t("versions.diffVsCurrent")}
+                  </Button>
+                )}
                 {!current && (
                   <Button
                     kind="secondary"
@@ -86,7 +90,7 @@ export function VersionsTab({ skill }: { skill: Skill }) {
                 )}
               </div>
             </div>
-            {open && <VersionDiff version={v} versions={versions} />}
+            {open && !current && <VersionDiff version={v} versions={versions} />}
           </div>
         );
       })}
@@ -94,19 +98,19 @@ export function VersionsTab({ skill }: { skill: Skill }) {
   );
 }
 
-/** The diff of one version against its predecessor. The oldest version has
- *  none, so its whole body reads as an addition. */
+/** The diff of one (non-current) version against the current one: the chosen
+ *  version is the "before" side, the current body the "after". Both sides are
+ *  always real, so there is no initial-version special case here. */
 function VersionDiff({ version, versions }: { version: SkillVersion; versions: SkillVersion[] }) {
   const t = useTranslations("skills");
-  const before = previousVersion(version.version, versions);
-  const lines = React.useMemo(() => diffLines(before?.body ?? null, version.body), [before, version.body]);
+  const after = currentVersion(versions);
+  const lines = React.useMemo(() => diffLines(version.body, after?.body ?? ""), [version.body, after]);
 
+  if (!after) return null;
   return (
     <div style={s.diffBox}>
       <div style={s.diffCaption}>
-        {before == null
-          ? t("versions.initialVersion")
-          : t("versions.diffTitle", { from: before.version, to: version.version })}
+        {t("versions.diffVsCurrentTitle", { from: version.version, to: after.version })}
       </div>
       {isUnchanged(lines) ? (
         <div style={s.diffEmpty}>{t("versions.noChanges")}</div>

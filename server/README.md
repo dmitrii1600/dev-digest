@@ -39,7 +39,7 @@ flowchart LR
   SVC --> DI{"DI container<br/>platform/container.ts"}
   DI --> ADP["adapters (ports)<br/>llm · github · git · astgrep · tokenizer · secrets"]
   ADP -->|"prod"| EXT["LLM (OpenAI/Anthropic) · GitHub · git · pgvector"]
-  ADP -->|"tests"| MOCK["src/adapters/mocks.ts<br/>MockLLMProvider · MockGitClient · …"]
+  ADP -->|"tests"| MOCK["src/adapters/mocks.ts<br/>MockLLMProvider · MockGitClient · MockUrlFetcher · …"]
   SVC --> DB[("Drizzle → Postgres")]
   SVC -. "run traces" .-> SSE["SSE stream → client"]
   VAL -. "invalid" .-> ERR["error handler (structured envelope)<br/>validation → 422 · AppError → status<br/>response serialization → 500"]
@@ -75,7 +75,8 @@ flowchart TB
     agents["agents<br/>/agents · /agents/:id · /agents/:id/skills/:skillId"]
   end
   subgraph SkillsMod["Skills"]
-    skills["skills<br/>/skills · /skills/:id/(versions|restore|agents|stats)<br/>/skills/import(/preview)"]
+    skills["skills<br/>/skills · /skills/:id/(versions|restore|agents|stats)<br/>/skills/import(/preview) · /skills/import/url(/preview)"]
+    conventions["conventions<br/>/repos/:id/conventions · /extract · /:candidateId<br/>/skill(/preview)"]
   end
   subgraph Intel["Repo intelligence"]
     repoIntel["repo-intel<br/>/repos/:id/index-state · /resync"]
@@ -140,10 +141,13 @@ What the reviewer actually sends to the model is assembled in
   `SkillsRepository.blocksForAgent` returns the enabled-and-linked skill bodies
   for one agent, in `agent_skills.order` — filtered at the query (`skills.enabled
   AND agent_skills.enabled`), not in the caller. `run-executor.ts`'s
-  `buildSkillBlocks` wraps any body whose `source !== 'manual'` in
-  `wrapUntrusted(...)` before it reaches `reviewer-core` — an imported skill is
-  someone else's instructions landing in the prompt, so it is treated the same
-  as PR-author content, never as agent instructions. With nothing linked the
+  `buildSkillBlocks` wraps any body whose source is not in
+  `TRUSTED_SKILL_SOURCES` (`manual`, `extracted`) in `wrapUntrusted(...)`
+  before it reaches `reviewer-core` — an imported skill is someone else's
+  instructions landing in the prompt, so it is treated the same as PR-author
+  content, never as agent instructions. An `extracted` skill (built by
+  `modules/conventions/` from candidates the user accepted one by one) is
+  trusted as rules; only the evidence snippets inside its body are wrapped. With nothing linked the
   section is omitted byte-identically; no existing agent's prompt changes.
 
 ## Testing

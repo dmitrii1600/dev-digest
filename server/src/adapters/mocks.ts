@@ -31,6 +31,9 @@ import type {
   AuthWorkspace,
   SecretsProvider,
   SecretKey,
+  UrlFetcher,
+  UrlFetchOptions,
+  FetchedResource,
 } from '@devdigest/shared';
 import { parseUnifiedDiff } from './git/diff-parser.js';
 
@@ -326,5 +329,33 @@ export class MockSecretsProvider implements SecretsProvider {
   constructor(private secrets: Partial<Record<string, string>> = {}) {}
   async get(key: SecretKey): Promise<string | undefined> {
     return this.secrets[key as string];
+  }
+}
+
+// ---------- Mock UrlFetcher ----------
+export interface MockUrlFetcherOptions {
+  /** Body to return; a string is UTF-8 encoded. Default: a small markdown skill. */
+  bytes?: Uint8Array | string;
+  /** `content-type` to report; `null` for "no header". Default `text/markdown`. */
+  contentType?: string | null;
+  /** Thrown instead of returning — simulates a blocked/unreachable URL. */
+  error?: Error;
+}
+
+export class MockUrlFetcher implements UrlFetcher {
+  public calls: { url: string; opts: UrlFetchOptions }[] = [];
+
+  constructor(private opts: MockUrlFetcherOptions = {}) {}
+
+  async fetch(url: string, opts: UrlFetchOptions): Promise<FetchedResource> {
+    this.calls.push({ url, opts });
+    if (this.opts.error) throw this.opts.error;
+    const raw = this.opts.bytes ?? '# Mock skill\n\nImported from a mock URL.\n';
+    const bytes = typeof raw === 'string' ? new TextEncoder().encode(raw) : raw;
+    return {
+      url,
+      contentType: this.opts.contentType === undefined ? 'text/markdown' : this.opts.contentType,
+      bytes,
+    };
   }
 }

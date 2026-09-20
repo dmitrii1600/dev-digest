@@ -37,6 +37,8 @@ function skill(o: Partial<Skill> & Pick<Skill, "id" | "name" | "type">): Skill {
     enabled: true,
     version: 1,
     evidence_files: null,
+    agent_count: 0,
+    security: { status: "not_scanned", findings: [] },
     ...o,
   };
 }
@@ -103,5 +105,22 @@ describe("SkillsTab", () => {
     expect(setSkillsMutate).toHaveBeenCalledWith({
       skill_ids: ["s1", "s3", "s5", "s2", "s4", "s6"],
     });
+  });
+
+  it("only enabled rows can be reordered: an unchecked row has a disabled handle and ignores the keyboard", () => {
+    renderTab();
+    const alphaHandle = screen.getByLabelText("Reorder Alpha");
+    expect(alphaHandle).toHaveAttribute("aria-disabled", "true");
+    expect(alphaHandle.style.cursor).not.toBe("grab");
+    expect(alphaHandle.closest("[draggable]")).toHaveAttribute("draggable", "false");
+
+    fireEvent.keyDown(alphaHandle, { key: "ArrowDown" });
+    fireEvent.keyDown(alphaHandle, { key: "ArrowUp" });
+    expect(setSkillsMutate).not.toHaveBeenCalled();
+
+    // A checked row is unaffected.
+    const charlieHandle = screen.getByLabelText("Reorder Charlie");
+    expect(charlieHandle).toHaveAttribute("aria-disabled", "false");
+    expect(charlieHandle.closest("[draggable]")).toHaveAttribute("draggable", "true");
   });
 });

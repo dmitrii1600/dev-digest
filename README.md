@@ -82,7 +82,7 @@ These are intentionally **not** in the starter — each lesson adds one back:
 | Lesson | You build |
 |--------|-----------|
 | L01 | Run cost badge · severity filter on findings |
-| L02 | ~~Skills in the product~~ · Conventions extractor |
+| L02 | ~~Skills in the product~~ · ~~Conventions extractor~~ |
 | L03 | Intent layer · Smart Diff |
 | L04 | `devdigest-mcp` server · Blast Radius (reads `repo-intel`) |
 | L05 | Project Context Folder · Onboarding generator · PR Brief card |

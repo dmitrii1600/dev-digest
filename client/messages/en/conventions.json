@@ -5,22 +5,85 @@
     "headingPrefix": "Conventions in ",
     "repoFallback": "repo",
     "subtitle": "Scan the cloned repo to surface house-rules — each backed by evidence you can turn into a Skill.",
+    "detectedFrom": "Detected from {count, plural, one {# sample file} other {# sample files}} · last scan {ago}",
+    "lastScanFailed": "Last scan failed: {error}",
+    "runScan": "Run Scan",
+    "rescan": "ReScan",
     "scanning": "Scanning…",
-    "rescan": "Re-scan",
-    "runExtraction": "Run extraction",
     "extractionFailed": "Extraction failed",
+    "notIndexed": "This repo is not indexed yet. Conventions are sampled from the ranked index — wait for the Indexed badge on the PR list, then scan.",
+    "notCloned": "This repo has no local clone yet, so there is nothing to sample.",
+    "scanRunning": "A scan is already running for this repo. Try again in a minute.",
     "loadError": "Could not load conventions.",
     "empty": {
       "title": "No conventions extracted yet",
       "body": "Scan the repo to surface house-rules — naming, error handling, structure — each backed by evidence you can turn into a Skill.",
-      "cta": "Run extraction"
+      "cta": "Run Scan"
+    },
+    "nothingFound": {
+      "title": "The scan found no grounded conventions",
+      "body": "{dropped, plural, =0 {The model proposed nothing that cited a sampled file.} one {# candidate was dropped because its evidence could not be found in the sampled files.} other {# candidates were dropped because their evidence could not be found in the sampled files.}}"
     },
     "candidateCount": "{count, plural, one {# candidate} other {# candidates}} · grounded against sampled files"
   },
+  "bar": {
+    "deselectAll": "Deselect all",
+    "acceptedCount": "{accepted} of {total} accepted",
+    "hidden": "{count, plural, one {# rejected · hidden} other {# rejected · hidden}}",
+    "createSkill": "Create skill"
+  },
   "card": {
     "confidence": "Confidence",
+    "accept": "Accept",
     "accepted": "Accepted",
-    "accepting": "Accepting…",
-    "acceptAsSkill": "Accept as Skill"
+    "reject": "Reject",
+    "edit": "Edit",
+    "save": "Save",
+    "cancel": "Cancel",
+    "edited": "edited",
+    "inSkill": "In skill",
+    "copyPath": "Copy path",
+    "ruleLabel": "Rule",
+    "categoryLabel": "Category",
+    "category": {
+      "naming": "Naming",
+      "structure": "Structure",
+      "imports": "Imports",
+      "typing": "Typing",
+      "async": "Async",
+      "error_handling": "Error handling",
+      "testing": "Testing",
+      "api": "API",
+      "style": "Style",
+      "other": "Other"
+    }
+  },
+  "modal": {
+    "title": "Create skill from conventions",
+    "banner": "Merged from {count, plural, one {<b>#</b> accepted convention} other {<b>#</b> accepted conventions}} in <code>{repo}</code>. Everything below is editable before you save.",
+    "name": "Name",
+    "description": "Description",
+    "type": "Type",
+    "enabled": "Enabled",
+    "enabledHint": "Whether this block is added to agents' prompts.",
+    "agents": "Agents",
+    "agentsHint": "The skill is attached to each checked agent, enabled, at the end of its skill order.",
+    "agentsOptional": "Optional — nothing is preselected. You can attach it later from an agent's Skills tab.",
+    "body": "Skill body",
+    "unsaved": "unsaved",
+    "tokens": "≈ {count} tokens",
+    "savedAs": "Saved as <code>v1</code> · added to Skills Lab",
+    "cancel": "Cancel",
+    "create": "Create skill",
+    "creating": "Creating…",
+    "skillType": {
+      "rubric": "rubric",
+      "convention": "convention",
+      "security": "security",
+      "custom": "custom"
+    }
+  },
+  "skill": {
+    "created": "Skill \"{name}\" created"
   }
 }
