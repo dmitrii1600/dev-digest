@@ -1,12 +1,16 @@
 /* AgentCard — model chip, skills count, enabled toggle. Stats are an A5 mount;
-   we render the provider/model + skill count here. */
+   we render the provider/model + skill count here. The skill count is the
+   number of ENABLED skill bindings for this agent — a caller may pass
+   `skillCount` to override (e.g. a test), otherwise the card fetches its own
+   `agent_skills` and computes it. One extra request per card is cheap
+   (client/specs/02-skills-lab.md: "nearly free"). */
 "use client";
 
 import React from "react";
 import { useTranslations } from "next-intl";
 import { Icon, Badge, Toggle } from "@devdigest/ui";
 import type { Agent } from "@devdigest/shared";
-import { useDeleteAgent } from "@/lib/hooks/agents";
+import { useAgentSkillLinks, useDeleteAgent } from "@/lib/hooks/agents";
 import { modelColor } from "./helpers";
 import { s } from "./styles";
 
@@ -25,6 +29,8 @@ export function AgentCard({
 }) {
   const t = useTranslations("agents");
   const del = useDeleteAgent();
+  const { data: skillLinks } = useAgentSkillLinks(ag.id);
+  const enabledSkillCount = skillCount ?? skillLinks?.filter((l) => l.enabled).length;
   const color = modelColor(ag.model);
   return (
     <div onClick={onClick} style={s.card(!!active, ag.enabled)}>
@@ -63,9 +69,9 @@ export function AgentCard({
         <span className="mono" style={s.modelChip(color)}>
           {ag.model}
         </span>
-        {skillCount != null && (
+        {enabledSkillCount != null && (
           <Badge color="var(--text-secondary)" icon="Sparkles">
-            {t("card.skillCount", { count: skillCount })}
+            {t("card.skillCount", { count: enabledSkillCount })}
           </Badge>
         )}
       </div>

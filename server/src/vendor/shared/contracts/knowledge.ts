@@ -115,7 +115,13 @@ export type MemoryItem = z.infer<typeof MemoryItem>;
 export const SkillType = z.enum(['rubric', 'convention', 'security', 'custom']);
 export type SkillType = z.infer<typeof SkillType>;
 
-export const SkillSource = z.enum(['manual', 'imported_url', 'extracted', 'community']);
+export const SkillSource = z.enum([
+  'manual',
+  'imported_url',
+  'imported_file',
+  'extracted',
+  'community',
+]);
 export type SkillSource = z.infer<typeof SkillSource>;
 
 export const Skill = z.object({
@@ -130,6 +136,52 @@ export const Skill = z.object({
   evidence_files: z.array(z.string()).nullish(),
 });
 export type Skill = z.infer<typeof Skill>;
+
+export const SkillVersion = z.object({
+  skill_id: z.string(),
+  version: z.number().int(),
+  body: z.string(),
+  note: z.string().nullish(),
+  created_at: z.string(),
+});
+export type SkillVersion = z.infer<typeof SkillVersion>;
+
+/** One archive entry, as shown in the import preview. */
+export const SkillImportEntry = z.object({
+  path: z.string(),
+  bytes: z.number().int(),
+  kept: z.boolean(),
+  reason: z.string(), // 'skill body' | 'not markdown' | 'executable — discarded' | …
+});
+export type SkillImportEntry = z.infer<typeof SkillImportEntry>;
+
+export const SkillImportPreview = z.object({
+  name: z.string(),
+  description: z.string(),
+  type: SkillType,
+  source: SkillSource,
+  body: z.string(),
+  entries: z.array(SkillImportEntry),
+  discarded: z.number().int(),
+  warnings: z.array(z.string()),
+});
+export type SkillImportPreview = z.infer<typeof SkillImportPreview>;
+
+/**
+ * Per-skill usage. Attribution is AGENT-level: a finding cannot be proven to
+ * come from a skill, so every number here counts the runs of the agents this
+ * skill is attached to. The UI must say so.
+ */
+export const SkillStats = z.object({
+  agents: z.number().int(),
+  runs_30d: z.number().int(),
+  findings_30d: z.number().int(),
+  accepted: z.number().int(),
+  dismissed: z.number().int(),
+  accept_rate: z.number().nullable(), // null when accepted + dismissed === 0
+  by_category: z.array(z.object({ category: z.string(), count: z.number().int() })),
+});
+export type SkillStats = z.infer<typeof SkillStats>;
 
 export const CommunitySkill = z.object({
   name: z.string(),
@@ -195,6 +247,7 @@ export const AgentSkillLink = z.object({
   agent_id: z.string(),
   skill_id: z.string(),
   order: z.number().int(),
+  enabled: z.boolean(),
 });
 export type AgentSkillLink = z.infer<typeof AgentSkillLink>;
 

@@ -46,6 +46,10 @@ primitives · `src/vendor/shared` (`@devdigest/shared`) contracts.
 - `.next/` — build output.
 - `src/vendor/ui` and `src/vendor/shared` — vendored trees. `shared` mirrors the
   server's canonical copy; fix contracts there first, then mirror.
+  **Exception: `src/vendor/ui/nav.ts`.** Unlike the rest of `vendor/ui`, `nav.ts`
+  has no canonical upstream to drift from — the "do not touch" there exists to
+  stop hand-rolled primitives, not to freeze the nav registry. The app owns it;
+  edit it directly when adding a route to the sidebar (say so in the commit).
 
 ## Gotchas
 

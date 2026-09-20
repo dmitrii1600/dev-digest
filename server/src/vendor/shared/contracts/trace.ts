@@ -59,6 +59,20 @@ export const MemoryPulled = z.object({
 });
 export type MemoryPulled = z.infer<typeof MemoryPulled>;
 
+export const PromptTokens = z
+  .object({
+    system: z.number().int(),
+    skills: z.number().int(),
+    memory: z.number().int(),
+    specs: z.number().int(),
+    callers: z.number().int(),
+    repo_map: z.number().int(),
+    pr_description: z.number().int(),
+    user: z.number().int(),
+  })
+  .partial();
+export type PromptTokens = z.infer<typeof PromptTokens>;
+
 export const RunStats = z.object({
   duration_ms: z.number().int(),
   tokens_in: z.number().int(),
@@ -84,6 +98,8 @@ export const RunTrace = z.object({
   }),
   stats: RunStats,
   prompt_assembly: PromptAssembly,
+  // Per-slot token attribution; nullish so pre-existing traces still parse.
+  prompt_tokens: PromptTokens.nullish(),
   tool_calls: z.array(ToolCall),
   raw_output: z.string(),
   memory_pulled: z.array(MemoryPulled),

@@ -61,6 +61,12 @@ per domain · `src/vendor/shared/` canonical Zod contracts.
 - The global rate limit is disabled under `NODE_ENV=test`; SSE and `/health*`
   are always exempt.
 - Tables for unbuilt lesson features already exist in the schema and stay empty.
+- `modules/skills/` (L02) is now live. `skills.source` is a plain `text` column
+  with no CHECK constraint — the enum lives only in the Drizzle type and the Zod
+  contract — so `imported_file` (added for `.md`/`.zip` upload, distinct from the
+  still-unused `imported_url`) was a code-only change, no migration. Any skill
+  whose `source !== 'manual'` arrives `enabled: false` and is delimiter-wrapped
+  as untrusted in the prompt — see `server/specs/02-skills-module.md`.
 
 ## Read when
 

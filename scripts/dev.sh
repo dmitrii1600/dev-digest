@@ -19,6 +19,8 @@ CONTAINER="devdigest-postgres"
 RUN_SEED=1
 RUN_CLIENT=1
 DB_ONLY=0
+API_PORT="${API_PORT:-3001}"
+WEB_PORT="${WEB_PORT:-3000}"
 
 for arg in "$@"; do
   case "$arg" in
@@ -100,6 +102,44 @@ if [ "$DB_ONLY" -eq 1 ]; then
   exit 0
 fi
 
+# --- port guard --------------------------------------------------------------
+# Without this the failure is silent and confusing: the API cannot bind and dies,
+# while `next dev` quietly moves to the next free port — so the web app ends up
+# on the port the API was supposed to own. A leftover dev server is the usual
+# occupant (a killed terminal on Windows orphans the whole `cmd → next dev →
+# start-server` tree, which keeps the socket). We only report it: never kill a
+# process this script did not start — it may be the user's other terminal.
+
+# `/dev/tcp` is a bash builtin, so this needs no lsof (Git Bash ships none).
+port_busy() {
+  (exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null && exec 3<&- 3>&- && return 0
+  return 1
+}
+
+# Best-effort PID for the message only — must never fail the script.
+port_owner() {
+  if command -v lsof >/dev/null 2>&1; then
+    lsof -ti "tcp:$1" -s TCP:LISTEN 2>/dev/null | head -1
+  elif command -v netstat >/dev/null 2>&1; then
+    netstat -ano 2>/dev/null | awk -v p=":$1" '$0 ~ /LISTEN/ && $2 ~ p"$" { print $NF; exit }'
+  fi
+}
+
+check_port() {
+  port_busy "$1" || return 0
+  local pid; pid="$(port_owner "$1" || true)"
+  warn "port $1 is already in use — $2 cannot start"
+  if [ -n "$pid" ]; then
+    warn "  held by PID $pid — stop it (Ctrl-C in its terminal, or: kill $pid) and re-run"
+  else
+    warn "  stop whatever is listening on :$1 and re-run"
+  fi
+  exit 1
+}
+
+check_port "$API_PORT" "the API"
+[ "$RUN_CLIENT" -eq 1 ] && check_port "$WEB_PORT" "the web app"
+
 # --- dev servers -------------------------------------------------------------
 SERVER_PID=""
 cleanup() {
@@ -108,12 +148,12 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-log "starting API on :3001 (server)"
+log "starting API on :$API_PORT (server)"
 (cd server && pnpm dev) &
 SERVER_PID=$!
 
 if [ "$RUN_CLIENT" -eq 1 ]; then
-  log "starting web on :3000 (client) — Ctrl-C to stop both"
+  log "starting web on :$WEB_PORT (client) — Ctrl-C to stop both"
   (cd client && pnpm dev)
 else
   log "API running (PID $SERVER_PID) — Ctrl-C to stop"

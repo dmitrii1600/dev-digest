@@ -6,6 +6,8 @@ import {
   GENERAL_REVIEWER_PROMPT,
   SECURITY_REVIEWER_PROMPT,
   PERFORMANCE_REVIEWER_PROMPT,
+  TEST_QUALITY_REVIEWER_PROMPT,
+  API_CONTRACT_REVIEWER_PROMPT,
 } from './seed-prompts.js';
 
 /** Default provider/model for the built-in reviewer agents. */
@@ -13,15 +15,115 @@ const DEFAULT_PROVIDER = 'openrouter' as const;
 const DEFAULT_MODEL = 'deepseek/deepseek-v4-flash';
 
 /**
+ * Bodies for the four seeded skills (L02). Genuine prompt content, appended
+ * into the "## Skills / rules" section — not placeholders. They follow the
+ * same rules as an agent's `system_prompt` (`docs/agent-prompts/README.md`):
+ * no description of the JSON output shape, no invented second severity scale.
+ */
+const PR_QUALITY_RUBRIC_BODY = `# PR Quality Rubric
+
+Judge the change as a whole, not just for bugs. A PR can be defect-free and
+still be a bad PR.
+
+- **Scope discipline.** The diff does one thing. A PR that mixes an unrelated
+  refactor, a rename, and the actual fix makes both harder to review and to
+  revert independently.
+- **Self-contained.** Tests, migrations, and doc updates the change requires
+  ship in the same PR, not "in a follow-up."
+- **Matches existing patterns.** New code follows the conventions already
+  established nearby (naming, error handling, layering) rather than
+  introducing a second way to do the same thing.
+- **No dead weight.** No commented-out code, no leftover debug logging, no
+  unused exports or imports left behind by the change.
+- **Reversibility.** A risky change (schema, external contract, feature flag)
+  can be rolled back without a second deploy — prefer additive changes over
+  destructive ones when the two are close in cost.
+
+Use this as a second lens alongside your primary focus area — it does not
+replace it.`;
+
+const TEST_COVERAGE_NUDGE_BODY = `# Test Coverage Nudge
+
+Before judging a diff's tests sufficient, check specifically for these gaps —
+they are the ones authors miss most often:
+
+- **The failure path.** A new function that can throw, reject, or return an
+  error result needs a test that exercises that path, not just the happy
+  path.
+- **The boundary, not just the middle.** Empty input, a single-item
+  collection, the max/min of a range, a zero or negative number where the
+  domain allows it.
+- **The branch that got smaller.** When a diff narrows or removes a
+  condition, check whether the case it used to handle still has a test — a
+  passing suite after removing a branch usually means the branch was
+  untested, not unnecessary.
+- **Concurrent or ordering-sensitive code.** A test that only ever runs one
+  call at a time doesn't prove anything about code that assumes ordering,
+  retries, or shared state.
+
+A file with new logic and no corresponding test diff is worth naming
+explicitly, even when nothing is "wrong" with the code itself.`;
+
+const API_CONTRACT_GATE_BODY = `# API Contract Gate
+
+Treat any request or response shape reachable by an existing caller as a
+contract. A change here needs a stated reason, not just a stated diff.
+
+- **Additive is safe; removal is not.** Adding an optional field or a new
+  endpoint is low-risk. Removing a field, renaming one, or narrowing a type
+  (e.g. \`string | null\` → \`string\`) breaks whoever is already reading it.
+- **Nullability is part of the contract.** A field that goes from
+  always-present to nullable (or the reverse) changes what every existing
+  caller must handle, even if the wire format looks similar.
+- **Status codes are contract too.** Returning 200 where the endpoint used to
+  return 201, or 404 where it used to return 200 with an empty body, changes
+  caller branching logic silently.
+- **Route signature changes are breaking by default.** A renamed path param,
+  a query param that becomes required, or a changed HTTP method needs a
+  version bump or a deprecation window — not a same-version swap.
+- **Grep before you assume "nothing calls this."** A route without an
+  obvious internal caller may still be called by the client, an external
+  integration, or a webhook consumer that isn't in this diff.
+
+When a change here is intentional and versioned correctly, it is not a
+finding — the point is to catch the ones that are silent.`;
+
+const NO_THEN_CHAINS_BODY = `# Prefer async/await over .then() chains
+
+This codebase is ESM TypeScript throughout \`server/\` and \`reviewer-core/\` —
+write asynchronous code with \`async\`/\`await\`, not chained
+\`.then()\`/\`.catch()\`.
+
+- **Flatten the chain.** A \`.then().then().then()\` sequence should read as a
+  linear sequence of \`await\` statements inside an \`async\` function. Nesting
+  \`.then()\` callbacks (a "pyramid") is worse still.
+- **Errors go through try/catch.** A dangling \`.then()\` with no \`.catch()\`
+  silently swallows a rejection. Prefer a \`try/catch\` around the \`await\`, or
+  let the rejection propagate to a caller that handles it.
+- **Mixing styles in one function is a smell.** A function that both
+  \`await\`s and returns a \`.then()\` chain is harder to reason about than
+  either style alone — pick one, and default to \`await\`.
+- **\`Promise.all\` still applies.** Preferring \`await\` doesn't mean
+  serializing independent work — use \`await Promise.all([...])\` for
+  concurrent operations, not a chain of sequential \`.then()\` calls.
+
+Exception: a thin \`.then()\` used purely to adapt a callback-style API at a
+single call site is fine when wrapping it in \`async\`/\`await\` would add no
+clarity.`;
+
+/**
  * Seed the starter's demo data. Idempotent: re-running upserts the default
  * workspace/user and the demo fixtures.
  *
  * Seeds: default workspace + system user + membership, default settings,
  * demo repo (acme/payments-api), PR #482 with files/commits, a sample review
- * with a few findings, and the three built-in agents (General + Security +
- * Performance), all on the default openrouter/deepseek-v4-flash provider+model.
+ * with a few findings, and the five built-in agents (General + Security +
+ * Performance + Test Quality + API Contract), all on the default
+ * openrouter/deepseek-v4-flash provider+model. Also seeds four skills (L02)
+ * and their bindings onto the two newest agents — see `seedSkills` /
+ * `seedSkillLinks` below.
  *
- * Course lessons populate the other tables (skills, conventions, memory, eval,
+ * Course lessons populate the remaining tables (conventions, memory, eval,
  * …) once their features are built — they start empty here.
  */
 
@@ -224,6 +326,28 @@ export async function seed(db: Db): Promise<{ workspaceId: string; userId: strin
       version: 1,
       createdBy: userId,
     },
+    {
+      workspaceId,
+      name: 'Test Quality Reviewer',
+      description: 'Flags uncovered branches, missing edge cases, over-mocking, and flaky tests.',
+      provider: DEFAULT_PROVIDER,
+      model: DEFAULT_MODEL,
+      systemPrompt: TEST_QUALITY_REVIEWER_PROMPT,
+      enabled: true,
+      version: 1,
+      createdBy: userId,
+    },
+    {
+      workspaceId,
+      name: 'API Contract Reviewer',
+      description: 'Catches breaking route, response-shape, nullability, and status-code changes.',
+      provider: DEFAULT_PROVIDER,
+      model: DEFAULT_MODEL,
+      systemPrompt: API_CONTRACT_REVIEWER_PROMPT,
+      enabled: true,
+      version: 1,
+      createdBy: userId,
+    },
   ];
   for (const a of seedAgents) {
     const [existing] = await db
@@ -231,6 +355,101 @@ export async function seed(db: Db): Promise<{ workspaceId: string; userId: strin
       .from(t.agents)
       .where(and(eq(t.agents.workspaceId, workspaceId), eq(t.agents.name, a.name)));
     if (!existing) await db.insert(t.agents).values(a);
+  }
+
+  // ---- skills (L02) + their agent bindings ----
+  // `pr-quality-rubric` is shared by both new reviewers; `test-coverage-nudge`
+  // is Test Quality only; `api-contract-gate` is API Contract only.
+  // `no-then-chains` stands in for the "imported from a file" path: source
+  // isn't 'manual', so per the feature's rule it is seeded disabled at both
+  // the skill level and the per-binding level — the "needs vetting" example.
+  const seedSkills: Array<typeof t.skills.$inferInsert> = [
+    {
+      workspaceId,
+      name: 'pr-quality-rubric',
+      description: 'General PR quality checklist: scope, self-containment, and reversibility.',
+      type: 'rubric',
+      source: 'manual',
+      body: PR_QUALITY_RUBRIC_BODY,
+      enabled: true,
+    },
+    {
+      workspaceId,
+      name: 'test-coverage-nudge',
+      description: 'Where authors usually under-test: failure paths, boundaries, narrowed branches.',
+      type: 'rubric',
+      source: 'manual',
+      body: TEST_COVERAGE_NUDGE_BODY,
+      enabled: true,
+    },
+    {
+      workspaceId,
+      name: 'api-contract-gate',
+      description: 'What counts as a breaking API change and when it needs a version bump.',
+      type: 'convention',
+      source: 'manual',
+      body: API_CONTRACT_GATE_BODY,
+      enabled: true,
+    },
+    {
+      workspaceId,
+      name: 'no-then-chains',
+      description: 'Imported convention: prefer async/await over chained .then() calls.',
+      type: 'convention',
+      source: 'imported_file',
+      body: NO_THEN_CHAINS_BODY,
+      enabled: false, // source !== 'manual' arrives disabled until vetted
+    },
+  ];
+  const skillIdByName = new Map<string, string>();
+  for (const s of seedSkills) {
+    let [existing] = await db
+      .select({ id: t.skills.id })
+      .from(t.skills)
+      .where(and(eq(t.skills.workspaceId, workspaceId), eq(t.skills.name, s.name)));
+    if (!existing) {
+      [existing] = await db.insert(t.skills).values(s).returning({ id: t.skills.id });
+    }
+    skillIdByName.set(s.name, existing!.id);
+    // The v1 snapshot the repository writes on POST /skills. Seeding inserts
+    // rows directly, so without this a seeded skill claims version 1 while
+    // GET /skills/:id/versions returns nothing — an empty history the studio
+    // can neither diff nor restore from.
+    await db
+      .insert(t.skillVersions)
+      .values({ skillId: existing!.id, version: 1, body: s.body, note: null })
+      .onConflictDoNothing();
+  }
+
+  const reviewerAgentRows = await db
+    .select({ id: t.agents.id, name: t.agents.name })
+    .from(t.agents)
+    .where(eq(t.agents.workspaceId, workspaceId));
+  const agentIdByName = new Map(reviewerAgentRows.map((a) => [a.name, a.id]));
+
+  const seedSkillLinks: { agent: string; skill: string; order: number; enabled: boolean }[] = [
+    { agent: 'Test Quality Reviewer', skill: 'pr-quality-rubric', order: 0, enabled: true },
+    { agent: 'Test Quality Reviewer', skill: 'test-coverage-nudge', order: 1, enabled: true },
+    { agent: 'Test Quality Reviewer', skill: 'no-then-chains', order: 2, enabled: false },
+    { agent: 'API Contract Reviewer', skill: 'pr-quality-rubric', order: 0, enabled: true },
+    { agent: 'API Contract Reviewer', skill: 'api-contract-gate', order: 1, enabled: true },
+  ];
+  for (const link of seedSkillLinks) {
+    const agentId = agentIdByName.get(link.agent);
+    const skillId = skillIdByName.get(link.skill);
+    if (!agentId || !skillId) continue;
+    const [existing] = await db
+      .select({ agentId: t.agentSkills.agentId })
+      .from(t.agentSkills)
+      .where(and(eq(t.agentSkills.agentId, agentId), eq(t.agentSkills.skillId, skillId)));
+    if (!existing) {
+      await db.insert(t.agentSkills).values({
+        agentId,
+        skillId,
+        order: link.order,
+        enabled: link.enabled,
+      });
+    }
   }
 
   // ---- demo agent runs for PR #482 (+ their traces) ----

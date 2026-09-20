@@ -1,0 +1,196 @@
+{
+  "name": "Skills Lab — list, editor preview, and an agent's attached skills",
+  "description": "Walks the three read surfaces the Skills feature added. On /skills, the card grid lists a seeded skill and clicking its card navigates into the editor at /skills/:id on the Config tab — the same flow as /agents, so the list never renders a skill body of its own. The editor's Preview tab is where the rendered Markdown lives. On /agents, opening the seeded Test Quality Reviewer and switching to its Skills tab shows every workspace skill with its attached ones checked, including the 'N of M enabled' count computed from the seeded bindings (pr-quality-rubric and test-coverage-nudge enabled, no-then-chains disabled). Assertions are positive only — agent-browser's `wait --text` has no negative form — so the drag/keyboard reorder and the disabled no-then-chains row are left to SkillsTab.test.tsx and SkillListItem.test.tsx, which can assert absence and simulate keyboard reordering directly. No review run is triggered; this suite is read-only against seeded data. Assumes a freshly-seeded DB carrying the Skills Lab seed data from server/src/db/seed.ts (the four skills — pr-quality-rubric, test-coverage-nudge, api-contract-gate, no-then-chains — and their agent bindings) — guaranteed by e2e-web.yml; run locally via the hermetic stack (see e2e/README.md).",
+  "steps": [
+    {
+      "cmd": [
+        "open",
+        "{BASE}/skills"
+      ],
+      "label": "load the skills list"
+    },
+    {
+      "cmd": [
+        "wait",
+        "--url",
+        "/skills"
+      ],
+      "label": "skills route reached"
+    },
+    {
+      "cmd": [
+        "wait",
+        "--load",
+        "networkidle"
+      ],
+      "label": "skills fetch settles"
+    },
+    {
+      "cmd": [
+        "wait",
+        "--text",
+        "pr-quality-rubric"
+      ],
+      "label": "seeded skill is listed in the grid"
+    },
+    {
+      "cmd": [
+        "find",
+        "text",
+        "pr-quality-rubric",
+        "click"
+      ],
+      "label": "open the skill editor from its card"
+    },
+    {
+      "cmd": [
+        "wait",
+        "--url",
+        "tab=config"
+      ],
+      "label": "the editor opens in edit mode (Config tab)"
+    },
+    {
+      "cmd": [
+        "wait",
+        "--load",
+        "networkidle"
+      ],
+      "label": "skill detail data settles"
+    },
+    {
+      "cmd": [
+        "find",
+        "role",
+        "button",
+        "click",
+        "--name",
+        "Preview"
+      ],
+      "label": "switch to the Preview tab"
+    },
+    {
+      "cmd": [
+        "wait",
+        "--text",
+        "PR Quality Rubric"
+      ],
+      "label": "the Preview tab renders the skill body's heading"
+    },
+    {
+      "cmd": [
+        "wait",
+        "--text",
+        "Scope discipline."
+      ],
+      "label": "the Preview body content renders past the heading"
+    },
+    {
+      "cmd": [
+        "open",
+        "{BASE}/agents"
+      ],
+      "label": "load the agents list"
+    },
+    {
+      "cmd": [
+        "wait",
+        "--url",
+        "/agents"
+      ],
+      "label": "agents route reached"
+    },
+    {
+      "cmd": [
+        "wait",
+        "--load",
+        "networkidle"
+      ],
+      "label": "agents fetch settles"
+    },
+    {
+      "cmd": [
+        "wait",
+        "--text",
+        "Test Quality Reviewer"
+      ],
+      "label": "seeded agent card is visible"
+    },
+    {
+      "cmd": [
+        "find",
+        "text",
+        "Test Quality Reviewer",
+        "click"
+      ],
+      "label": "open the agent editor"
+    },
+    {
+      "cmd": [
+        "wait",
+        "--url",
+        "tab=config"
+      ],
+      "label": "navigate to the agent's editor (default Config tab)"
+    },
+    {
+      "cmd": [
+        "wait",
+        "--load",
+        "networkidle"
+      ],
+      "label": "agent detail data settles"
+    },
+    {
+      "cmd": [
+        "find",
+        "role",
+        "button",
+        "click",
+        "--name",
+        "Skills"
+      ],
+      "label": "switch to the Skills tab"
+    },
+    {
+      "cmd": [
+        "wait",
+        "--url",
+        "tab=skills"
+      ],
+      "label": "skills tab is active in the URL"
+    },
+    {
+      "cmd": [
+        "wait",
+        "--load",
+        "networkidle"
+      ],
+      "label": "skill bindings fetch settles"
+    },
+    {
+      "cmd": [
+        "wait",
+        "--text",
+        "2 of 4 enabled"
+      ],
+      "label": "enabled-count badge reflects the seeded bindings"
+    },
+    {
+      "cmd": [
+        "wait",
+        "--text",
+        "pr-quality-rubric"
+      ],
+      "label": "the shared bound skill is listed in the agent's Skills tab"
+    },
+    {
+      "cmd": [
+        "wait",
+        "--text",
+        "test-coverage-nudge"
+      ],
+      "label": "the agent-specific bound skill is listed too"
+    }
+  ]
+}

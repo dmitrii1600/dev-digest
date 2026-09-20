@@ -43,7 +43,7 @@ append-only. Empty sections are expected — append under the one that fits.
 - 2026-09-15 — On Windows, `pnpm db:migrate` and `pnpm db:seed` exit 0 having
   done **nothing**. Both guard their CLI entrypoint with
   `import.meta.url === \`file://${process.argv[1]}\`` (`server/src/db/migrate.ts:37`,
-  `server/src/db/seed.ts:227`), and `argv[1]` is a backslash path
+  `server/src/db/seed.ts:707`), and `argv[1]` is a backslash path
   (`D:\…\migrate.ts`) while `import.meta.url` is `file:///D:/…` — never equal,
   so neither the success nor the failure branch runs. `scripts/dev.sh` and
   `scripts/e2e.sh` call those same scripts, so on Windows the stack boots
@@ -51,6 +51,20 @@ append-only. Empty sections are expected — append under the one that fits.
   — the exact symptom `AGENTS.md` blames on a skipped migrate. Fix is
   `pathToFileURL(process.argv[1]).href`; until then bootstrap by importing
   `runMigrations`/`seed` from a script inside `server/`.
+
+- 2026-09-20 — On Windows, killing the `bash scripts/dev.sh` **process** does not
+  stop the stack it started. The chain is
+  `sh → pnpm → cmd.exe → next dev → start-server.js` (and the same for
+  `tsx watch`), and only the top link dies — every descendant survives holding
+  :3000/:3001, with its stdout pipe gone (`write EPIPE`, `uncaughtException`).
+  The next `./scripts/dev.sh` then found both ports taken: the API failed to
+  bind and `next dev` silently moved to another port. Ctrl-C in an interactive
+  terminal is fine — the console control event reaches the whole group — so this
+  only bites when the script is killed as a process (a background task, a
+  `timeout`, a closed wrapper). `scripts/dev.sh:105-141` now refuses to start on
+  a busy port and names the PID to kill; to stop an already-orphaned stack,
+  resolve owners by port (`netstat -ano | grep LISTENING`) and kill the whole
+  chain, not just the listener.
 
 - 2026-09-18 — A real symlink is not usable as the `CLAUDE.md` → `AGENTS.md`
   link here, and its failure mode is silent. `New-Item -ItemType SymbolicLink`

@@ -44,6 +44,15 @@ append-only. Empty sections are expected — append under the one that fits.
   per demo run, and keep its `findingsCount`/`blockers`/`score` equal to that
   review's, or the timeline row and the card below it disagree.
 
+- 2026-09-20 — The seed inserts into `t.skills` directly rather than through
+  `SkillsRepository.insert()`, so it wrote no `skill_versions` row and every
+  seeded skill claimed `version: 1` while `GET /skills/:id/versions` returned
+  `[]` — a history the studio can neither diff nor restore from, on a DB that
+  looks correctly seeded. Fixed by writing the v1 snapshot in the seed loop
+  (`src/db/seed.ts:419`). The general rule: when a table has a companion history
+  table that only the repository maintains, seeding past the repository silently
+  drops the history — seed both or go through the repository.
+
 ## Codebase Patterns
 
 - 2026-09-18 — An onion ring is derived from the **filename**, not a folder:

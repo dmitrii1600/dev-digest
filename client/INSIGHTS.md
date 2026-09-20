@@ -31,6 +31,14 @@ append-only. Empty sections are expected — append under the one that fits.
   `borderTop/Right/BottomColor` per side. Invisible until something rerenders the
   card with `focused` changing — the severity filter is what surfaced it.
 
+- 2026-09-20 — Never run `pnpm build` in `client/` while `next dev` is serving:
+  both write `.next`, and the build leaves the dev server's manifests gone. Every
+  chunk then 404s (`_next/static/chunks/main-app.js`, `…/app/layout.css`) and the
+  page renders with no design-system CSS at all, which looks like a broken
+  stylesheet rather than a broken server. Touching a source file does not recover
+  it — the dev server must be restarted (`rm -rf .next && pnpm dev`). Verify a
+  change either in the running dev server **or** with `build`, not both at once.
+
 - 2026-09-18 — `pnpm test` passing does not mean the app compiles. Moving
   `lib/providers.tsx` → `providers/AppProviders.tsx` left one unresolved sibling
   import (`./api`), and all 82 tests still went green because no test mounts the
@@ -120,6 +128,18 @@ append-only. Empty sections are expected — append under the one that fits.
   "relative = same folder only", the compliant import gets filed as a
   violation.
 
+- 2026-09-20 — `src/app/globals.css` is the app-owned seam for styling anything
+  that `src/vendor/ui` renders, and the vendored tree already ships hook classes
+  for it: `Markdown` emits `className="dd-md"`
+  (`src/vendor/ui/primitives/Markdown.tsx:9`) and styles only `p`, `strong`,
+  `code` and `a` inline, while the design system's base reset zeroes
+  `h1,h2,h3,h4,p` margins (`src/vendor/ui/styles.css:205`). The result was
+  rendered markdown with no heading hierarchy and unstyled lists on all five
+  `Markdown` call sites. The fix is a `.dd-md …` block in `globals.css:26`, not
+  an edit to the vendored primitive — `AGENTS.md` marks that tree do-not-touch,
+  and `globals.css` already `@import`s it, so one app-side rule reaches every
+  consumer.
+
 ## Tool & Library Notes
 
 - 2026-09-16 — `@testing-library/user-event` is **not** installed; the suite uses
@@ -137,6 +157,14 @@ append-only. Empty sections are expected — append under the one that fits.
   entirely and a working popover looks broken. Verify a hover with
   `javascript_tool` (dispatch `mouseover`, then read `[role="tooltip"]`) or with
   an RTL test — do not conclude "regression" from a screenshot that shows nothing.
+
+- 2026-09-20 — In the Claude desktop Browser pane, an emulated viewport wider
+  than the pane **crops** the screenshot instead of scaling it: `resize_window`
+  to 1440 then `screenshot` returns the leftmost 800 px, so a three-column card
+  grid reads as one column and looks like a layout regression. `computer zoom`
+  returns the whole page scaled down (region cropping is unsupported), so it is
+  the way to see a wide layout. Confirm layout facts with `javascript_tool`
+  (`getComputedStyle(grid).gridTemplateColumns`) rather than from the image.
 
 ## Recurring Errors & Fixes
 

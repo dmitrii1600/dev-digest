@@ -6,12 +6,12 @@ grounded structured findings). Fastify 5 + Drizzle ORM over Postgres (pgvector).
 Adapters (LLM, GitHub, git, ast-grep, …) sit behind a DI container so they can be
 swapped for mocks in tests.
 
-> This is the **starter** module set. Later course lessons add their own modules
-> (skills, intent/smart-diff, blast, brief/context/onboarding, eval/ci/hooks,
-> memory, plugins, …) — each is a self-contained `modules/<name>/` plugin plus,
-> usually, a slot it starts feeding the reviewer prompt. The DB schema already
-> contains **every** table; the unused ones simply sit empty until a lesson fills
-> them.
+> This is the **starter** module set plus L02's first half (`modules/skills/` —
+> see below). Later course lessons add their own modules (intent/smart-diff,
+> blast, brief/context/onboarding, eval/ci/hooks, memory, plugins, …) — each is a
+> self-contained `modules/<name>/` plugin plus, usually, a slot it starts feeding
+> the reviewer prompt. The DB schema already contains **every** table; the
+> unused ones simply sit empty until a lesson fills them.
 
 - **Stack:** Fastify 5 (`@fastify/helmet`, `@fastify/rate-limit`, `@fastify/cors`,
   `fastify-sse-v2` for streaming run traces), Drizzle ORM, `postgres`, pgvector.
@@ -72,7 +72,10 @@ flowchart TB
     reviews["reviews<br/>/pulls/:id/review · /reviews · /findings/:id/(accept|dismiss)<br/>/runs/:id/(events|trace)"]
   end
   subgraph Agents["Agents"]
-    agents["agents<br/>/agents · /agents/:id"]
+    agents["agents<br/>/agents · /agents/:id · /agents/:id/skills/:skillId"]
+  end
+  subgraph SkillsMod["Skills"]
+    skills["skills<br/>/skills · /skills/:id/(versions|restore|agents|stats)<br/>/skills/import(/preview)"]
   end
   subgraph Intel["Repo intelligence"]
     repoIntel["repo-intel<br/>/repos/:id/index-state · /resync"]
@@ -106,7 +109,9 @@ through `SecretsProvider` (`~/.devdigest/secrets.json`, mode `0600`, with
 
 Migrations are **not** applied on boot — run `pnpm db:migrate` (pgvector is
 enabled by migration `0000`). `pnpm db:seed` is idempotent demo data
-(`acme/payments-api`, PR #482, the two built-in agents).
+(`acme/payments-api`, PR #482, the built-in agents, and — as of L02 — four
+seeded skills bound to the two new reviewer agents; see
+`specs/03-skills.md`).
 
 ## Review context (non-obvious)
 
@@ -131,6 +136,15 @@ What the reviewer actually sends to the model is assembled in
 - **Grounding is mandatory.** Every finding must cite a line that exists in the
   diff or it is dropped (`groundFindings`), and the score is recomputed from the
   surviving findings — the model's self-reported score is ignored.
+- **Skills** (`modules/skills/`) resolve to a `## Skills / rules` prompt block:
+  `SkillsRepository.blocksForAgent` returns the enabled-and-linked skill bodies
+  for one agent, in `agent_skills.order` — filtered at the query (`skills.enabled
+  AND agent_skills.enabled`), not in the caller. `run-executor.ts`'s
+  `buildSkillBlocks` wraps any body whose `source !== 'manual'` in
+  `wrapUntrusted(...)` before it reaches `reviewer-core` — an imported skill is
+  someone else's instructions landing in the prompt, so it is treated the same
+  as PR-author content, never as agent instructions. With nothing linked the
+  section is omitted byte-identically; no existing agent's prompt changes.
 
 ## Testing
 

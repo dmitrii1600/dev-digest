@@ -28,11 +28,20 @@ in the diff is dropped, so the engine can't hallucinate locations. The score is
 recomputed deterministically from the **surviving** findings, not trusted from the
 model. `review/run.ts` orchestrates the run (single-pass by default).
 
-The engine also accepts optional prompt slots the **course lessons** start
-feeding it — `skills` (L02), `memory` (L07), `specs` (L05), `callers` — plus a
-`reduce()`/map-reduce path and a `toReview()` CI payload helper used from L06.
-In the starter the server passes only the diff, system prompt, and repo map; the
-extra slots are omitted, so `assemblePrompt` simply leaves those sections out.
+The engine also accepts optional prompt slots the **course lessons** feed it —
+`memory` (L07), `specs` (L05), `callers` — plus a `reduce()`/map-reduce path and
+a `toReview()` CI payload helper used from L06. **`skills` (L02) is now fed**:
+the server resolves an agent's enabled, ordered skill bodies
+(`SkillsRepository.blocksForAgent`) and spreads them in at the
+`reviewPullRequest` call site (`modules/reviews/run-executor.ts`); nothing in
+this package changed to receive them — the slot, its section heading, and the
+omit-when-empty behavior were already correct, which is the whole point of a
+slot no lesson has fed yet. Any body whose `source !== 'manual'` arrives already
+wrapped with `wrapUntrusted()` — the server decides that, since provenance is a
+database concept this package deliberately doesn't know about. In the starter
+(no skill linked) the server passes only the diff, system prompt, and repo map;
+the extra slots are omitted, so `assemblePrompt` simply leaves those sections
+out — unchanged, byte for byte.
 
 ## Public API
 
