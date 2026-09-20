@@ -86,7 +86,9 @@ export function ConventionsView({ repoId }: { repoId: string }) {
                   ? t("page.lastScanFailed", { error: scan.error ?? "" })
                   : t("page.detectedFrom", {
                       count: scan.sampled_files.length,
-                      ago: timeAgo(scan.finished_at ?? scan.started_at),
+                      ago: (({ unit, count }) => t(`page.ago.${unit}`, { count }))(
+                        timeAgo(scan.finished_at ?? scan.started_at),
+                      ),
                     })
                 : t("page.subtitle")}
             </p>

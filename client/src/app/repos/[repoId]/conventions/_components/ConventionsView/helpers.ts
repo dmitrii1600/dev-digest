@@ -1,15 +1,21 @@
 import type { ConventionCandidate } from "@devdigest/shared";
 import { EXTRACT_ERROR_COPY } from "./constants";
 
-/** "just now" / "4m ago" / "2h ago" / "3d ago" for the "last scan" line. */
-export function timeAgo(iso: string, now: number = Date.now()): string {
+/** Coarse age of the last scan. Returns a unit + count, never copy — the
+ *  component formats it through `page.ago.<unit>` in `conventions.json`. */
+export interface TimeAgo {
+  unit: "now" | "minutes" | "hours" | "days";
+  count: number;
+}
+
+export function timeAgo(iso: string, now: number = Date.now()): TimeAgo {
   const diff = Math.max(0, now - Date.parse(iso));
   const m = Math.floor(diff / 60_000);
-  if (m < 1) return "just now";
-  if (m < 60) return `${m}m ago`;
+  if (m < 1) return { unit: "now", count: 0 };
+  if (m < 60) return { unit: "minutes", count: m };
   const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
-  return `${Math.floor(h / 24)}d ago`;
+  if (h < 24) return { unit: "hours", count: h };
+  return { unit: "days", count: Math.floor(h / 24) };
 }
 
 /** The i18n key for an extract error, or `null` for a generic failure. */

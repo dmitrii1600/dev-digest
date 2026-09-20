@@ -6,6 +6,12 @@
     "repoFallback": "repo",
     "subtitle": "Scan the cloned repo to surface house-rules — each backed by evidence you can turn into a Skill.",
     "detectedFrom": "Detected from {count, plural, one {# sample file} other {# sample files}} · last scan {ago}",
+    "ago": {
+      "now": "just now",
+      "minutes": "{count}m ago",
+      "hours": "{count}h ago",
+      "days": "{count}d ago"
+    },
     "lastScanFailed": "Last scan failed: {error}",
     "runScan": "Run Scan",
     "rescan": "ReScan",
