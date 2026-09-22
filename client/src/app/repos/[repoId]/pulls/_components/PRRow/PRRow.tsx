@@ -10,9 +10,9 @@ import type { Severity } from "@devdigest/shared";
 import { RunCostBadge } from "@/components/run-cost-badge";
 import { FindingsPreviewCard, useFindingsPreview } from "@/components/findings-preview";
 import { usePrReviews } from "@/lib/hooks/reviews";
-import { SIZE_COLOR, STATUS_META } from "../../constants";
-import { latestReviewFindings, relativeTime, sizeOf } from "../../helpers";
-import { s } from "../../styles";
+import { SIZE_COLOR, STATUS_META } from "@/app/repos/[repoId]/pulls/constants";
+import { latestReviewFindings, relativeTime, sizeOf } from "@/app/repos/[repoId]/pulls/helpers";
+import { s } from "@/app/repos/[repoId]/pulls/styles";
 
 /** Severity levels, most severe first. */
 const CHIP_ORDER: Severity[] = ["CRITICAL", "WARNING", "SUGGESTION"];

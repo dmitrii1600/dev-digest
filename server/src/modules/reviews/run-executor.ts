@@ -1,6 +1,13 @@
 import type { Container } from '../../platform/container.js';
-import type { Provider, Review, RunTrace, UnifiedDiff } from '@devdigest/shared';
-import { reviewPullRequest, countBlockers } from '@devdigest/reviewer-core';
+import type {
+  PromptAssembly,
+  PromptTokens,
+  Provider,
+  Review,
+  RunTrace,
+  UnifiedDiff,
+} from '@devdigest/shared';
+import { reviewPullRequest, countBlockers, wrapUntrusted } from '@devdigest/reviewer-core';
 import { RunLogger } from '../../platform/run-logger.js';
 import * as schema from '../../db/schema.js';
 import type { AgentRow } from '../../db/rows.js';
@@ -10,6 +17,16 @@ import { taskLine } from './helpers.js';
 import { loadDiff } from './diff-loader.js';
 
 /** Thrown by a run when the user cancels it mid-flight (between map files). */
+/**
+ * Skill sources whose body reaches the model as instructions, unwrapped. `manual`
+ * is typed by the user; `extracted` is assembled from candidates the user
+ * accepted one by one and shown editable before save (the evidence snippets
+ * inside it are wrapped individually by the conventions body builder). Every
+ * other source — an imported file, a community skill — is someone else's text
+ * and is delimiter-wrapped as untrusted, like PR-author content.
+ */
+const TRUSTED_SKILL_SOURCES: ReadonlySet<string> = new Set(['manual', 'extracted']);
+
 export class RunCancelledError extends Error {
   constructor() {
     super('Run cancelled');
@@ -183,6 +200,11 @@ export class ReviewRunExecutor {
 
       const task = taskLine(pull) + rankNote;
 
+      // L02 — skills. Best-effort like the repo-intel digests above: no skills
+      // linked (or none enabled) ⇒ undefined ⇒ assemblePrompt omits the
+      // section byte-identically (existing agents' prompts must not change).
+      const skillBlocks = await this.buildSkillBlocks(agent.id, runLog);
+
       // ---- Engine: assemble → single-pass → grounding -----------------------
       // The pure review pipeline lives in @devdigest/reviewer-core (shared with
       // the CI runner). The service owns only I/O: repo-intel context resolution
@@ -195,6 +217,9 @@ export class ReviewRunExecutor {
         // Per-agent review strategy (configured in the Agent editor); falls back
         // to the studio default. single-pass = whole diff in one call.
         strategy: agent.strategy ?? REVIEW_STRATEGY,
+        // L02 — resolved skill bodies, non-'manual' sources already wrapped as
+        // untrusted (see buildSkillBlocks). Omitted when no skill is attached.
+        ...(skillBlocks ? { skills: skillBlocks } : {}),
         // T1.3 — pass the callers digest only when we built one. assemblePrompt
         // omits the section when this is empty/undefined.
         ...(callersDigest ? { callers: callersDigest } : {}),
@@ -271,6 +296,7 @@ export class ReviewRunExecutor {
           grounding,
         },
         prompt_assembly: outcome.assembly,
+        prompt_tokens: this.computePromptTokens(outcome.assembly),
         tool_calls: outcome.chunks.map((c) => ({
           tool: 'review_file',
           args: c.label,
@@ -316,6 +342,50 @@ export class ReviewRunExecutor {
       this.container.runBus.complete(runId);
       throw err;
     }
+  }
+
+  /**
+   * L02 — resolved skill bodies for one agent, in `agent_skills.order`. Only
+   * skills that are BOTH `skills.enabled` and `agent_skills.enabled` are
+   * included (filtered in `SkillsRepository.blocksForAgent`, not here). A
+   * `source !== 'manual'` body is delimiter-wrapped as untrusted — the server
+   * is where provenance lives, so it wraps rather than pushing `SkillSource`
+   * into the pure `reviewer-core` package. Returns undefined when the agent
+   * has no enabled skill attached, so `assemblePrompt` omits the section
+   * byte-identically (protects every agent with no skills linked).
+   *
+   * NOTE: in map-reduce mode `promptParts` is reused for every chunk, so this
+   * block is sent once PER CHUNK — the token count logged below is per
+   * occurrence, not per run.
+   */
+  private async buildSkillBlocks(agentId: string, runLog: RunLogger): Promise<string[] | undefined> {
+    const rows = await this.container.skillsRepo.blocksForAgent(agentId);
+    if (rows.length === 0) return undefined;
+    const bodies = rows.map((r) =>
+      TRUSTED_SKILL_SOURCES.has(r.source) ? r.body : wrapUntrusted(`skill-${r.id}`, r.body),
+    );
+    const tokens = bodies.reduce((n, b) => n + this.container.tokenizer.count(b), 0);
+    runLog.info(`skills: ${bodies.length} skill(s) attached (${tokens} tokens)`);
+    return bodies;
+  }
+
+  /**
+   * Per-slot token attribution for the run trace (T3's `repo_map` comment
+   * promised this; L02 is the first consumer). Best-effort: a slot the
+   * tokenizer can't count is simply omitted rather than failing the run.
+   */
+  private computePromptTokens(assembly: PromptAssembly): PromptTokens {
+    const tok = this.container.tokenizer;
+    const out: PromptTokens = {};
+    if (assembly.system) out.system = tok.count(assembly.system);
+    if (assembly.skills) out.skills = tok.count(assembly.skills);
+    if (assembly.memory) out.memory = tok.count(assembly.memory);
+    if (assembly.specs) out.specs = tok.count(assembly.specs);
+    if (assembly.callers) out.callers = tok.count(assembly.callers);
+    if (assembly.repo_map) out.repo_map = tok.count(assembly.repo_map);
+    if (assembly.pr_description) out.pr_description = tok.count(assembly.pr_description);
+    if (assembly.user) out.user = tok.count(assembly.user);
+    return out;
   }
 
   /**

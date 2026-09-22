@@ -33,16 +33,11 @@ export type {
 
 export type { Review, Finding, Severity, Verdict } from "@devdigest/shared";
 export type { PrBrief, SmartDiff } from "@devdigest/shared";
-
-/** UI-only view model for a PR list row (derives display fields from PrMeta). */
-export interface PrRowView {
-  number: number;
-  title: string;
-  author: string;
-  size: "S" | "M" | "L";
-  sizeLines: string;
-  score: number;
-  findings: { CRITICAL: number; WARNING: number; SUGGESTION: number };
-  status: "needs_review" | "reviewed" | "stale";
-  updated: string;
-}
+export type {
+  ConventionCandidate,
+  ConventionCategory,
+  ConventionScan,
+  ConventionSkillDraft,
+  ConventionStatus,
+  ConventionsPage,
+} from "@devdigest/shared";

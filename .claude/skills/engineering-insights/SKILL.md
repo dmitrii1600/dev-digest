@@ -10,7 +10,7 @@ argument-hint: "[module]"
 hard way, written for the next session to read cold. One file per module, next
 to the code it is about.
 
-Not architecture (that is `README.md`), not rules (that is `CLAUDE.md`), not a
+Not architecture (that is `README.md`), not rules (that is `AGENTS.md`), not a
 changelog (that is `git log`).
 
 ---

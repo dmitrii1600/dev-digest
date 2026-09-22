@@ -3,7 +3,7 @@
 Flakiness causes, agent-browser quirks, and fixture assumptions that are not
 visible from the flow JSON. Cross-package findings go in `../INSIGHTS.md`.
 
-Not architecture (that is `README.md`), not rules (that is `CLAUDE.md`).
+Not architecture (that is `README.md`), not rules (that is `AGENTS.md`).
 
 How to read and append: `/engineering-insights`
 (`../.claude/skills/engineering-insights/SKILL.md`). Sections are fixed and
@@ -14,6 +14,17 @@ append-only. Empty sections are expected — append under the one that fits.
 ## What Works
 
 ## What Doesn't Work
+
+- 2026-09-20 — `agent-browser find text "<label>" click` refuses to click a
+  button inside the `Drawer` from `@devdigest/ui` with *"covered by <div> at
+  its click point"*, although `document.elementFromPoint` at the button's
+  centre returns the button itself (verified in both the agent-browser page
+  and the in-app browser). The drawer is `position: fixed` inside a scrolling
+  `<main>`; whatever find-text uses as the click point disagrees with the
+  rendered box. `click @eNN` (a snapshot ref) and `click "[data-testid=…]"`
+  both work, so a flow clicks such a button by a `data-testid` on the element
+  (`09-skills.flow.json` → `SkillPreviewDrawer.tsx`). Waiting out the slide-in
+  animation does not help.
 
 - 2026-09-16 — There is no negative text assertion. `wait --text X` waits for X to
   appear; nothing waits for X to be *gone*, so a filter or delete flow cannot
@@ -37,6 +48,16 @@ append-only. Empty sections are expected — append under the one that fits.
   positional selector.
 
 ## Tool & Library Notes
+
+- 2026-09-18 — `agent-browser` is **not** a declared dependency of this package
+  (`package.json` lists only tsx/eslint/typescript) — it is an external binary
+  expected on `PATH`. On a machine without it, `./scripts/e2e.sh` brings the
+  whole hermetic stack up successfully and then every flow fails identically with
+  `spawn agent-browser ENOENT`, before any page loads, for a final `0/8 flows
+  passed`. That output looks like a total application regression and is not one:
+  identical failures across all eight flows at the *first* step is the signature
+  of a missing driver, not of broken UI. Verify the app another way (curl the
+  routes against a running stack) before believing it.
 
 ## Recurring Errors & Fixes
 

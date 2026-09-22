@@ -14,7 +14,7 @@ import {
 import { AppShell } from "@/components/app-shell";
 import { RepoNotFound } from "@/components/repo-not-found";
 import { usePulls, useRefreshRepo } from "@/lib/hooks";
-import { useActiveRepo, useRepoNotFound } from "@/lib/repo-context";
+import { useActiveRepo, useRepoNotFound } from "@/providers/repo-context";
 import { ApiError } from "@/lib/api";
 import { COLUMN_KEYS, RIGHT_ALIGNED_COLUMNS, SKELETON_ROWS } from "./constants";
 import { s } from "./styles";

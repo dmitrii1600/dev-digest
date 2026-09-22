@@ -1,0 +1,8 @@
+#!/bin/sh
+# pr-self-review gate — the git half. Enable once per clone:
+#   git config core.hooksPath .githooks
+# Blocks the push unless .devdigest/pr-self-review/report.json is a PASS for
+# this exact tree and no static CRITICAL rule fires. Same script as the Claude
+# Code PreToolUse hook in .claude/settings.json; see .claude/skills/pr-self-review/.
+cd "$(git rev-parse --show-toplevel)" || exit 1
+exec node .claude/hooks/pr-self-review-gate.mjs git

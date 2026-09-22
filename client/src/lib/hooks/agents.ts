@@ -3,7 +3,7 @@
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
-import type { Agent, ModelInfo, Provider, ReviewStrategy } from "@devdigest/shared";
+import type { Agent, AgentSkillLink, ModelInfo, Provider, ReviewStrategy } from "@devdigest/shared";
 
 export function useAgents() {
   return useQuery({
@@ -87,5 +87,56 @@ export function useProviderModels(provider: Provider | null | undefined) {
     queryFn: () => api.get<ModelInfo[]>(`/providers/${provider}/models`),
     enabled: !!provider,
     staleTime: 5 * 60_000,
+  });
+}
+
+/* ---- Agent ↔ Skill bindings (agent Skills tab) ----
+   AgentSkillLink = { agent_id, skill_id, order, enabled }. The GET is
+   UNFILTERED — disabled bindings are included — so the tab can render a
+   dimmed row for them. */
+
+/** Ordered, unfiltered list of this agent's skill bindings. */
+export function useAgentSkillLinks(agentId: string | null | undefined) {
+  return useQuery({
+    queryKey: ["agent-skills", agentId],
+    queryFn: () => api.get<AgentSkillLink[]>(`/agents/${agentId}/skills`),
+    enabled: !!agentId,
+  });
+}
+
+/** Whole-list set/reorder — used by drag-and-drop and keyboard reordering.
+    The server preserves each binding's `enabled` flag across a reorder. */
+export function useSetAgentSkills(agentId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { skill_ids: string[] }) =>
+      api.post<AgentSkillLink[]>(`/agents/${agentId}/skills`, input),
+    onSuccess: (data) => qc.setQueryData(["agent-skills", agentId], data),
+  });
+}
+
+export interface UpdateAgentSkillLinkInput {
+  skillId: string;
+  enabled?: boolean;
+  order?: number;
+}
+
+/** Patches one binding (enabled/order). Lazily creates the link if the skill
+    was never attached to this agent before. */
+export function useUpdateAgentSkillLink(agentId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ skillId, ...patch }: UpdateAgentSkillLinkInput) =>
+      api.patch<AgentSkillLink[]>(`/agents/${agentId}/skills/${skillId}`, patch),
+    onSuccess: (data) => qc.setQueryData(["agent-skills", agentId], data),
+  });
+}
+
+/** Unlinks one skill from this agent. */
+export function useUnlinkAgentSkill(agentId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (skillId: string) => api.del<AgentSkillLink[]>(`/agents/${agentId}/skills/${skillId}`),
+    onSuccess: (data) => qc.setQueryData(["agent-skills", agentId], data),
   });
 }

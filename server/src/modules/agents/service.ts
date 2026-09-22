@@ -138,7 +138,12 @@ export class AgentsService {
   /** Linked skills for an agent as AgentSkillLink[] (ordered). */
   async skillLinks(agentId: string): Promise<AgentSkillLink[]> {
     const links = await this.repo.linkedSkills(agentId);
-    return links.map((l) => ({ agent_id: agentId, skill_id: l.skill.id, order: l.order }));
+    return links.map((l) => ({
+      agent_id: agentId,
+      skill_id: l.skill.id,
+      order: l.order,
+      enabled: l.enabled,
+    }));
   }
 
   /**
@@ -168,6 +173,39 @@ export class AgentsService {
     const existing = await this.repo.linkedSkills(agentId);
     const resolvedOrder = order ?? existing.length;
     await this.repo.linkSkill(agentId, skillId, resolvedOrder);
+    return this.skillLinks(agentId);
+  }
+
+  /** Patch one binding's `enabled` and/or `order` (lazily links it first). */
+  async updateSkillLink(
+    workspaceId: string,
+    agentId: string,
+    skillId: string,
+    patch: { enabled?: boolean; order?: number },
+  ): Promise<AgentSkillLink[] | undefined> {
+    const agent = await this.repo.getById(workspaceId, agentId);
+    if (!agent) return undefined;
+    const existing = await this.repo.linkedSkills(agentId);
+    if (!existing.some((l) => l.skill.id === skillId)) {
+      await this.repo.linkSkill(agentId, skillId, existing.length, patch.enabled ?? false);
+      if (patch.order !== undefined) {
+        await this.repo.updateSkillLink(agentId, skillId, { order: patch.order });
+      }
+    } else {
+      await this.repo.updateSkillLink(agentId, skillId, patch);
+    }
+    return this.skillLinks(agentId);
+  }
+
+  /** Unlink a single skill from an agent. */
+  async unlinkSkill(
+    workspaceId: string,
+    agentId: string,
+    skillId: string,
+  ): Promise<AgentSkillLink[] | undefined> {
+    const agent = await this.repo.getById(workspaceId, agentId);
+    if (!agent) return undefined;
+    await this.repo.unlinkSkill(agentId, skillId);
     return this.skillLinks(agentId);
   }
 

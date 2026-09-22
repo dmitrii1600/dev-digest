@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import { pathToFileURL } from 'node:url';
 import { createDb, type Db } from './client.js';
 import * as t from './schema.js';
 import { eq, and } from 'drizzle-orm';
@@ -6,7 +7,11 @@ import {
   GENERAL_REVIEWER_PROMPT,
   SECURITY_REVIEWER_PROMPT,
   PERFORMANCE_REVIEWER_PROMPT,
+  TEST_QUALITY_REVIEWER_PROMPT,
+  API_CONTRACT_REVIEWER_PROMPT,
 } from './seed-prompts.js';
+import { SEED_SKILLS, SEED_SKILL_LINKS } from './seed-skills.js';
+import { seedConventions } from './seed-conventions.js';
 
 /** Default provider/model for the built-in reviewer agents. */
 const DEFAULT_PROVIDER = 'openrouter' as const;
@@ -18,10 +23,13 @@ const DEFAULT_MODEL = 'deepseek/deepseek-v4-flash';
  *
  * Seeds: default workspace + system user + membership, default settings,
  * demo repo (acme/payments-api), PR #482 with files/commits, a sample review
- * with a few findings, and the three built-in agents (General + Security +
- * Performance), all on the default openrouter/deepseek-v4-flash provider+model.
+ * with a few findings, and the five built-in agents (General + Security +
+ * Performance + Test Quality + API Contract), all on the default
+ * openrouter/deepseek-v4-flash provider+model. Also seeds the L02 skills
+ * and their bindings onto the two newest agents (`seed-skills.ts`) and a
+ * demo conventions scan (`seed-conventions.ts`).
  *
- * Course lessons populate the other tables (skills, conventions, memory, eval,
+ * Course lessons populate the remaining tables (conventions, memory, eval,
  * …) once their features are built — they start empty here.
  */
 
@@ -224,6 +232,28 @@ export async function seed(db: Db): Promise<{ workspaceId: string; userId: strin
       version: 1,
       createdBy: userId,
     },
+    {
+      workspaceId,
+      name: 'Test Quality Reviewer',
+      description: 'Flags uncovered branches, missing edge cases, over-mocking, and flaky tests.',
+      provider: DEFAULT_PROVIDER,
+      model: DEFAULT_MODEL,
+      systemPrompt: TEST_QUALITY_REVIEWER_PROMPT,
+      enabled: true,
+      version: 1,
+      createdBy: userId,
+    },
+    {
+      workspaceId,
+      name: 'API Contract Reviewer',
+      description: 'Catches breaking route, response-shape, nullability, and status-code changes.',
+      provider: DEFAULT_PROVIDER,
+      model: DEFAULT_MODEL,
+      systemPrompt: API_CONTRACT_REVIEWER_PROMPT,
+      enabled: true,
+      version: 1,
+      createdBy: userId,
+    },
   ];
   for (const a of seedAgents) {
     const [existing] = await db
@@ -232,6 +262,64 @@ export async function seed(db: Db): Promise<{ workspaceId: string; userId: strin
       .where(and(eq(t.agents.workspaceId, workspaceId), eq(t.agents.name, a.name)));
     if (!existing) await db.insert(t.agents).values(a);
   }
+
+  // ---- skills (L02) + their agent bindings ----
+  // `pr-quality-rubric` is shared by both new reviewers; `test-coverage-nudge`
+  // is Test Quality only; `api-contract-gate` is API Contract only.
+  // `no-then-chains` stands in for the "imported from a file" path: source
+  // isn't 'manual', so per the feature's rule it is seeded disabled at both
+  // the skill level and the per-binding level — the "needs vetting" example.
+  const seedSkills: Array<typeof t.skills.$inferInsert> = SEED_SKILLS.map((sk) => ({
+    workspaceId,
+    ...sk,
+  }));
+  const skillIdByName = new Map<string, string>();
+  for (const s of seedSkills) {
+    let [existing] = await db
+      .select({ id: t.skills.id })
+      .from(t.skills)
+      .where(and(eq(t.skills.workspaceId, workspaceId), eq(t.skills.name, s.name)));
+    if (!existing) {
+      [existing] = await db.insert(t.skills).values(s).returning({ id: t.skills.id });
+    }
+    skillIdByName.set(s.name, existing!.id);
+    // The v1 snapshot the repository writes on POST /skills. Seeding inserts
+    // rows directly, so without this a seeded skill claims version 1 while
+    // GET /skills/:id/versions returns nothing — an empty history the studio
+    // can neither diff nor restore from.
+    await db
+      .insert(t.skillVersions)
+      .values({ skillId: existing!.id, version: 1, body: s.body, note: null })
+      .onConflictDoNothing();
+  }
+
+  const reviewerAgentRows = await db
+    .select({ id: t.agents.id, name: t.agents.name })
+    .from(t.agents)
+    .where(eq(t.agents.workspaceId, workspaceId));
+  const agentIdByName = new Map(reviewerAgentRows.map((a) => [a.name, a.id]));
+
+  const seedSkillLinks = SEED_SKILL_LINKS;
+  for (const link of seedSkillLinks) {
+    const agentId = agentIdByName.get(link.agent);
+    const skillId = skillIdByName.get(link.skill);
+    if (!agentId || !skillId) continue;
+    const [existing] = await db
+      .select({ agentId: t.agentSkills.agentId })
+      .from(t.agentSkills)
+      .where(and(eq(t.agentSkills.agentId, agentId), eq(t.agentSkills.skillId, skillId)));
+    if (!existing) {
+      await db.insert(t.agentSkills).values({
+        agentId,
+        skillId,
+        order: link.order,
+        enabled: link.enabled,
+      });
+    }
+  }
+
+  // ---- conventions (L02 second half): one finished scan + three candidates ----
+  await seedConventions(db, workspaceId, repoId);
 
   // ---- demo agent runs for PR #482 (+ their traces) ----
   // Without these the run timeline, the trace drawer and the PR list's COST
@@ -485,7 +573,10 @@ export async function seed(db: Db): Promise<{ workspaceId: string; userId: strin
 }
 
 // CLI entrypoint
-if (import.meta.url === `file://${process.argv[1]}`) {
+// `pathToFileURL`, not a template string: on Windows argv[1] is a backslash path
+// and `file://${argv[1]}` never equals import.meta.url — the guard silently
+// skipped the whole CLI (root INSIGHTS.md, 2026-09-15).
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const url = process.env.DATABASE_URL;
   if (!url) {
     console.error('DATABASE_URL is required');

@@ -78,6 +78,34 @@
       "when": 1789472017062,
       "tag": "0010_cloudy_ben_grimm",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1789755226140,
+      "tag": "0011_supreme_bushwacker",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1789858823811,
+      "tag": "0012_elite_zemo",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1789907700124,
+      "tag": "0013_lethal_psylocke",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1789907708701,
+      "tag": "0014_adorable_molten_man",
+      "breakpoints": true
     }
   ]
 }

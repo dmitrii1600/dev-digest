@@ -38,7 +38,7 @@ flowchart LR
   API --> CLONE
   INDEX -->|"repo map = review context"| ENGINE
 
-  ENGINE["reviewer-core/<br/>diff + repo map → prompt → LLM<br/>→ structured findings → grounding gate"]
+  ENGINE["reviewer-core/<br/>diff + repo map + skills → prompt → LLM<br/>→ structured findings → grounding gate"]
   LLM["LLM<br/>OpenAI · Anthropic · OpenRouter"]
   API -->|"run review"| ENGINE
   ENGINE --> LLM
@@ -51,8 +51,9 @@ flowchart LR
 
 The review flow end to end: **add a repo** → server clones it and `repo-intel`
 indexes it (the **Indexed** badge) → **import PRs** from GitHub → open a PR and
-**Review** → `reviewer-core` assembles a prompt from the diff + the repo map,
-calls the LLM, validates every finding against the diff (the **grounding gate**
+**Review** → `reviewer-core` assembles a prompt from the diff + the repo map +
+any **skills** attached to the agent (reusable instruction blocks, rendered as a
+`## Skills / rules` block in the prompt), calls the LLM, validates every finding against the diff (the **grounding gate**
 drops hallucinated line references), and persists structured findings with a
 severity and score. All local; the only outbound calls are to GitHub (PR data)
 and the LLM (via OpenRouter).
@@ -72,6 +73,7 @@ Each package has its own README with deeper diagrams:
 - **View diff** — GitHub-like diff in the browser.
 - **Agents** — two built-in reviewers (General + Security); create/edit your own (model + system prompt).
 - **Run a review** — single-pass analysis returning structured findings (severity + score), with the grounding gate and repo-map context working from the start.
+- **Skills** — reusable markdown instruction blocks (rubric / convention / security / custom), attached to one or more agents in an explicit order, versioned, and injected into the review prompt as a labelled `## Skills / rules` block. Import from a `.md` file or a `.zip` archive; anything not written by you (`source !== 'manual'`) arrives disabled and delimiter-wrapped as untrusted content in the prompt.
 
 ## What you build in the course
 
@@ -80,7 +82,7 @@ These are intentionally **not** in the starter — each lesson adds one back:
 | Lesson | You build |
 |--------|-----------|
 | L01 | Run cost badge · severity filter on findings |
-| L02 | Skills in the product · Conventions extractor |
+| L02 | ~~Skills in the product~~ · ~~Conventions extractor~~ |
 | L03 | Intent layer · Smart Diff |
 | L04 | `devdigest-mcp` server · Blast Radius (reads `repo-intel`) |
 | L05 | Project Context Folder · Onboarding generator · PR Brief card |

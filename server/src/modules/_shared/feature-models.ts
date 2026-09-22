@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import {
   FEATURE_MODELS,
   FeatureModelChoice,
@@ -6,7 +6,6 @@ import {
 } from '@devdigest/shared';
 import type { Container } from '../../platform/container.js';
 import * as t from '../../db/schema.js';
-import { rowsToSettings } from './helpers.js';
 
 /**
  * Per-feature model configuration.
@@ -17,6 +16,9 @@ import { rowsToSettings } from './helpers.js';
  * registry default in `FEATURE_MODELS` — which mirrors each module's old
  * constant, so behaviour is unchanged until a model is explicitly picked.
  */
+
+/** The settings key `PUT /settings` writes the per-feature choices under. */
+const FEATURE_MODELS_KEY = 'feature_models';
 
 const DEFAULTS = Object.fromEntries(
   FEATURE_MODELS.map((f) => [f.id, { provider: f.defaultProvider, model: f.defaultModel }]),
@@ -38,11 +40,14 @@ export async function getFeatureModelOverride(
   workspaceId: string,
   id: FeatureModelId,
 ): Promise<FeatureModelChoice | undefined> {
-  const rows = await container.db
-    .select({ key: t.settings.key, value: t.settings.value })
+  // Read the one settings row directly rather than through the settings
+  // module's helpers: this file lives in `_shared/` precisely so any module can
+  // import it, and `_shared` may not reach back into a feature folder.
+  const [row] = await container.db
+    .select({ value: t.settings.value })
     .from(t.settings)
-    .where(eq(t.settings.workspaceId, workspaceId));
-  const fm = (rowsToSettings(rows) as { feature_models?: Record<string, unknown> }).feature_models;
+    .where(and(eq(t.settings.workspaceId, workspaceId), eq(t.settings.key, FEATURE_MODELS_KEY)));
+  const fm = row?.value as Record<string, unknown> | null | undefined;
   const parsed = FeatureModelChoice.safeParse(fm?.[id]);
   return parsed.success ? parsed.data : undefined;
 }

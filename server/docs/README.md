@@ -9,5 +9,5 @@ Architecture overview, the request/DI flow and the route map stay in
 
 Cross-package documents go in `../../docs/`.
 
-When you add a document, link it from `../CLAUDE.md` (`## Read when`) with the
+When you add a document, link it from `../AGENTS.md` (`## Read when`) with the
 condition under which an agent should open it.
