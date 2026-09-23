@@ -49,6 +49,8 @@ export const PromptAssembly = z.object({
   repo_map: z.string().nullish(),
   /** PR author's description/body (truncated); null when absent. */
   pr_description: z.string().nullish(),
+  /** Derived-intent block (untrusted); null when the section was omitted. */
+  intent: z.string().nullish(),
   user: z.string(),
 });
 export type PromptAssembly = z.infer<typeof PromptAssembly>;
@@ -68,6 +70,7 @@ export const PromptTokens = z
     callers: z.number().int(),
     repo_map: z.number().int(),
     pr_description: z.number().int(),
+    intent: z.number().int(),
     user: z.number().int(),
   })
   .partial();

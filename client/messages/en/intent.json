@@ -1,0 +1,30 @@
+{
+  "card": {
+    "title": "Intent",
+    "rerun": "Re-run",
+    "empty": {
+      "body": "This PR's intent has not been derived yet.",
+      "cta": "Derive intent"
+    },
+    "inScope": "In scope",
+    "outOfScope": "Out of scope",
+    "notStated": "Not stated",
+    "confidence": "Confidence",
+    "confidenceDetail": "Derived from {available} of {total} source(s)",
+    "stale": "Derived for an older commit",
+    "error": "Could not derive intent: {message}",
+    "sourceKind": {
+      "pr_title": "PR title",
+      "pr_body": "PR body",
+      "changed_files": "Changed files",
+      "project_context": "Project context",
+      "plan_spec": "Plan/spec",
+      "linked_issue": "Linked issue"
+    },
+    "status": {
+      "available": "available",
+      "partial": "partial",
+      "unavailable": "unavailable"
+    }
+  }
+}

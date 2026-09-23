@@ -121,6 +121,24 @@ export class ReviewRunExecutor {
     }
     runLog.info(`Diff ready — ${diff.files.length} changed file(s); starting ${jobs.length} agent run(s)`);
 
+    // Intent Layer (L03) — shared pre-work, under the SAME fanned-out runLog as
+    // the diff load above, so every queued agent's Live Log shows it. `ensure`
+    // itself decides reuse-vs-derive from `head_sha`; it never throws (a
+    // failure is reported through `onEvent` and returns null), and the
+    // `.catch` here is a second safety net so an enrichment can never fail a
+    // run — same idiom as `buildCallersDigest` / `buildRepoMapDigest` below.
+    const intent = await runLog
+      .step(
+        'Deriving PR intent',
+        () =>
+          this.container.intent.ensure(workspaceId, pull.id, {
+            diff,
+            onEvent: (k, m, d) => runLog.event(k, m, d),
+          }),
+        { kind: 'tool' },
+      )
+      .catch(() => null);
+
     for (const { agent, runId } of jobs) {
       const agentStart = Date.now();
       logger?.info(
@@ -128,7 +146,7 @@ export class ReviewRunExecutor {
         `review: agent "${agent.name}" started (${agent.provider}/${agent.model})`,
       );
       try {
-        const outcome = await this.runOneAgent(workspaceId, pull, repo, diff, agent, runId, runLog);
+        const outcome = await this.runOneAgent(workspaceId, pull, repo, diff, agent, runId, runLog, intent?.block);
         logger?.info(
           {
             runId,
@@ -160,6 +178,7 @@ export class ReviewRunExecutor {
     agent: AgentRow,
     runId: string,
     parentLog: RunLogger,
+    intentBlock: string | undefined,
   ): Promise<RunOutcome> {
     const start = Date.now();
     // Narrow the fanned-out pre-work logger to THIS run; the shared diff/intent
@@ -228,6 +247,10 @@ export class ReviewRunExecutor {
         // PR author's description/body — untrusted; assemblePrompt wraps +
         // truncates it. Omitted when the PR has no body.
         ...(pull.body ? { prDescription: pull.body } : {}),
+        // Intent Layer (L03) — the block built by `container.intent.ensure()`
+        // above, shared across every queued agent. Omitted when derivation
+        // failed/returned null, so assemblePrompt's shape is unchanged.
+        ...(intentBlock ? { intent: intentBlock } : {}),
         task,
         sessionId: `${repo.owner}/${repo.name}#${pull.number}:${agent.name}`,
         onEvent: (e) => runLog.event(e.kind, e.msg, e.data),
@@ -238,6 +261,10 @@ export class ReviewRunExecutor {
       const { tokensIn, tokensOut, costUsd, grounding } = outcome;
 
       const keptFindings = outcome.review.findings;
+
+      if (outcome.scopeDropped.length > 0) {
+        runLog.info(`scope: dropped ${outcome.scopeDropped.length} out-of-scope finding(s); CRITICALs kept`);
+      }
 
       // ---- Persist review + findings ----------------------------------------
       const review = await this.repo.insertReview({
@@ -265,6 +292,13 @@ export class ReviewRunExecutor {
       const blockers = countBlockers(keptFindings, agent.ciFailOn);
 
       // ---- Observability: agent_runs + ONE run_traces document --------------
+      // tokensIn/tokensOut/costUsd here describe ONLY the reviewer call
+      // (outcome.*, from reviewPullRequest) — they feed the per-run cost badge.
+      // The Intent Layer's classifier call has its OWN tokens/cost, recorded on
+      // `pr_intent` by IntentService, NOT added in here: the two columns
+      // already carry two different aggregation rules (see docs/read-aggregates.md
+      // and server/INSIGHTS.md), and folding a third rule in silently would be
+      // a regression, not a fix.
       await this.repo.completeAgentRun(runId, {
         status: 'done',
         durationMs,
@@ -384,6 +418,7 @@ export class ReviewRunExecutor {
     if (assembly.callers) out.callers = tok.count(assembly.callers);
     if (assembly.repo_map) out.repo_map = tok.count(assembly.repo_map);
     if (assembly.pr_description) out.pr_description = tok.count(assembly.pr_description);
+    if (assembly.intent) out.intent = tok.count(assembly.intent);
     if (assembly.user) out.user = tok.count(assembly.user);
     return out;
   }

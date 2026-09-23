@@ -100,6 +100,7 @@ flowchart TB
 | `GITHUB_TOKEN` | — | optional; PAT with repo scope (`GITHUB_PAT` accepted as a fallback) |
 | `EMBEDDINGS_ENABLED` | `false` | memory/RAG embeddings (OpenAI); off → **zero** OpenAI calls |
 | `REPO_INTEL_ENABLED` | `true` | repo skeleton + callers in the prompt; `false` → ripgrep-only |
+| `INTENT_FETCH_LINKS` | `true` | Intent Layer tier D — fetch an external URL a PR body links to; `false` → that reference degrades to `unavailable · external fetching disabled` (tiers A–C keep working) |
 | `DEVDIGEST_CLONE_DIR` | `./clones` | imported-repo checkouts (git-ignored) |
 | `LOG_LEVEL` | `info` (`silent` in test) | pino level |
 | `NODE_ENV` | `development` | `test` → silent logs + global rate-limit disabled |
@@ -137,6 +138,20 @@ What the reviewer actually sends to the model is assembled in
 - **Grounding is mandatory.** Every finding must cite a line that exists in the
   diff or it is dropped (`groundFindings`), and the score is recomputed from the
   surviving findings — the model's self-reported score is ignored.
+- **Derived intent is a new `<untrusted>` slot (L03), and it is untrusted on
+  purpose.** `run-executor.ts` derives (or reuses) a PR's intent/scope
+  (`modules/intent/`) before the per-agent loop and passes the resulting block
+  through `ReviewInput.intent`; `assemblePrompt` renders it as
+  `## Derived intent`, wrapped, right after `## PR description` — a claim
+  *about* the PR sits beside the author's own claim, not framed by the
+  reviewer's instructions. `INJECTION_GUARD` already names "derived
+  intent/scope" as untrusted, so a plan or PR description that says "security
+  is out of scope" cannot narrow what the reviewer checks. Code-side, after
+  grounding, a SEPARATE filter (`reviewer-core/src/review/scope.ts`) drops a
+  finding the model itself labelled `out_of_scope` — but **never** a CRITICAL,
+  and only when an intent block was actually supplied. An unparseable
+  classifier output (retries exhausted) omits the section entirely rather than
+  failing the run; `pr_intent.error` records why.
 - **Skills** (`modules/skills/`) resolve to a `## Skills / rules` prompt block:
   `SkillsRepository.blocksForAgent` returns the enabled-and-linked skill bodies
   for one agent, in `agent_skills.order` — filtered at the query (`skills.enabled

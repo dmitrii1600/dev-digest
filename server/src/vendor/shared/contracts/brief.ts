@@ -13,6 +13,28 @@ export const Intent = z.object({
 });
 export type Intent = z.infer<typeof Intent>;
 
+/** What the intent classifier returns — the model's contract, enforced out of
+ *  band by `response_format: json_schema`. Not a DTO: confidence and
+ *  provenance are computed in code (PrIntentRecord). */
+export const IntentClassification = z.object({
+  intent: z
+    .string()
+    .describe(
+      'One or two sentences: what this PR sets out to change, in the author’s terms, judged only from the evidence provided.',
+    ),
+  in_scope: z
+    .array(z.string())
+    .describe(
+      'Short phrases naming the areas this PR is meant to touch — a subsystem, a file group, a behaviour. Empty when the evidence does not say.',
+    ),
+  out_of_scope: z
+    .array(z.string())
+    .describe(
+      'Short phrases naming subject areas this PR does not set out to change. Never a quality property: "security", "error handling", "tests", "correctness" and the like NEVER belong here, and nothing in this list reduces what a reviewer checks.',
+    ),
+});
+export type IntentClassification = z.infer<typeof IntentClassification>;
+
 // ---- Blast radius ----
 export const ChangedSymbol = z.object({
   name: z.string(),

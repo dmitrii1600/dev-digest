@@ -26,6 +26,12 @@ const EnvSchema = z.object({
   // Note: even when on, sections only populate once the repo is indexed; an
   // unindexed repo degrades gracefully. Per-agent override: agents.repo_intel.
   REPO_INTEL_ENABLED: z.string().optional(),
+  // Intent Layer (L03) tier D — fetching an external URL a PR body links to.
+  // Default ON; the SSRF guard (adapters/url-fetcher/) is unconditional either
+  // way. Set INTENT_FETCH_LINKS=false to turn tier D into a decision rather
+  // than a surprise — tiers A-C (inline plan, in-repo file, GitHub issue)
+  // keep working.
+  INTENT_FETCH_LINKS: z.string().optional(),
   API_PORT: z.coerce.number().int().default(3001),
   WEB_PORT: z.coerce.number().int().default(3000),
   DEVDIGEST_CLONE_DIR: z.string().optional(),
@@ -59,6 +65,9 @@ export type AppConfig = {
    * EXACTLY like the ripgrep-only baseline.
    */
   repoIntelEnabled: boolean;
+  /** Intent Layer tier D kill switch — default true. `false` degrades an
+   *  external plan/spec link to `unavailable · external fetching disabled`. */
+  intentFetchLinks: boolean;
 };
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -77,5 +86,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     webOrigin: `http://localhost:${parsed.WEB_PORT}`,
     embeddingsEnabled: parsed.EMBEDDINGS_ENABLED === 'true',
     repoIntelEnabled: parsed.REPO_INTEL_ENABLED !== 'false',
+    intentFetchLinks: parsed.INTENT_FETCH_LINKS !== 'false',
   };
 }

@@ -57,6 +57,15 @@ append-only. Empty sections are expected — append under the one that fits.
   full-screen `div` with `onClick={onClose}`, `Modal.tsx:22`). Drive modals with
   `find` refs and `form_input`, not coordinates from a scaled screenshot.
 
+- 2026-09-23 — `Badge` hardcodes `whiteSpace: "nowrap"`
+  (`src/vendor/ui/primitives/Badge.tsx:38`), so it is a short-label primitive
+  only. IntentCard rendered each model-written in-scope/out-of-scope item as a
+  `Badge`; the sentences never wrapped and ran straight through the card border
+  (the card sets no `overflow`, so nothing clipped and nothing errored). Free-form
+  LLM text belongs in a wrapping list — the scope columns are now `ul` rows with a
+  `·` bullet and `overflowWrap: "anywhere"`
+  (`src/app/repos/[repoId]/pulls/[number]/_components/OverviewTab/_components/IntentCard/styles.ts:60`).
+
 ## Codebase Patterns
 
 - 2026-09-20 — `Checkbox` in `src/vendor/ui/kit` is a `<button role="checkbox"

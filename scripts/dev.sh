@@ -6,6 +6,7 @@
 #   ./scripts/dev.sh --no-seed    # skip the demo seed
 #   ./scripts/dev.sh --no-client  # run only Postgres + API (no Next.js)
 #   ./scripts/dev.sh --db-only    # just Postgres + migrate + seed, then exit
+#   ./scripts/dev.sh --free-ports # kill a leftover dev server holding :3000/:3001
 #
 # Idempotent: re-running installs only what's missing, migrations and seed
 # both upsert. Ctrl-C stops the dev servers and leaves Postgres running.
@@ -19,15 +20,17 @@ CONTAINER="devdigest-postgres"
 RUN_SEED=1
 RUN_CLIENT=1
 DB_ONLY=0
+FREE_PORTS="${FREE_PORTS:-0}"
 API_PORT="${API_PORT:-3001}"
 WEB_PORT="${WEB_PORT:-3000}"
 
 for arg in "$@"; do
   case "$arg" in
-    --no-seed)   RUN_SEED=0 ;;
-    --no-client) RUN_CLIENT=0 ;;
-    --db-only)   DB_ONLY=1 ;;
-    -h|--help)   sed -n '2,12p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    --no-seed)    RUN_SEED=0 ;;
+    --no-client)  RUN_CLIENT=0 ;;
+    --db-only)    DB_ONLY=1 ;;
+    --free-ports) FREE_PORTS=1 ;;
+    -h|--help)   sed -n '2,13p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "unknown flag: $arg" >&2; exit 2 ;;
   esac
 done
@@ -125,15 +128,53 @@ port_owner() {
   fi
 }
 
+is_windows() {
+  case "$(uname -s 2>/dev/null || echo unknown)" in
+    MINGW*|MSYS*|CYGWIN*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# Opt-in only (--free-ports). Kills the *chain* that holds the port, not just
+# the listener: on Windows the leaf node is wrapped in cmd.exe/pnpm and killing
+# the leaf leaves the wrappers behind. free-port.ps1 walks up to the topmost
+# wrapper and stops before the terminal that launched it.
+free_port() {
+  local port="$1"
+  log "reclaiming port $port (--free-ports)"
+  if is_windows; then
+    local ps1; ps1="$(cygpath -w "$ROOT/scripts/free-port.ps1")"
+    MSYS2_ARG_CONV_EXCL='*' powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$ps1" -Port "$port"
+  else
+    local pid; pid="$(port_owner "$port" || true)"
+    [ -n "$pid" ] || { warn "could not resolve the owner of :$port"; return 1; }
+    pkill -TERM -P "$pid" 2>/dev/null || true
+    kill -TERM "$pid" 2>/dev/null || true
+    for _ in $(seq 1 20); do port_busy "$port" || return 0; sleep 0.25; done
+    kill -KILL "$pid" 2>/dev/null || true
+    for _ in $(seq 1 8); do port_busy "$port" || return 0; sleep 0.25; done
+    warn "port $port is still held after SIGKILL"
+    return 1
+  fi
+}
+
 check_port() {
   port_busy "$1" || return 0
+
+  if [ "$FREE_PORTS" -eq 1 ]; then
+    free_port "$1" && ! port_busy "$1" && return 0
+    warn "could not free port $1 — stop the process by hand and re-run"
+    exit 1
+  fi
+
   local pid; pid="$(port_owner "$1" || true)"
   warn "port $1 is already in use — $2 cannot start"
   if [ -n "$pid" ]; then
-    warn "  held by PID $pid — stop it (Ctrl-C in its terminal, or: kill $pid) and re-run"
+    warn "  held by PID $pid — stop it (Ctrl-C in its terminal, or: kill $pid)"
   else
-    warn "  stop whatever is listening on :$1 and re-run"
+    warn "  stop whatever is listening on :$1"
   fi
+  warn "  a leftover dev server? re-run with: ./scripts/dev.sh --free-ports"
   exit 1
 }
 

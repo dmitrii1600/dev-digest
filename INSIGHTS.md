@@ -37,6 +37,16 @@ append-only. Empty sections are expected — append under the one that fits.
   hook is testable with no real push. Set `GIT_SSH_COMMAND='ssh -o BatchMode=yes
   -o ConnectTimeout=20'` or a passphrase prompt hangs the test; git contacts the
   remote before the hook fires.
+- 2026-09-22 — To clear a dev server that outlived its session, run
+  `./scripts/dev.sh --free-ports` (or `scripts/free-port.ps1 -Port 3000`
+  standalone). It resolves the listener, walks **up** the parent chain while
+  the ancestor is a wrapper (`node/cmd/pnpm/npm/sh/bash/tsx/next/conhost`) and
+  `taskkill /T /F`s the topmost one — the leaf-only kill the old note warned
+  about is exactly what this avoids. The allowlist is the safety: verified
+  against :5432, where it refused `com.docker.backend.exe` and `wslrelay.exe`
+  and exited 1 rather than taking Postgres down (`scripts/free-port.ps1:33`).
+  Default behaviour is unchanged — the guard still only reports
+  (`scripts/dev.sh:161`); killing is opt-in.
 
 ## What Doesn't Work
 
@@ -72,7 +82,13 @@ append-only. Empty sections are expected — append under the one that fits.
   (*What Doesn't Work*, 2026-09-20) forbids — and then reads the resulting 404 on
   `/agents` and 500 on `/skills` as an application bug. Check
   `netstat -ano | grep -E ":3000 "` **before** building; if something already
-  serves the port, stop it first or skip the build.
+  serves the port, stop it first or skip the build. Refined 2026-09-22: the
+  usual source is not a killed script but an **agent session** — the two
+  orphans found today had `claude.exe` as their chain root
+  (`cmd.exe -> pnpm --dir client dev -> cmd.exe -> next dev -> start-server.js`)
+  and had been holding :3000/:3001 for two days. Resolve one with
+  `Get-CimInstance Win32_Process` ancestry, not `netstat` alone; the listener
+  PID is the leaf, and killing it leaves the wrappers.
 
 - 2026-09-18 — A real symlink is not usable as the `CLAUDE.md` → `AGENTS.md`
   link here, and its failure mode is silent. `New-Item -ItemType SymbolicLink`
@@ -132,7 +148,27 @@ append-only. Empty sections are expected — append under the one that fits.
   the container from there. The four WARNINGs it emits are noise, not a naming
   bug — add `startPg|helpers\/pg` to that regex when the gate is next touched.
 
+- 2026-09-22 — `permissionMode` in a subagent's frontmatter is **not** a safety
+  boundary: under auto mode it is ignored and every action goes through the
+  parent session's classifier instead. `disallowedTools: Bash(git push:*)` is not
+  one either — it removes the **whole** `Bash` tool, not the pattern. A
+  subagent's only real gate is what you leave out of `tools:`
+  (`.claude/agents/planner.md:11` has no `Write`/`Edit`, which is what makes it
+  read-only); command-level limits exist only in `settings.json →
+  permissions.deny`, which is session-wide and binds the author's own session
+  too. Everything else an agent body forbids is convention, not enforcement.
+
 ## Codebase Patterns
+
+- 2026-09-22 — A change confined to `.claude/**` gets **no automated verification at
+  all**, and that is by design, not a gap to fill. `ROUTES` files it as
+  `convention-only` (`pr-self-review-gate.mjs:153`), so no review skill is loaded;
+  `packageOf` returns `null` for it (`pr-self-review-gate.mjs:248`), so no `lint`,
+  `typecheck`, `test` or `arch` command is ever scheduled; and `isSourceFile` is
+  extension-based (`pr-self-review-gate.mjs:397`), so `no-insights` cannot fire on
+  markdown either. Running `pnpm lint` after editing an agent or a skill proves
+  nothing. The only verification that exists is invoking the thing on a change with a
+  known ground truth — pick a commit whose findings you already know.
 
 - 2026-09-15 — Unknown cost renders "—", never "$0.00", on every surface. The
   distinction is load-bearing and already baked into the engine: the per-chunk
@@ -211,7 +247,58 @@ append-only. Empty sections are expected — append under the one that fits.
   trust line moves on the server, grep the client for `UNTRUSTED_SOURCES` and
   `needsVetting` in the same change.
 
+- 2026-09-22 — The `planner → implementer` chain hands over a **file path**, not
+  a plan. A subagent inherits none of the caller's context (only its own system
+  prompt, the `Agent` tool's prompt string and `CLAUDE.md`), and the caller may
+  summarise a subagent's final message — so `.claude/agents/planner.md` ends with
+  "output the plan verbatim", the caller saves that text to a file, and
+  `.claude/agents/implementer.md:38` reads it as step 0. A retold plan loses
+  exactly the parts (paths, verify commands, constraints) the implementer cannot
+  re-derive.
+- 2026-09-22 — Skills do **not** auto-trigger inside a subagent the way they do
+  in the main session: an agent reaches one either through `skills:` in
+  frontmatter (full body preloaded on every run) or through the `Skill` tool.
+  Both new agents keep `Skill` and preload nothing, so a frontend task does not
+  pay for the `onion-architecture` body. Consequence for the split: the planner
+  can only *name* skills in its *Skill contract*, the implementer invokes them,
+  and both route through the one canonical table,
+  `.claude/skills/pr-self-review/routing.md`.
+
 ## Tool & Library Notes
+
+- 2026-09-22 — Subagent frontmatter and Skill frontmatter are different schemas.
+  `allowed-tools`, `disallowed-tools`, `disable-model-invocation` and
+  `user-invocable` are **Skill** fields; a subagent has `name` and `description`
+  (required), then `tools` (an allowlist that *replaces* inheritance, not adds to
+  it), `disallowedTools`, `model`, `skills`, `memory`, `mcpServers`, `maxTurns`,
+  `background`, `omitClaudeMd`, `effort`. `color`, `initialPrompt`, `hooks` and
+  `experimental.cacheTtl` show up in one summarised source only — the three
+  agents here deliberately use `name`/`description`/`tools`/`model` and nothing
+  else.
+- 2026-09-22 — Supersedes the last sentence of the entry above: **`skills:` is now
+  used.** It clears the same two-independent-primaries bar the other four fields
+  did — documented identically on `code.claude.com/docs/en/sub-agents` and
+  `/agent-sdk/subagents`: it preloads the named skills at startup, and skills *not*
+  listed stay invocable through the `Skill` tool. So a subagent's skill access is
+  two-tier, not one, and the choice is a context-cost trade: preload only what the
+  agent cannot work without, route the rest. Four agents preload (`test-writer` →
+  `react-testing-library`, `architecture-reviewer` → `onion-architecture` +
+  `frontend-ui-architecture`, `doc-writer` → `mermaid-diagram`); `plan-verifier`
+  deliberately preloads nothing, because a review skill in its context is exactly
+  what would drag it from per-item conformance into generic review advice. The
+  other documented fields (`disallowedTools`, `permissionMode`, `maxTurns`,
+  `color`) stay unused for the reasons in *What Doesn't Work*.
+- 2026-09-22 — The subagent tool is called `Agent`; it was `Task` before Claude
+  Code v2.1.63. `.claude/skills/README.md:34` still says agents are invoked "via
+  Task tool" — stale, left alone because that pass was scoped to
+  `.claude/agents/`. Fix it the next time that file is touched.
+- 2026-09-22 — A subagent's final message is scanned before the parent reads it.
+  This session's `researcher` report came back prefixed with
+  `[harness: subagent output matched instruction-shaped pattern(s): settings-json,
+  bypass-permissions, permissions-allow-deny]` and with control tags neutralised,
+  purely because the report's *subject* was permissions. Nothing was lost and it
+  is not a security incident — expect the prefix whenever an agent researches
+  settings or permission modes.
 
 - 2026-09-18 — Claude Code 2.1.273 discovers project memory at exactly
   `CLAUDE.md`, `.claude/CLAUDE.md`, `CLAUDE.local.md` and `.claude/rules/`
@@ -247,6 +334,12 @@ append-only. Empty sections are expected — append under the one that fits.
   heredoc runs either** — the whole command is rejected at parse time. Write the
   script to the scratchpad with the Write tool and `python that-file.py`; keep
   shell heredocs for short, quote-free content.
+- 2026-09-22 — Windows PowerShell 5.1 decodes a BOM-less `.ps1` as **ANSI**, so
+  one non-ASCII character inside a string is a *parse* error, not mojibake: an
+  em dash in `scripts/free-port.ps1` produced `Unexpected token 'not' in
+  expression or statement` pointing at an unrelated line, and nothing in the
+  file ran. Keep repo `.ps1` ASCII-only (the file says so at its top) rather
+  than adding a BOM — unlike `.sh`, these are read by the ANSI-default host.
 
 ## Recurring Errors & Fixes
 
@@ -444,6 +537,53 @@ spent a detour blaming the 404/500 on the orphan before the existing
 verifying, not after. `./scripts/e2e.sh` still cannot run here
 (`agent-browser` not on PATH); the flows were updated and the UI verified
 through the browser pane instead.
+
+### 2026-09-22 — planner + implementer subagents
+Added `.claude/agents/planner.md` (opus, read-only) and `implementer.md`
+(sonnet, full write set) plus `.claude/agents/README.md` as the map of the set,
+all uncommitted for now. The research behind them corrected three assumptions
+that would have produced a broken config: a subagent has no `permissions` field
+(those are Skill fields), `permissionMode: plan` is ignored under auto mode, and
+`disallowedTools` cannot scope a Bash *pattern*. Deny rules in `settings.json`
+were considered and declined — they would bind every developer's own session,
+while the existing `pr-self-review` `PreToolUse` gate already covers push/PR and
+has a waiver path a hard deny would not. So `Bash` is granted to both agents and
+limited only by their prompt text; that trade-off is written down in the
+agents' README rather than left to be rediscovered.
+
+### 2026-09-22 — four more subagents: test-writer, architecture-reviewer, plan-verifier, doc-writer
+Extended the set from three to seven and made good on the README's outstanding
+promise of "architecture / security review agents" — the architecture half now
+exists, the security half is stated plainly as still being the `security` skill
+inside `/pr-self-review`, not an agent. The chain is now
+planner → implementer → test-writer → plan-verifier → architecture-reviewer →
+doc-writer → `/pr-self-review`; `plan-verifier` runs *before* the architecture
+review because there is no point grading the architecture of work that is not the
+agreed work. `architecture-reviewer` and `plan-verifier` are read-only the only way
+that actually holds — no `Write`, no `Edit` — but both keep `Bash`, and the README
+now records why that is a judgement call rather than a settled rule: Anthropic's SDK
+docs omit `Bash` from their read-only example while their best-practices page ships a
+read-only reviewer that includes it. Without it neither agent can do its job
+(no `git diff` for scope, no `pnpm arch`, no re-running a plan's `verify` commands),
+and a verifier that believes the Implementation Report verifies nothing. Two prompt
+rules came straight out of measured failure modes rather than taste: `test-writer`'s
+hard stop on weakening an assertion (agents delete failing tests instead of fixing
+the bug) and `plan-verifier`'s forced per-item ledger with four fixed statuses (LLM
+reviewers drift into generic advice, and get *worse* at conformance when asked to
+explain themselves). The gate's only finding on the whole change was the expected
+`pr-size` WARNING.
+### 2026-09-22 — the two-day orphan on :3000/:3001
+`./scripts/dev.sh` refused to start: both ports were held. The holders were
+not a killed terminal but a **previous Claude session** — chain root
+`claude.exe` (PID 24700), started 20.09, with the API leaf restarted at 16:30
+today by `tsx watch`, which is why it looked current. Killed both trees,
+then made it self-service: `scripts/free-port.ps1` (climb the wrapper chain,
+`taskkill /T /F`, refuse anything not on the wrapper allowlist) and
+`./scripts/dev.sh --free-ports`. Verified end to end — reclaim on a fake
+`cmd -> node` chain, the full stack up afterwards (`/health` 200, web 200),
+the default path still blocking with a PID and now a pointer to the flag, and
+the allowlist refusing Docker on :5432.
+
 
 ## Open Questions
 
