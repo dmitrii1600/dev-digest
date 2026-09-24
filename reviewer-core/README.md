@@ -20,7 +20,7 @@ flowchart LR
   WRAP --> LLM["LLMProvider (injected)<br/>llm/openrouter.ts"]
   LLM --> STRUCT["structured output<br/>llm/structured.ts<br/>Zod → JSON Schema · parse-with-repair"]
   STRUCT --> GROUND["groundFindings()<br/>grounding.ts<br/>mechanical citation gate vs the diff"]
-  GROUND --> SCOPE["filterByScope()<br/>review/scope.ts<br/>drop out_of_scope, non-CRITICAL only"]
+  GROUND --> SCOPE["filterByScope()<br/>review/scope.ts<br/>drop out_of_scope perf/style/test,<br/>never CRITICAL · security · bug"]
   SCOPE --> OUT["Review<br/>verdict · score · grounded, in-scope findings"]
 ```
 
@@ -28,7 +28,9 @@ The grounding step is the mandatory gate: a finding that doesn't cite a real lin
 in the diff is dropped, so the engine can't hallucinate locations. Immediately
 after it, a SEPARATE gate — `filterByScope()` (`review/scope.ts`, L03) — drops a
 finding the reviewer itself labelled `Finding.scope === 'out_of_scope'`, but
-**only** when its severity isn't `CRITICAL` and **only** when the caller supplied
+**only** when its severity isn't `CRITICAL`, **only** when its category isn't
+`security` or `bug` (the intent is author-derived, so it may never descope a real
+defect), and **only** when the caller supplied
 an `intent` block at all (`grounding.ts` is never opened by this gate). The score
 is recomputed deterministically from the findings that survive **both** gates,
 not trusted from the model. `review/run.ts` orchestrates the run (single-pass by

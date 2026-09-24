@@ -72,6 +72,14 @@ append-only. Empty sections are expected — append under the one that fits.
   The hook is still useful — one schema name, one fixture — but the design it
   hints at is not a requirement.
 
+- 2026-09-24 — `test/reviews.it.test.ts` is **not hermetic** since L03: every review run
+  calls `container.intent.ensure` (`src/modules/reviews/run-executor.ts:134`), `appWith()`
+  overrides `llm.openai` only (not `intent`), `review_intent` defaults to `openrouter`,
+  and `SecretsProvider` finds a real `OPENROUTER_API_KEY` in `~/.devdigest/secrets.json` —
+  so the test makes a paid OpenRouter call (2.8–8s+) inside `waitForPrRuns`' 10s budget
+  (`test/helpers/runs.ts:19`). "grounding drops the hallucinated finding" failed 2/3 on
+  an untouched tree. Do not read that failure as a regression; stub `intent` in `appWith`.
+
 ## Codebase Patterns
 
 - 2026-09-18 — An onion ring is derived from the **filename**, not a folder:

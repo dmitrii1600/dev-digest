@@ -263,7 +263,7 @@ export class ReviewRunExecutor {
       const keptFindings = outcome.review.findings;
 
       if (outcome.scopeDropped.length > 0) {
-        runLog.info(`scope: dropped ${outcome.scopeDropped.length} out-of-scope finding(s); CRITICALs kept`);
+        runLog.info(`scope: dropped ${outcome.scopeDropped.length} out-of-scope finding(s); CRITICAL, security and bug findings kept`);
       }
 
       // ---- Persist review + findings ----------------------------------------

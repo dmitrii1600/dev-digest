@@ -159,6 +159,20 @@ const OWNER_REPO_ISSUE_RE = /\b[\w.-]+\/[\w.-]+#(\d+)\b/g;
 const BARE_ISSUE_RE = /(^|[^\w/])#(\d+)\b/g;
 const REL_MD_PATH_RE = /(^|[^:/\w])([a-zA-Z0-9_][\w./-]*\.mdx?)\b/g;
 
+/**
+ * Percent-decode a blob-URL path from the (untrusted) PR body. A malformed
+ * escape (`docs/100%.md`) makes `decodeURIComponent` throw `URIError`; keep the
+ * raw path instead, so one bad link becomes an `unavailable` source rather than
+ * failing the whole derivation.
+ */
+function decodePathSafe(path: string): string {
+  try {
+    return decodeURIComponent(path);
+  } catch {
+    return path;
+  }
+}
+
 /** Blank out every match of `re` (same length, so offsets of other regexes are unaffected). */
 function blank(body: string, re: RegExp): string {
   return body.replace(re, (m) => ' '.repeat(m.length));
@@ -188,7 +202,7 @@ export function detectPlanRefs(body: string, repoFullName: string): PlanRef[] {
   for (const m of body.matchAll(GH_BLOB_URL_RE)) {
     const [raw, owner, repoName, path] = m as unknown as [string, string, string, string];
     if (`${owner}/${repoName}`.toLowerCase() === repoFullName.toLowerCase()) {
-      push(raw, 'repo_file', decodeURIComponent(path));
+      push(raw, 'repo_file', decodePathSafe(path));
     } else {
       push(raw, 'external_url', raw);
     }

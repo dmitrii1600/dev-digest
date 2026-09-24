@@ -31,6 +31,9 @@ import type { RepoIntel } from '../modules/repo-intel/types.js';
 import { RepoIntelService } from '../modules/repo-intel/service.js';
 import type { IntentPort } from '../modules/intent/types.js';
 import { IntentService } from '../modules/intent/service.js';
+import { IntentRepository } from '../modules/intent/repository.js';
+import { readRepoFile } from '../modules/intent/repository-plans.js';
+import { resolveFeatureModel } from '../modules/_shared/feature-models.js';
 import { type DepGraph, DepCruiseGraph } from '../adapters/depgraph/index.js';
 import { type Tokenizer, TiktokenTokenizer } from '../adapters/tokenizer/index.js';
 import { FetchUrlFetcher } from '../adapters/url-fetcher/fetch.js';
@@ -141,7 +144,15 @@ export class Container {
    */
   get intent(): IntentPort {
     if (this.overrides.intent) return this.overrides.intent;
-    this._intent ??= new IntentService(this);
+    this._intent ??= new IntentService({
+      repo: new IntentRepository(this.db),
+      readPlanFile: readRepoFile,
+      resolveModel: (workspaceId) => resolveFeatureModel(this, workspaceId, 'review_intent'),
+      llm: (provider) => this.llm(provider),
+      github: () => this.github(),
+      urlFetcher: this.urlFetcher,
+      fetchLinks: this.config.intentFetchLinks,
+    });
     return this._intent;
   }
 

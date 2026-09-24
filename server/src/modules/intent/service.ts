@@ -1,8 +1,14 @@
 import { IntentClassification } from '@devdigest/shared';
-import type { ChatMessage, IntentSource, PrIntentRecord } from '@devdigest/shared';
-import type { Container } from '../../platform/container.js';
+import type {
+  ChatMessage,
+  FeatureModelChoice,
+  GitHubClient,
+  IntentSource,
+  LLMProvider,
+  PrIntentRecord,
+  UrlFetcher,
+} from '@devdigest/shared';
 import { AppError } from '../../platform/errors.js';
-import { resolveFeatureModel } from '../_shared/feature-models.js';
 import {
   INTENT_SCHEMA_NAME,
   buildIntentMessages,
@@ -16,9 +22,26 @@ import {
   type ResolvedPlan,
 } from './helpers.js';
 import { MAX_BODY_CHARS, MAX_PLAN_REFS, MAX_SPEC_CHUNKS, PLAN_FETCH_BYTES, PLAN_FETCH_TIMEOUT_MS } from './constants.js';
-import { IntentRepository, type PullRow, type RepoBasics } from './repository.js';
-import { readRepoFile } from './repository-plans.js';
+import type { IntentRepository, PullRow, RepoBasics } from './repository.js';
 import type { IntentDeriveOptions, IntentPort } from './types.js';
+
+/**
+ * Everything `IntentService` reaches for, as ports (Onion Rule 9). Wired once
+ * in the composition root (`platform/container.ts`); a hermetic test hands in
+ * fakes without building a `Container`.
+ */
+export interface IntentDeps {
+  repo: IntentRepository;
+  /** Tier B clone reader — ring 3 (`repository-plans.ts` `readRepoFile`). */
+  readPlanFile: (clonePath: string, relPath: string) => Promise<string | null>;
+  /** The workspace's `review_intent` provider + model. */
+  resolveModel: (workspaceId: string) => Promise<FeatureModelChoice>;
+  llm: (provider: FeatureModelChoice['provider']) => Promise<LLMProvider>;
+  github: () => Promise<GitHubClient>;
+  urlFetcher: UrlFetcher;
+  /** `INTENT_FETCH_LINKS` — tier D is off when false. */
+  fetchLinks: boolean;
+}
 
 /**
  * The Intent Layer (L03) service. Sample selection (sources) is 100% code —
@@ -29,10 +52,10 @@ import type { IntentDeriveOptions, IntentPort } from './types.js';
  * four plan/spec retrieval tiers.
  */
 export class IntentService implements IntentPort {
-  private repo: IntentRepository;
+  private readonly repo: IntentRepository;
 
-  constructor(private container: Container) {
-    this.repo = new IntentRepository(container.db);
+  constructor(private readonly deps: IntentDeps) {
+    this.repo = deps.repo;
   }
 
   async get(workspaceId: string, prId: string): Promise<PrIntentRecord | null> {
@@ -73,10 +96,10 @@ export class IntentService implements IntentPort {
     const repo = await this.repo.getRepo(pull.repoId);
 
     try {
-      const { provider, model } = await resolveFeatureModel(this.container, workspaceId, 'review_intent');
+      const { provider, model } = await this.deps.resolveModel(workspaceId);
       const { sources, messages } = await this.buildRequest(pull, repo, opts);
 
-      const llm = await this.container.llm(provider);
+      const llm = await this.deps.llm(provider);
       const result = await llm.completeStructured<IntentClassification>({
         model,
         schema: IntentClassification,
@@ -233,19 +256,19 @@ export class IntentService implements IntentPort {
   private async resolvePlanRef(ref: PlanRef, repo: RepoBasics): Promise<string | null> {
     if (ref.origin === 'repo_file') {
       if (!repo.clonePath) return null;
-      return readRepoFile(repo.clonePath, ref.target);
+      return this.deps.readPlanFile(repo.clonePath, ref.target);
     }
     if (ref.origin === 'github_issue') {
-      const github = await this.container.github();
+      const github = await this.deps.github();
       const issue = await github.getIssue({ owner: repo.owner, name: repo.name }, Number(ref.target));
       const text = [issue.title, issue.body ?? ''].filter(Boolean).join('\n\n').trim();
       return text.length > 0 ? text : null;
     }
     // external_url — tier D
-    if (!this.container.config.intentFetchLinks) {
+    if (!this.deps.fetchLinks) {
       throw new Error('external fetching disabled');
     }
-    const res = await this.container.urlFetcher.fetch(ref.target, {
+    const res = await this.deps.urlFetcher.fetch(ref.target, {
       maxBytes: PLAN_FETCH_BYTES,
       timeoutMs: PLAN_FETCH_TIMEOUT_MS,
     });

@@ -56,13 +56,36 @@
   },
   "smartDiff": {
     "coreLabel": "Core",
+    "testsLabel": "Tests",
     "wiringLabel": "Wiring",
+    "docsLabel": "Docs",
     "boilerplateLabel": "Boilerplate",
+    "coreHint": "Business logic",
+    "testsHint": "Test files",
+    "wiringHint": "Config & registration",
+    "docsHint": "Documentation",
+    "boilerplateHint": "Lockfiles & generated code",
     "largeTitle": "This PR is large ({lines} changed lines)",
     "largeBody": "Consider splitting it into smaller, focused PRs for easier review:",
     "filesCount": "{count} files",
     "findingLines": "{count} finding-lines",
-    "groupedByRole": "Smart Diff · grouped by role"
+    "groupedByRole": "Smart Diff · grouped by role",
+    "smartOrder": "Smart order",
+    "originalOrder": "Original order",
+    "reviewerOrdered": "Grouped by role, most relevant first",
+    "filesWithFindings": "{count, plural, one {# file with findings} other {# files with findings}}",
+    "findingsOnFile": "{count, plural, one {# finding} other {# findings}}",
+    "sevTag": {
+      "CRITICAL": "blocker",
+      "WARNING": "warning",
+      "SUGGESTION": "suggestion"
+    },
+    "findingsOutsideDiff": "{count, plural, one {# finding outside the diff} other {# findings outside the diff}}",
+    "noReviewYet": "No review yet — run a review to see findings here.",
+    "showComments": "Show comments ({count})",
+    "hideComments": "Hide comments ({count})",
+    "filesChanged": "Files changed · {count} files",
+    "postCommentFailed": "Couldn't post the comment to GitHub."
   },
   "list": {
     "breadcrumb": "Pull Requests",

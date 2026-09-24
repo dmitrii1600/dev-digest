@@ -211,7 +211,7 @@ export async function reviewPullRequest(input: ReviewInput): Promise<ReviewOutco
 
   // Scope filter — a SEPARATE gate, strictly after grounding. Only runs when
   // an intent block was actually supplied (without it the model's `scope`
-  // label has no basis); CRITICALs are never dropped by it. `grounding` (the
+  // label has no basis); CRITICALs and security/bug findings are never dropped by it. `grounding` (the
   // string) is computed from the grounding gate alone, above, so its meaning
   // is unchanged by this second gate.
   const scopeOn = !!input.intent?.trim();
@@ -220,7 +220,7 @@ export async function reviewPullRequest(input: ReviewInput): Promise<ReviewOutco
     emit('info', `scope dropped "${d.finding.title}": ${d.reason}`);
   }
   if (scoped.dropped.length > 0) {
-    emit('result', `Scope filter: ${scoped.kept.length}/${ground.kept.length} kept (CRITICALs are never dropped)`);
+    emit('result', `Scope filter: ${scoped.kept.length}/${ground.kept.length} kept (CRITICAL, security and bug findings are never dropped)`);
   }
 
   // Score is derived from the findings that SURVIVED BOTH gates (not the
