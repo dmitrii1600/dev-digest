@@ -1,7 +1,8 @@
 /* Inline-comment support for the DiffViewer (Files changed tab).
    Pure helpers + the API shape the viewer needs; React bits live in
    DiffComments.tsx. Comments are GitHub PR review comments, proxied live. */
-import type { CSSProperties } from "react";
+import type { CSSProperties, ReactNode } from "react";
+import type { FindingRecord } from "@devdigest/shared";
 import type { PrReviewComment } from "@/lib/types";
 import type { Line } from "./helpers";
 
@@ -19,6 +20,30 @@ export interface DiffCommentApi {
     body: string;
     in_reply_to?: number;
   }) => Promise<unknown>;
+}
+
+/**
+ * What the viewer needs to read + render findings inline (Smart Diff, L03).
+ * Findings are matched to a line by `RIGHT:${start_line}` only — the new-file
+ * side, the same side a review comments on. `labels` carries pre-translated
+ * strings: `diff-viewer` reads the `shell` namespace for its own copy, but
+ * never the PR-review translation namespace the route-local `DiffTab` owns
+ * (the one holding `smartDiff.*` keys).
+ *
+ * `visible` is the resolved Show/Hide state. The viewer must not hardcode
+ * "one toggle covers both comments and findings" — that rule belongs to
+ * whoever owns the toggle (`DiffTab`, from its own `showComments`), not to
+ * `FileCard`/`CodeLine`, which only read `findings.visible`.
+ */
+export interface DiffFindingApi {
+  byPath: Map<string, FindingRecord[]>;
+  renderFinding: (f: FindingRecord) => ReactNode;
+  visible: boolean;
+  labels: {
+    sevTag: (s: FindingRecord["severity"]) => string;
+    outsideDiff: (count: number) => string;
+    fileDot: (count: number) => string;
+  };
 }
 
 /** One review-comment thread anchored to a diff line (or outdated). */
@@ -103,6 +128,33 @@ export function partitionThreads(
     }
   }
   return { matched, outdated };
+}
+
+/**
+ * Generic version of the matched/outdated split above, for anything keyed by
+ * `keysForLine` — findings today, potentially other per-line annotations
+ * later. A finding whose key never matches a rendered line (e.g. its
+ * `start_line` is outside the patch) comes back in `unmatched`, so the caller
+ * can still show it — a finding must never silently disappear.
+ */
+export function partitionByLineKey<T>(
+  items: T[],
+  keyOf: (item: T) => string | null,
+  renderedKeys: Set<string>,
+): { matched: Map<string, T[]>; unmatched: T[] } {
+  const matched = new Map<string, T[]>();
+  const unmatched: T[] = [];
+  for (const item of items) {
+    const key = keyOf(item);
+    if (key && renderedKeys.has(key)) {
+      const list = matched.get(key) ?? [];
+      list.push(item);
+      matched.set(key, list);
+    } else {
+      unmatched.push(item);
+    }
+  }
+  return { matched, unmatched };
 }
 
 // ---- styles (layout only; cards/inputs/buttons reuse @devdigest/ui) ----

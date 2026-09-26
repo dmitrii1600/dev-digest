@@ -18,6 +18,13 @@ append-only. Empty sections are expected — append under the one that fits.
 
 ## Codebase Patterns
 
+- 2026-09-24 — `filterByScope` never drops a `security` or `bug` finding at any severity,
+  not only a CRITICAL (`src/review/scope.ts` `NEVER_DESCOPED`). Why: the intent it keys on
+  is derived from the author-written PR body, so a non-critical out-of-scope drop of a real
+  defect is the goal hijack `INJECTION_GUARD` forbids; `specs/06-intent-layer.md:58,129`
+  still says "drops an out_of_scope WARNING/SUGGESTION" — this supersedes it for those two
+  categories. Covered by `test/scope.test.ts`.
+
 ## Tool & Library Notes
 
 ## Recurring Errors & Fixes

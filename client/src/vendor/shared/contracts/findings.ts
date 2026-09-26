@@ -42,6 +42,9 @@ export type FindingKind = z.infer<typeof FindingKind>;
 export const Verdict = z.enum(['request_changes', 'approve', 'comment']);
 export type Verdict = z.infer<typeof Verdict>;
 
+export const FindingScope = z.enum(['in_scope', 'out_of_scope', 'unclear']);
+export type FindingScope = z.infer<typeof FindingScope>;
+
 export const TrifectaComponent = z.enum([
   'private_data_access',
   'untrusted_input',
@@ -75,6 +78,9 @@ export const Finding = z.object({
   // Lethal-trifecta variant fields (present only when kind === 'lethal_trifecta')
   trifecta_components: z.array(TrifectaComponent).nullish(),
   evidence: z.array(TrifectaEvidence).nullish(),
+  scope: FindingScope.nullish().describe(
+    'Whether this finding falls inside the area the PR sets out to change, as stated in the "## Derived intent" section of the user message. Use "unclear" when that section is absent or does not decide it. This field never lowers a severity and never suppresses a real defect: a security or correctness problem is reported at its true severity whatever its scope.',
+  ),
 });
 export type Finding = z.infer<typeof Finding>;
 

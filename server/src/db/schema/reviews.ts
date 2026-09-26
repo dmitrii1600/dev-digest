@@ -9,6 +9,7 @@ import {
   doublePrecision,
   index,
 } from 'drizzle-orm/pg-core';
+import type { IntentSource } from '@devdigest/shared';
 import { now } from './_shared';
 import { workspaces } from './core';
 import { pullRequests } from './pulls';
@@ -79,6 +80,20 @@ export const prIntent = pgTable('pr_intent', {
   intent: text('intent').notNull(),
   inScope: jsonb('in_scope').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
   outOfScope: jsonb('out_of_scope').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+  // The commit this was derived from; null when unknown ⇒ the DTO treats it as stale.
+  headSha: text('head_sha'),
+  // Derived in code from `sources`; never self-reported by the model.
+  confidence: doublePrecision('confidence').notNull().default(0),
+  sources: jsonb('sources').$type<IntentSource[]>().notNull().default(sql`'[]'::jsonb`),
+  provider: text('provider'),
+  model: text('model'),
+  tokensIn: integer('tokens_in'),
+  tokensOut: integer('tokens_out'),
+  // null = unknown, never 0.
+  costUsd: doublePrecision('cost_usd'),
+  // Last derivation failure; the previous good intent/sources stay in place.
+  error: text('error'),
+  generatedAt: timestamp('generated_at', { withTimezone: true }).defaultNow().notNull(),
 });
 
 export const prBrief = pgTable('pr_brief', {

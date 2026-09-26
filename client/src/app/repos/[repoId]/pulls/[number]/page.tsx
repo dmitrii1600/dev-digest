@@ -53,9 +53,42 @@ export default function PRDetailPage() {
   };
   // When a run settles (done OR failed) refresh the full run history too, so a
   // just-failed run shows up in "Run history" immediately — no page reload.
-  const invalidateRunHistory = () => {
+  // useCallback: this is a dependency of the effect below, so it needs a
+  // stable identity across renders or it would refire on every render.
+  const invalidateRunHistory = React.useCallback(() => {
     if (prId) qc.invalidateQueries({ queryKey: ["pr-runs", prId] });
-  };
+  }, [qc, prId]);
+  // Smart Diff's `finding_lines` is the server-side projection of the same
+  // latest-per-agent rule the client already applies from `["reviews", prId]`
+  // (see `modules/smart-diff/README.md`) — refreshing it here keeps that
+  // projection current the same way the run history is kept current.
+  const invalidateSmartDiff = React.useCallback(() => {
+    if (prId) qc.invalidateQueries({ queryKey: ["smart-diff", prId] });
+  }, [qc, prId]);
+
+  // Refresh reviews + Smart Diff + run history the moment the live-run count
+  // drops to zero (all in-flight runs finished), without a reload — this is
+  // the ONLY place that watches for that transition, so it also covers the
+  // case where FindingsTab isn't mounted (onRunDone below only fires while it
+  // is). Before the early returns so hook order stays stable.
+  //
+  // `refetchReviews` (TanStack Query) and the two `useCallback`s above are
+  // stable across renders, so the effect can list them next to
+  // `liveRunIds.length` without refiring on every render — no
+  // `eslint-disable` needed. (`useEffectEvent` was tried here and reverted:
+  // Next 15.5.19's vendored React — `next/dist/compiled/react`, a
+  // 19.2.0-canary build — does not export it; only `node_modules/react`,
+  // which `tsc`/`eslint`/vitest resolve, does. It crashed the real app while
+  // every static check stayed green.)
+  const prevLiveRunCount = React.useRef(liveRunIds.length);
+  React.useEffect(() => {
+    if (prevLiveRunCount.current > 0 && liveRunIds.length === 0) {
+      refetchReviews();
+      invalidateSmartDiff();
+      invalidateRunHistory();
+    }
+    prevLiveRunCount.current = liveRunIds.length;
+  }, [liveRunIds.length, refetchReviews, invalidateSmartDiff, invalidateRunHistory]);
 
   const tab = search.get("tab") ?? "overview";
   const traceRunId = search.get("trace");
@@ -134,7 +167,7 @@ export default function PRDetailPage() {
       />
 
       <div style={{ padding: "24px 32px 44px", display: "flex", flexDirection: "column", gap: 24, maxWidth: 1080, margin: "0 auto" }}>
-        {tab === "overview" && <OverviewTab prBody={pr.body} />}
+        {tab === "overview" && <OverviewTab prId={prId} prBody={pr.body} />}
 
         {tab === "findings" && (
           <FindingsTab
@@ -156,6 +189,7 @@ export default function PRDetailPage() {
             onRunDone={() => {
               invalidateActiveRuns();
               invalidateRunHistory();
+              invalidateSmartDiff();
               refetchReviews();
             }}
           />

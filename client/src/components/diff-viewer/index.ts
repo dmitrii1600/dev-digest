@@ -5,6 +5,6 @@
    version history does. Parsing stays private: `parsePatch` reads git patches,
    which is not where every diff comes from. */
 export { DiffViewer } from "./DiffViewer";
-export type { DiffCommentApi } from "./comments";
+export type { DiffCommentApi, DiffFindingApi } from "./comments";
 export type { Line } from "./helpers";
 export { lineRowFor, lineSignFor } from "./styles";
