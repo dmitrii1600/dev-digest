@@ -5,6 +5,10 @@ files, who calls them (`file:line`), and the HTTP endpoints and crons that live
 in those callers' files. It only **reads** the `repo-intel` index — no LLM, no
 re-indexing (see `server/src/modules/repo-intel/README.md`).
 
+`GET /pulls/:id/history` — "Prior PRs touching these files" (spec 09, P3-d) —
+shows prior **merged** PRs that touched the same files, from GitHub. No LLM,
+no index read; see *Prior PRs touching these files* below.
+
 ## Data flow
 
 ```
@@ -54,3 +58,38 @@ group. `BFS_DEPTH` is not used here — blast is one hop by construction.
 - On the fallback (ripgrep) path there is no `factsByFile`, so endpoints/crons
   per symbol are always empty — the degraded badge is the explanation, not a
   bug in the mapper.
+
+## "Prior PRs touching these files"
+
+```
+GET /pulls/:id/history
+  → BlastRepository.getPrHistoryScope   (repoId + owner/name + number + head_sha + changed paths, ring 3)
+  → cache check: pr_brief.json.history.computed_for_sha === head_sha?
+      hit  → return the cached PrHistoryItem[]
+      miss → GitHubClient.listCommitsForPath (per candidate file, capped)
+           → GitHubClient.listPullsForCommit (per unique commit, capped)
+           → helpers.ts: selectHistoryFiles → collectUniqueCommits → buildPrHistory
+           → BlastRepository.upsertHistory (persist, keyed by head_sha)
+```
+
+No LLM. `notes` is a fixed, code-built sentence
+(`Touched {n} of this PR's files; merged {date}.`), never model text.
+
+**Caps** (`constants.ts`): `MAX_HISTORY_FILES` (12, preferring non-test source
+files over test files, skipping docs/lockfiles entirely), `MAX_HISTORY_COMMITS_PER_FILE`
+(5), `MAX_HISTORY_UNIQUE_COMMITS` (40, deduped across files), `MAX_HISTORY_PRS`
+(5, most recently merged first). The PR being viewed and any unmerged PR are
+excluded — `PrHistoryItem.merged_at` is required by the contract.
+
+**`files_overlap`** is derived from the commit lookups already made — which of
+the viewed PR's candidate files led (via a shared commit) to a prior PR — never
+an extra `GET /pulls/:n/files` call.
+
+**Cache.** The result is persisted in `pr_brief.json.history` (the same jsonb
+document the future `PrBrief` composes — `contracts/brief.ts:157-164`), merged
+in rather than overwriting the whole document. A cache hit at the PR's current
+`head_sha` makes zero GitHub calls.
+
+**Failure mode.** When the GitHub adapter throws (no `GITHUB_TOKEN`, rate
+limit, network) the route returns `{ history: [] }` and logs a warning — it
+never 500s and never persists a failed attempt as if it were a real result.

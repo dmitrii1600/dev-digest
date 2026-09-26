@@ -1,6 +1,8 @@
-/* BlastGroup — one changed symbol in the Blast Radius tree view: a collapsible
-   header (symbol, declaring file, caller count) and, when open, its callers as
-   file:line links plus the endpoint and cron chips those callers live in. */
+/* BlastGroup — one changed symbol in the Blast Radius tree view: a compact,
+   collapsible row (chevron, code icon, symbol name, caller count) on a
+   subtle elevated background and, when open, its callers as file:line links
+   drawn along a vertical guide line, plus the endpoint and cron chips those
+   callers live in. */
 "use client";
 
 import React from "react";
@@ -12,8 +14,12 @@ import { s } from "./styles";
 
 type ChipIcon = "Globe" | "Clock";
 
+/** Symbol kinds that read naturally with a trailing `()` in the tree label. */
+const CALLABLE_KINDS = new Set(["function", "method"]);
+
 export function BlastGroup({
   group,
+  kind,
   declaredIn,
   open,
   onToggle,
@@ -21,7 +27,12 @@ export function BlastGroup({
   headSha,
 }: {
   group: DownstreamImpact;
-  /** Comma-joined list of files that declare this symbol; empty when unknown. */
+  /** The changed symbol's `kind` (`function`, `interface`, …), looked up
+      from `changed_symbols`. Appends `()` to the label for callable kinds. */
+  kind?: string;
+  /** Comma-joined list of files that declare this symbol; empty when
+      unknown. Shown only as a `title` tooltip on the name, never as its own
+      visible line. */
   declaredIn: string;
   open: boolean;
   onToggle: () => void;
@@ -29,11 +40,27 @@ export function BlastGroup({
   headSha: string;
 }) {
   const t = useTranslations("blast");
+  const label = kind && CALLABLE_KINDS.has(kind) ? `${group.symbol}()` : group.symbol;
 
   // Endpoints and crons are rendered by the same block but never merged.
-  const chipRows: { key: string; icon: ChipIcon; label: string; items: string[] }[] = [
-    { key: "endpoints", icon: "Globe", label: t("endpointsAria"), items: group.endpoints_affected },
-    { key: "crons", icon: "Clock", label: t("cronsAria"), items: group.crons_affected },
+  // Accent colours mark endpoints, warn colours mark crons/jobs.
+  const chipRows: { key: string; icon: ChipIcon; label: string; items: string[]; color: string; bg: string }[] = [
+    {
+      key: "endpoints",
+      icon: "Globe",
+      label: t("endpointsAria"),
+      items: group.endpoints_affected,
+      color: "var(--accent-text)",
+      bg: "var(--accent-bg)",
+    },
+    {
+      key: "crons",
+      icon: "Clock",
+      label: t("cronsAria"),
+      items: group.crons_affected,
+      color: "var(--warn)",
+      bg: "var(--warn-bg)",
+    },
   ];
 
   return (
@@ -45,25 +72,29 @@ export function BlastGroup({
         style={s.groupHeader}
         onClick={onToggle}
       >
-        <div style={s.groupHeaderMain}>
-          <span className="mono" style={s.symbolName}>
-            {group.symbol}
+        <span style={s.groupHeaderLeft}>
+          <Icon.ChevronDown size={16} style={s.chevron(open)} aria-hidden="true" />
+          <Icon.Code size={13} style={s.codeIcon} aria-hidden="true" />
+          <span
+            className="mono"
+            style={s.symbolName}
+            title={declaredIn ? t("declaredIn", { file: declaredIn }) : undefined}
+          >
+            {label}
           </span>
-          {declaredIn && <span style={s.declaredIn}>{t("declaredIn", { file: declaredIn })}</span>}
-          <span style={s.callerCount}>{t("callerCount", { count: group.callers.length })}</span>
-        </div>
-        <Icon.ChevronDown size={16} style={s.chevron(open)} />
+        </span>
+        <span style={s.callerCount}>{t("callerCount", { count: group.callers.length })}</span>
       </button>
 
       {open && (
         <div style={s.groupBody}>
           <div style={s.callerList}>
             {group.callers.map((c) => (
-              <div key={`${c.file}:${c.line}`} style={s.callerRow}>
+              <div key={`${c.file}:${c.line}`} style={s.callerRow} title={c.name}>
+                <Icon.CornerDownRight size={12} style={s.guideGlyph} aria-hidden="true" />
                 <MonoLink href={repoFullName ? githubBlobUrl(repoFullName, headSha, c.file, c.line) : undefined}>
                   {c.file}:{c.line}
                 </MonoLink>
-                <span style={s.callerName}>{c.name}</span>
               </div>
             ))}
           </div>
@@ -72,7 +103,7 @@ export function BlastGroup({
             .map((row) => (
               <div key={row.key} role="group" aria-label={row.label} style={s.chipsRow}>
                 {row.items.map((item) => (
-                  <Badge key={item} icon={row.icon} mono>
+                  <Badge key={item} icon={row.icon} mono color={row.color} bg={row.bg}>
                     {item}
                   </Badge>
                 ))}

@@ -231,6 +231,21 @@ append-only. Empty sections are expected — append under the one that fits.
   `isResponseSerializationError` (`src/app.ts:130-134`), never as malformed
   JSON — the `.it.test.ts` `safeParse` assertion is where it becomes visible.
 
+- 2026-09-26 — When indexer output changes shape, bump `INDEXER_VERSION`
+  (`src/modules/repo-intel/constants.ts`) rather than editing rows: the
+  incremental pass delegates to `runFullIndex` on a version mismatch
+  (`pipeline/incremental.ts:78`). Nothing triggers that pass on its own, so
+  `modules/blast/service.ts` nudges it — a blast read on a stale index
+  enqueues one `repo-intel-resync` per repo per 10 min (`REINDEX_NUDGE_INTERVAL_MS`)
+  and answers `degraded: true, reason: 'index_stale'` with the old map. Why:
+  the read path must stay a read, but a user opening a PR is the only moment
+  anyone looks at the index, so that is where the rebuild has to be kicked.
+- 2026-09-26 — "Prior PRs touching these files" is 12 + ≤40 GitHub calls on a
+  cache miss (`modules/blast/constants.ts`), so it is cached per PR head sha in
+  `pr_brief.json.history` (`blast/repository.ts`). A missing token or a rate
+  limit degrades to `{ history: [] }` with a warn log, never a 500.
+
+
 
 ## Tool & Library Notes
 

@@ -205,6 +205,13 @@ append-only. Empty sections are expected — append under the one that fits.
   through the `@/app/repos/[repoId]/pulls/[number]/github-urls` alias
   (`FindingCard.tsx:23` still climbs with `../../`).
 
+- 2026-09-26 — A panel that mounts a sibling data block (`BlastRadiusPanel`
+  → `PriorPrs`) must extend its `vi.mock("@/lib/hooks/blast", …)` with every
+  hook that sibling reads (`usePrHistory`, `prHistoryKey`), or the panel test
+  crashes with "is not a function" far from the line that changed. Give the
+  sibling its own test and keep the panel's mock returning quiet defaults.
+
+
 
 ## Tool & Library Notes
 

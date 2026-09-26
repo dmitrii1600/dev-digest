@@ -34,20 +34,37 @@ function renderGroup(props?: Partial<React.ComponentProps<typeof BlastGroup>>) {
 }
 
 describe("BlastGroup", () => {
-  it("names the header after the symbol and shows the declaring file and caller count", () => {
+  it("names the header after the symbol and shows the caller count, with the declaring file only as a tooltip", () => {
     renderGroup();
     const header = screen.getByRole("button", { name: /applyRateLimit/ });
     expect(header).toHaveAttribute("aria-expanded", "true");
-    expect(header).toHaveTextContent("declared in src/middleware/ratelimit.ts");
     expect(header).toHaveTextContent("2 callers");
+    expect(header).not.toHaveTextContent("declared in");
+    expect(screen.getByText("applyRateLimit")).toHaveAttribute(
+      "title",
+      "declared in src/middleware/ratelimit.ts",
+    );
   });
 
-  it("links each caller to the file and line at the given sha", () => {
+  it("appends () to the label for a callable kind, not for a non-callable one", () => {
+    renderGroup({ kind: "function" });
+    expect(screen.getByText("applyRateLimit()")).toBeInTheDocument();
+
+    cleanup();
+    renderGroup({ kind: "interface" });
+    expect(screen.getByText("applyRateLimit")).toBeInTheDocument();
+    expect(screen.queryByText("applyRateLimit()")).toBeNull();
+  });
+
+  it("links each caller to the file and line at the given sha, with the caller name only as a tooltip", () => {
     renderGroup();
-    expect(screen.getByRole("link", { name: "src/api/users.ts:118" })).toHaveAttribute(
+    const link = screen.getByRole("link", { name: "src/api/users.ts:118" });
+    expect(link).toHaveAttribute(
       "href",
       "https://github.com/acme/payments-api/blob/abc123/src/api/users.ts#L118",
     );
+    expect(screen.queryByText("createUser")).toBeNull();
+    expect(link.closest('[title="createUser"]')).not.toBeNull();
   });
 
   it("renders callers without a link when the repo full name is unknown", () => {

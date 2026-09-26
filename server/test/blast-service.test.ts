@@ -48,6 +48,44 @@ function fakeLog() {
 }
 
 describe('BlastService.forPull', () => {
+  it('queues one resync per repo per interval when the index is stale, and flags index_stale', async () => {
+    const prs = fakePrs({ prId: 'pr-1', repoId: 'repo-1', files: ['src/a.ts'] });
+    const index = fakeIndex({ state: { ...FULL_STATE, indexerVersion: 1 } });
+    const requestReindex = vi.fn().mockResolvedValue(undefined);
+    let now = 1_000_000;
+    const service = new BlastService({
+      prs,
+      index,
+      log: fakeLog(),
+      repoIntelEnabled: true,
+      maxCallersPerSymbol: 20,
+      indexerVersion: 2,
+      requestReindex,
+      reindexNudgeIntervalMs: 600_000,
+      now: () => now,
+    });
+
+    const first = await service.forPull('ws-1', 'pr-1');
+    expect(first).toMatchObject({ degraded: true, reason: 'index_stale' });
+    expect(requestReindex).toHaveBeenCalledTimes(1);
+    expect(requestReindex).toHaveBeenCalledWith('ws-1', 'repo-1');
+
+    // A refresh 30s later must not enqueue a second job …
+    now += 30_000;
+    await service.forPull('ws-1', 'pr-1');
+    expect(requestReindex).toHaveBeenCalledTimes(1);
+
+    // … but after the interval it may nudge again (the rebuild may have failed).
+    now += 600_000;
+    await service.forPull('ws-1', 'pr-1');
+    expect(requestReindex).toHaveBeenCalledTimes(2);
+
+    // The read itself never re-indexes.
+    expect(index.indexRepo).not.toHaveBeenCalled();
+    expect(index.refreshIndex).not.toHaveBeenCalled();
+    expect(index.resyncRepo).not.toHaveBeenCalled();
+  });
+
   it('returns null and makes no facade calls when the PR is not found', async () => {
     const prs = fakePrs(null);
     const index = fakeIndex();
@@ -57,6 +95,9 @@ describe('BlastService.forPull', () => {
       log: fakeLog(),
       repoIntelEnabled: true,
       maxCallersPerSymbol: 20,
+      indexerVersion: 2,
+      requestReindex: vi.fn().mockResolvedValue(undefined),
+      reindexNudgeIntervalMs: 600_000,
     });
 
     const out = await service.forPull('ws-1', 'pr-missing');
@@ -75,6 +116,9 @@ describe('BlastService.forPull', () => {
       log: fakeLog(),
       repoIntelEnabled: true,
       maxCallersPerSymbol: 20,
+      indexerVersion: 2,
+      requestReindex: vi.fn().mockResolvedValue(undefined),
+      reindexNudgeIntervalMs: 600_000,
     });
 
     const out = await service.forPull('ws-1', 'pr-1');
@@ -100,6 +144,9 @@ describe('BlastService.forPull', () => {
       log,
       repoIntelEnabled: true,
       maxCallersPerSymbol: 20,
+      indexerVersion: 2,
+      requestReindex: vi.fn().mockResolvedValue(undefined),
+      reindexNudgeIntervalMs: 600_000,
     });
 
     const out = await service.forPull('ws-1', 'pr-1');
@@ -135,6 +182,9 @@ describe('BlastService.forPull', () => {
       log,
       repoIntelEnabled: false,
       maxCallersPerSymbol: 20,
+      indexerVersion: 2,
+      requestReindex: vi.fn().mockResolvedValue(undefined),
+      reindexNudgeIntervalMs: 600_000,
     });
 
     const out = await service.forPull('ws-1', 'pr-1');

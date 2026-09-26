@@ -10,9 +10,11 @@ import { startPg, dockerAvailable, type PgFixture } from './helpers/pg.js';
 import { buildApp } from '../src/app.js';
 import { loadConfig } from '../src/platform/config.js';
 import { seed } from '../src/db/seed.js';
+import { INDEXER_VERSION } from '../src/modules/repo-intel/constants.js';
 import * as t from '../src/db/schema.js';
-import { BlastRadius } from '@devdigest/shared';
+import { BlastRadius, PrHistory } from '@devdigest/shared';
 import type { BlastResult, IndexState, RepoIntel } from '../src/modules/repo-intel/types.js';
+import { MockGitHubClient } from '../src/adapters/mocks.js';
 
 const hasDocker = await dockerAvailable();
 const d = hasDocker ? describe : describe.skip;
@@ -26,7 +28,9 @@ const FULL_STATE: IndexState = {
   filesSkipped: 0,
   durationMs: 5,
   lastIndexedSha: 'sha1',
-  indexerVersion: 2,
+  // The real route compares against INDEXER_VERSION; a literal here would
+  // turn every case into `index_stale` the next time the indexer is bumped.
+  indexerVersion: INDEXER_VERSION,
   updatedAt: new Date('2026-01-01T00:00:00Z'),
 };
 
@@ -120,7 +124,9 @@ d('GET /pulls/:id/blast-radius (Testcontainers pg)', () => {
     expect(body.downstream).toEqual([
       {
         symbol: 'applyRateLimit',
-        callers: [{ name: 'createUser', file: 'src/api/users.ts', line: 118 }],
+        callers: [
+          { name: 'createUser', file: 'src/api/users.ts', line: 118, endpoints: ['POST /users'], crons: ['job:digest'] },
+        ],
         endpoints_affected: ['POST /users'],
         crons_affected: ['job:digest'],
       },
@@ -192,6 +198,57 @@ d('GET /pulls/:id/blast-radius (Testcontainers pg)', () => {
     const body = res.json();
     expect(body.degraded).toBe(true);
     expect(body.reason).toBe('index_partial');
+    await app.close();
+  });
+
+  it('GET /pulls/:id/history returns prior merged PRs touching the same files, and caches by head sha', async () => {
+    const gh = new MockGitHubClient({
+      commitsByPath: {
+        'src/api/users.ts': [{ sha: 'c1' }, { sha: 'c2' }],
+        'src/middleware/ratelimit.ts': [{ sha: 'c1' }],
+      },
+      pullsByCommit: {
+        c1: [
+          {
+            number: 401,
+            title: 'Introduce public API namespace',
+            merged_at: '2026-03-18T00:00:00Z',
+            author: 'marisa.koch',
+          },
+        ],
+        // c2 resolves to the PR under test itself (number: 1) — excluded.
+        c2: [{ number: 1, title: 'self', merged_at: '2026-01-01T00:00:00Z', author: 'marisa.koch' }],
+      },
+    });
+    const app = await buildApp({ config: config(), db: pg.handle.db, overrides: { github: gh } });
+    const { pr } = await setupRepoAndPr(pg.handle.db, workspaceId);
+
+    const res = await app.inject({ method: 'GET', url: `/pulls/${pr.id}/history` });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(PrHistory.safeParse(body).success).toBe(true);
+    expect(body).toEqual({
+      history: [
+        {
+          pr_number: 401,
+          title: 'Introduce public API namespace',
+          merged_at: '2026-03-18T00:00:00Z',
+          author: 'marisa.koch',
+          files_overlap: ['src/api/users.ts', 'src/middleware/ratelimit.ts'],
+          notes: "Touched 2 of this PR's files; merged 2026-03-18.",
+        },
+      ],
+    });
+
+    // A second request at the same head sha is served from the pr_brief
+    // cache — no additional GitHub calls.
+    const callsBefore = gh.commitsForPathCalls.length;
+    const res2 = await app.inject({ method: 'GET', url: `/pulls/${pr.id}/history` });
+    expect(res2.statusCode).toBe(200);
+    expect(res2.json()).toEqual(body);
+    expect(gh.commitsForPathCalls.length).toBe(callsBefore);
+
     await app.close();
   });
 });

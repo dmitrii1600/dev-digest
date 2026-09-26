@@ -4,11 +4,6 @@
    meant for MCP, not for counting (client/INSIGHTS.md:97). */
 import type { BlastRadius } from "@devdigest/shared";
 
-/** Groups with ≤ this many entries start fully expanded (P3-a default). */
-const AUTO_EXPAND_ALL_THRESHOLD = 5;
-/** Above the threshold, only the first this-many groups start expanded. */
-const AUTO_EXPAND_HEAD_COUNT = 3;
-
 export interface BlastStats {
   symbols: number;
   callers: number;
@@ -44,9 +39,16 @@ export function declaringFiles(blast: BlastRadius, symbol: string): string[] {
   return blast.changed_symbols.filter((s) => s.name === symbol).map((s) => s.file);
 }
 
-/** Which downstream groups (by index) start expanded, per P3-a: all of them
-    when there are few, otherwise just the first few. */
+/** The `kind` (`function`, `interface`, …) of the changed symbol named
+    `symbol`, read from `changed_symbols`. Drives the tree/graph `()` suffix
+    for callable kinds — a data lookup, not a heuristic on the name. */
+export function changedSymbolKind(blast: BlastRadius, symbol: string): string | undefined {
+  return blast.changed_symbols.find((s) => s.name === symbol)?.kind;
+}
+
+/** Only the first downstream group starts expanded, per the tree-view
+    design; every other group starts collapsed regardless of how many there
+    are (a per-symbol override in the panel's state can still open them). */
 export function defaultExpandedIndexes(groupCount: number): boolean[] {
-  const allExpanded = groupCount <= AUTO_EXPAND_ALL_THRESHOLD;
-  return Array.from({ length: groupCount }, (_, i) => allExpanded || i < AUTO_EXPAND_HEAD_COUNT);
+  return Array.from({ length: groupCount }, (_, i) => i === 0);
 }

@@ -207,6 +207,16 @@ describe('toBlastRadius — endpoints and crons', () => {
     });
     expect(out.downstream[0]!.endpoints_affected).toEqual(['GET /a', 'POST /b']);
     expect(out.downstream[0]!.crons_affected).toEqual(['job:sync']);
+    // Per-caller facts ride along so a consumer can draw caller → endpoint
+    // edges; a caller whose file has no facts carries no keys at all.
+    const withFacts = out.downstream[0]!.callers.filter((c) => c.endpoints || c.crons);
+    expect(withFacts.length).toBeGreaterThan(0);
+    for (const c of withFacts) {
+      const union = [...(c.endpoints ?? []), ...(c.crons ?? [])];
+      for (const e of union) {
+        expect([...out.downstream[0]!.endpoints_affected, ...out.downstream[0]!.crons_affected]).toContain(e);
+      }
+    }
   });
 
   it('emits empty endpoints/crons when factsByFile is absent (fallback path)', () => {
@@ -223,12 +233,16 @@ describe('toBlastRadius — endpoints and crons', () => {
     });
     expect(out.downstream[0]!.endpoints_affected).toEqual([]);
     expect(out.downstream[0]!.crons_affected).toEqual([]);
+    for (const c of out.downstream[0]!.callers) {
+      expect(c).not.toHaveProperty('endpoints');
+      expect(c).not.toHaveProperty('crons');
+    }
   });
 });
 
 describe('resolveDegraded — the degraded table, first match wins', () => {
   it('flag_off wins even over a healthy index', () => {
-    expect(resolveDegraded(makeResult(), makeState({ status: 'full' }), false)).toEqual({
+    expect(resolveDegraded(makeResult(), makeState({ status: 'full' }), false, 2)).toEqual({
       degraded: true,
       reason: 'flag_off',
     });
@@ -236,7 +250,7 @@ describe('resolveDegraded — the degraded table, first match wins', () => {
 
   it('state.degraded uses its reason, defaulting to index_failed', () => {
     expect(
-      resolveDegraded(makeResult(), makeState({ status: 'degraded', degraded: true }), true),
+      resolveDegraded(makeResult(), makeState({ status: 'degraded', degraded: true }), true, 2),
     ).toEqual({ degraded: true, reason: 'index_failed' });
     expect(
       resolveDegraded(
@@ -257,8 +271,19 @@ describe('resolveDegraded — the degraded table, first match wins', () => {
     ).toEqual({ degraded: true, reason: 'no_data' });
   });
 
+  it('an index stamped by an older indexer is index_stale, ahead of partial', () => {
+    expect(resolveDegraded(makeResult(), makeState({ status: 'full', indexerVersion: 1 }), true, 2)).toEqual({
+      degraded: true,
+      reason: 'index_stale',
+    });
+    expect(resolveDegraded(makeResult(), makeState({ status: 'partial', indexerVersion: 1 }), true, 2)).toEqual({
+      degraded: true,
+      reason: 'index_stale',
+    });
+  });
+
   it('partial status is degraded with index_partial, even though state.degraded is unset', () => {
-    expect(resolveDegraded(makeResult(), makeState({ status: 'partial' }), true)).toEqual({
+    expect(resolveDegraded(makeResult(), makeState({ status: 'partial' }), true, 2)).toEqual({
       degraded: true,
       reason: 'index_partial',
     });
@@ -266,19 +291,20 @@ describe('resolveDegraded — the degraded table, first match wins', () => {
 
   it('a degraded facade result uses its own reason, defaulting to no_data', () => {
     expect(
-      resolveDegraded(makeResult({ degraded: true }), makeState({ status: 'full' }), true),
+      resolveDegraded(makeResult({ degraded: true }), makeState({ status: 'full' }), true, 2),
     ).toEqual({ degraded: true, reason: 'no_data' });
     expect(
       resolveDegraded(
         makeResult({ degraded: true, reason: 'repo_too_large' }),
         makeState({ status: 'full' }),
         true,
+        2,
       ),
     ).toEqual({ degraded: true, reason: 'repo_too_large' });
   });
 
   it('otherwise not degraded', () => {
-    expect(resolveDegraded(makeResult(), makeState({ status: 'full' }), true)).toEqual({
+    expect(resolveDegraded(makeResult(), makeState({ status: 'full' }), true, 2)).toEqual({
       degraded: false,
       reason: null,
     });

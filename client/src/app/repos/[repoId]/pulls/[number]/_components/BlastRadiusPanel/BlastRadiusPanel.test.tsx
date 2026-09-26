@@ -11,7 +11,10 @@ let blastError = false;
 const refetchMock = vi.fn();
 vi.mock("@/lib/hooks/blast", () => ({
   blastRadiusKey: (prId: string) => ["pr-blast-radius", prId],
+  prHistoryKey: (prId: string) => ["pr-history", prId],
   usePrBlastRadius: () => ({ data: blastData, isLoading: blastLoading, isError: blastError, refetch: refetchMock }),
+  // The Prior PRs block has its own test; here it only has to mount quietly.
+  usePrHistory: () => ({ data: { history: [] }, isLoading: false, isError: false, refetch: vi.fn() }),
 }));
 
 let resyncPending = false;
@@ -110,6 +113,8 @@ describe("BlastRadiusPanel", () => {
       ],
     };
     renderPanel();
+    // Only the first group is expanded by default; open the second one too.
+    fireEvent.click(screen.getByRole("button", { name: /RateLimitConfig/ }));
     // Group A has endpoints + a cron, group B only a cron: one endpoint row
     // in total, one cron row per group, and nothing leaks across symbols.
     const endpointRows = screen.getAllByRole("group", { name: "Endpoints affected" });

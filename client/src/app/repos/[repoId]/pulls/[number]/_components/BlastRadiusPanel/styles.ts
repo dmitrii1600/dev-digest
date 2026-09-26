@@ -13,6 +13,20 @@ export const s = {
     background: "var(--bg-elevated)",
     minWidth: 0,
   } satisfies CSSProperties,
+  /** Stats (left) and the Tree/Graph toggle (right) share one header row. */
+  headerRow: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    flexWrap: "wrap",
+  } satisfies CSSProperties,
+  /** Separates the map from the "Prior PRs" block at the bottom of the card. */
+  divider: {
+    height: 1,
+    background: "var(--border)",
+    margin: "4px 0",
+  } satisfies CSSProperties,
   statsRow: {
     display: "flex",
     alignItems: "center",
@@ -21,10 +35,14 @@ export const s = {
   } satisfies CSSProperties,
   stat: {
     display: "inline-flex",
-    alignItems: "baseline",
+    alignItems: "center",
     gap: 6,
     fontSize: 13,
     color: "var(--text-secondary)",
+  } satisfies CSSProperties,
+  statIcon: {
+    color: "var(--text-muted)",
+    flexShrink: 0,
   } satisfies CSSProperties,
   statNum: {
     fontSize: 15,
@@ -36,23 +54,24 @@ export const s = {
     color: "var(--warn)",
     lineHeight: 1.5,
   } satisfies CSSProperties,
+  /** Segmented Tree/Graph control — one pill, the active side filled. */
   viewToggle: {
-    display: "flex",
-    alignItems: "center",
-    gap: 8,
+    display: "inline-flex",
+    padding: 3,
+    borderRadius: 8,
+    border: "1px solid var(--border)",
+    background: "var(--bg-hover)",
   } satisfies CSSProperties,
   toggleBtn: (pressed: boolean): CSSProperties => ({
     display: "inline-flex",
     alignItems: "center",
-    padding: "5px 12px",
+    padding: "5px 14px",
     borderRadius: 6,
     fontSize: 13,
-    fontWeight: 500,
+    fontWeight: 600,
     fontFamily: "inherit",
     cursor: "pointer",
-    borderStyle: "solid",
-    borderWidth: 1,
-    borderColor: pressed ? "var(--accent)" : "var(--border)",
+    border: "none",
     background: pressed ? "var(--accent-bg)" : "transparent",
     color: pressed ? "var(--accent-text)" : "var(--text-secondary)",
   }),

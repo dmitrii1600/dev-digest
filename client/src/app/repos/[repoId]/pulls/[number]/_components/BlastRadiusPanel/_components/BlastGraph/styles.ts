@@ -18,4 +18,24 @@ export const s = {
     padding: "24px 0",
     textAlign: "center",
   } satisfies CSSProperties,
+  legend: {
+    display: "flex",
+    gap: 16,
+    marginTop: 10,
+    flexWrap: "wrap",
+  } satisfies CSSProperties,
+  legendItem: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
+    fontSize: 12,
+    color: "var(--text-muted)",
+  } satisfies CSSProperties,
+  legendDot: (color: string): CSSProperties => ({
+    width: 8,
+    height: 8,
+    borderRadius: 99,
+    background: color,
+    display: "inline-block",
+  }),
 } as const;

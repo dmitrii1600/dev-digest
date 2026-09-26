@@ -1,4 +1,10 @@
-import type { BlastDegradedReason, BlastRadius, ChangedSymbol, DownstreamImpact } from '@devdigest/shared';
+import type {
+  BlastDegradedReason,
+  BlastRadius,
+  ChangedSymbol,
+  DownstreamImpact,
+  PrHistoryItem,
+} from '@devdigest/shared';
 import type { BlastCallerRow, BlastResult, IndexState } from '../repo-intel/types.js';
 
 /**
@@ -22,9 +28,14 @@ export function resolveDegraded(
   result: BlastResult,
   state: IndexState,
   repoIntelEnabled: boolean,
+  currentIndexerVersion: number,
 ): { degraded: boolean; reason: BlastDegradedReason | null } {
   if (!repoIntelEnabled) return { degraded: true, reason: 'flag_off' };
   if (state.degraded) return { degraded: true, reason: state.degradedReason ?? 'index_failed' };
+  // An index built by an older indexer is still served (it may be useful) but
+  // flagged: the service queues a rebuild and the UI says why the map may be
+  // incomplete instead of presenting it as complete.
+  if (state.indexerVersion !== currentIndexerVersion) return { degraded: true, reason: 'index_stale' };
   if (state.status === 'partial') return { degraded: true, reason: 'index_partial' };
   if (result.degraded) return { degraded: true, reason: result.reason ?? 'no_data' };
   return { degraded: false, reason: null };
@@ -128,7 +139,16 @@ export function toBlastRadius(args: {
     }
     return {
       symbol: g.via,
-      callers: g.callers.map((c) => ({ name: c.symbol, file: c.file, line: c.line })),
+      callers: g.callers.map((c) => {
+        const facts = result.factsByFile?.[c.file];
+        return {
+          name: c.symbol,
+          file: c.file,
+          line: c.line,
+          ...(facts && facts.endpoints.length > 0 ? { endpoints: [...facts.endpoints].sort() } : {}),
+          ...(facts && facts.crons.length > 0 ? { crons: [...facts.crons].sort() } : {}),
+        };
+      }),
       endpoints_affected: [...endpoints].sort(),
       crons_affected: [...crons].sort(),
     };
@@ -165,4 +185,108 @@ export function toBlastRadius(args: {
   });
 
   return { changed_symbols, downstream, summary, degraded, reason };
+}
+
+// ---------------------------------------------------------------------------
+// "Prior PRs touching these files" (spec 09, P3-d) — pure GitHub-history
+// composition. No LLM; the two GitHub calls are primitives on `GitHubClient`
+// (`listCommitsForPath`, `listPullsForCommit`); everything below is grouping,
+// capping and ordering only.
+
+const DOC_OR_LOCK_RE =
+  /(\.(md|mdx|txt)$)|((^|\/)(package-lock\.json|pnpm-lock\.yaml|npm-shrinkwrap\.json|yarn\.lock)$)|(\.lock$)/i;
+const TEST_FILE_RE = /(\.(test|spec)\.[jt]sx?$)|((^|\/)(__tests__|tests?)\/)/i;
+
+/**
+ * Pick which of the PR's changed files to look up history for: skip docs and
+ * lockfiles entirely (their "history" is noise, not code review context),
+ * then order non-test source files ahead of test files, capped at `cap`.
+ */
+export function selectHistoryFiles(files: string[], cap: number): string[] {
+  const candidates = files.filter((f) => !DOC_OR_LOCK_RE.test(f));
+  const source = candidates.filter((f) => !TEST_FILE_RE.test(f));
+  const tests = candidates.filter((f) => TEST_FILE_RE.test(f));
+  return [...source, ...tests].slice(0, cap);
+}
+
+export interface GhCommitRef {
+  sha: string;
+}
+
+/**
+ * Dedupe the commits discovered across the selected files into at most
+ * `maxUnique` shas, keeping — for each sha — the set of candidate files whose
+ * commit history surfaced it. That per-sha file set is later reused to derive
+ * `files_overlap`, so a prior PR's overlap never needs a third GitHub call.
+ */
+export function collectUniqueCommits(
+  commitsByFile: ReadonlyMap<string, readonly GhCommitRef[]>,
+  maxUnique: number,
+): Map<string, Set<string>> {
+  const bySha = new Map<string, Set<string>>();
+  for (const [file, commits] of commitsByFile) {
+    for (const c of commits) {
+      let files = bySha.get(c.sha);
+      if (!files) {
+        if (bySha.size >= maxUnique) continue;
+        files = new Set<string>();
+        bySha.set(c.sha, files);
+      }
+      files.add(file);
+    }
+  }
+  return bySha;
+}
+
+/** A plain, non-LLM sentence: `Touched {n} of this PR's files; merged {date}.` */
+export function buildHistoryNote(overlapCount: number, mergedAt: string): string {
+  return `Touched ${overlapCount} of this PR's files; merged ${mergedAt.slice(0, 10)}.`;
+}
+
+export interface GhPrRef {
+  number: number;
+  title: string;
+  merged_at: string | null;
+  author: string;
+}
+
+/**
+ * Group the commits' associated PRs by PR number — excluding the PR being
+ * viewed and anything not merged (`PrHistoryItem.merged_at` is required) —
+ * then keep the `maxPrs` most recently merged. `files_overlap` is the union
+ * of the (already-fetched) candidate files whose commits led to that PR.
+ */
+export function buildPrHistory(args: {
+  commitFiles: ReadonlyMap<string, ReadonlySet<string>>;
+  pullsByCommit: ReadonlyMap<string, readonly GhPrRef[]>;
+  excludeNumber: number;
+  maxPrs: number;
+}): PrHistoryItem[] {
+  const byNumber = new Map<number, { pr: GhPrRef; files: Set<string> }>();
+  for (const [sha, files] of args.commitFiles) {
+    const prs = args.pullsByCommit.get(sha) ?? [];
+    for (const pr of prs) {
+      if (pr.number === args.excludeNumber || !pr.merged_at) continue;
+      const entry = byNumber.get(pr.number) ?? { pr, files: new Set<string>() };
+      for (const f of files) entry.files.add(f);
+      byNumber.set(pr.number, entry);
+    }
+  }
+
+  return [...byNumber.values()]
+    .sort((a, b) => {
+      const at = a.pr.merged_at as string;
+      const bt = b.pr.merged_at as string;
+      if (at !== bt) return at < bt ? 1 : -1;
+      return b.pr.number - a.pr.number;
+    })
+    .slice(0, args.maxPrs)
+    .map(({ pr, files }) => ({
+      pr_number: pr.number,
+      title: pr.title,
+      merged_at: pr.merged_at as string,
+      author: pr.author,
+      files_overlap: [...files].sort(),
+      notes: buildHistoryNote(files.size, pr.merged_at as string),
+    }));
 }

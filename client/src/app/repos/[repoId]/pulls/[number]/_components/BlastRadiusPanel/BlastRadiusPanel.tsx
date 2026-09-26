@@ -11,16 +11,27 @@
 import React from "react";
 import { useTranslations } from "next-intl";
 import { useQueryClient } from "@tanstack/react-query";
-import { SectionLabel, Badge, EmptyState, ErrorState, Skeleton, Button } from "@devdigest/ui";
+import { SectionLabel, Badge, EmptyState, ErrorState, Skeleton, Button, Icon, type IconName } from "@devdigest/ui";
 import { blastRadiusKey, usePrBlastRadius } from "@/lib/hooks/blast";
 import { useResyncRepoIntel } from "@/lib/hooks/repo-intel";
-import { blastStats, declaringFiles, defaultExpandedIndexes } from "./helpers";
+import { blastStats, changedSymbolKind, declaringFiles, defaultExpandedIndexes, type BlastStats } from "./helpers";
 import { BlastGraph } from "./_components/BlastGraph";
 import { BlastGroup } from "./_components/BlastGroup";
+import { PriorPrs } from "./_components/PriorPrs";
 import { s } from "./styles";
 
 type View = "tree" | "graph";
 const VIEWS: View[] = ["tree", "graph"];
+
+/** Icon per stats-row entry: `<>` for symbols, the corner-down-right glyph
+    for callers (the same glyph the tree view's caller rows use), globe for
+    endpoints, clock for crons/jobs. */
+const STAT_ICON: Record<keyof BlastStats, IconName> = {
+  symbols: "Code",
+  callers: "CornerDownRight",
+  endpoints: "Globe",
+  crons: "Clock",
+};
 
 export function BlastRadiusPanel({
   prId,
@@ -111,18 +122,20 @@ export function BlastRadiusPanel({
       </SectionLabel>
 
       <div style={s.card}>
-        <div role="group" aria-label={t("statsAria")} style={s.statsRow}>
-          {(["symbols", "callers", "endpoints", "crons"] as const).map((key) => (
-            <span key={key} style={s.stat}>
-              <span style={s.statNum}>{stats[key]}</span> {t(`stat.${key}`)}
-            </span>
-          ))}
-        </div>
+        <div style={s.headerRow}>
+          <div role="group" aria-label={t("statsAria")} style={s.statsRow}>
+            {(["symbols", "callers", "endpoints", "crons"] as const).map((key) => {
+              const StatIcon = Icon[STAT_ICON[key]];
+              return (
+                <span key={key} style={s.stat}>
+                  <StatIcon size={13} style={s.statIcon} aria-hidden="true" />
+                  <span style={s.statNum}>{stats[key]}</span> {t(`stat.${key}`)}
+                </span>
+              );
+            })}
+          </div>
 
-        {degraded && reason && <div style={s.reasonText}>{t(`reason.${reason}`)}</div>}
-
-        {empty ?? (
-          <>
+          {!empty && (
             <div style={s.viewToggle}>
               {VIEWS.map((v) => (
                 <button key={v} type="button" aria-pressed={view === v} style={s.toggleBtn(view === v)} onClick={() => setView(v)}>
@@ -130,26 +143,33 @@ export function BlastRadiusPanel({
                 </button>
               ))}
             </div>
+          )}
+        </div>
 
-            {view === "graph" ? (
-              <BlastGraph downstream={groups} />
-            ) : (
-              <div style={s.groupList}>
-                {groups.map((group, idx) => (
-                  <BlastGroup
-                    key={group.symbol}
-                    group={group}
-                    declaredIn={declaringFiles(data, group.symbol).join(", ")}
-                    open={isOpen(group.symbol, idx)}
-                    onToggle={() => toggle(group.symbol, idx)}
-                    repoFullName={repoFullName}
-                    headSha={headSha}
-                  />
-                ))}
-              </div>
-            )}
-          </>
-        )}
+        {degraded && reason && <div style={s.reasonText}>{t(`reason.${reason}`)}</div>}
+
+        {empty ??
+          (view === "graph" ? (
+            <BlastGraph changedSymbols={data.changed_symbols} downstream={groups} />
+          ) : (
+            <div style={s.groupList}>
+              {groups.map((group, idx) => (
+                <BlastGroup
+                  key={group.symbol}
+                  group={group}
+                  kind={changedSymbolKind(data, group.symbol)}
+                  declaredIn={declaringFiles(data, group.symbol).join(", ")}
+                  open={isOpen(group.symbol, idx)}
+                  onToggle={() => toggle(group.symbol, idx)}
+                  repoFullName={repoFullName}
+                  headSha={headSha}
+                />
+              ))}
+            </div>
+          ))}
+
+        <div style={s.divider} />
+        <PriorPrs prId={prId} headSha={headSha} repoFullName={repoFullName} />
       </div>
     </section>
   );

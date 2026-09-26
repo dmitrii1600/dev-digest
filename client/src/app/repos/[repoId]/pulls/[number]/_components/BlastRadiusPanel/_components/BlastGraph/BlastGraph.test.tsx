@@ -1,18 +1,23 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { render, screen, cleanup } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
-import type { DownstreamImpact } from "@devdigest/shared";
+import type { ChangedSymbol, DownstreamImpact } from "@devdigest/shared";
 import messages from "../../../../../../../../../../messages/en/blast.json";
 import { layoutBlastGraph, shortenPath, truncate } from "./helpers";
 import { BlastGraph } from "./BlastGraph";
 
 afterEach(cleanup);
 
+const CHANGED_SYMBOLS: ChangedSymbol[] = [
+  { name: "applyRateLimit", file: "src/middleware/ratelimit.ts", kind: "function" },
+  { name: "RateLimitConfig", file: "src/middleware/ratelimit.ts", kind: "interface" },
+];
+
 const DOWNSTREAM: DownstreamImpact[] = [
   {
     symbol: "applyRateLimit",
     callers: [
-      { name: "registerPublicRoutes", file: "src/api/public/webhooks.ts", line: 42 },
+      { name: "registerPublicRoutes", file: "src/api/public/webhooks.ts", line: 42, endpoints: ["GET /users/:id"] },
       { name: "createUser", file: "src/api/users.ts", line: 118 },
     ],
     endpoints_affected: ["GET /users/:id"],
@@ -31,21 +36,47 @@ function renderWithIntl(ui: React.ReactElement) {
 }
 
 describe("layoutBlastGraph (pure)", () => {
-  it("places one node per changed symbol and per distinct caller file", () => {
-    const layout = layoutBlastGraph(DOWNSTREAM);
+  it("places one node per changed symbol and appends () for callable kinds", () => {
+    const layout = layoutBlastGraph(CHANGED_SYMBOLS, DOWNSTREAM);
     expect(layout.symbolNodes.map((n) => n.id)).toEqual(["applyRateLimit", "RateLimitConfig"]);
-    expect(layout.fileNodes.map((n) => n.id)).toEqual(["src/api/public/webhooks.ts", "src/api/users.ts"]);
+    expect(layout.symbolNodes.map((n) => n.label)).toEqual(["applyRateLimit()", "RateLimitConfig"]);
   });
 
-  it("emits one edge per caller, even when several callers share a file", () => {
-    const layout = layoutBlastGraph(DOWNSTREAM);
-    expect(layout.edges).toHaveLength(3);
+  it("dedupes callers by name+file into one node each", () => {
+    const layout = layoutBlastGraph(CHANGED_SYMBOLS, DOWNSTREAM);
+    // createUser calls both symbols but is one caller (same name+file).
+    expect(layout.callerNodes.map((n) => n.id)).toEqual([
+      "registerPublicRoutes::src/api/public/webhooks.ts",
+      "createUser::src/api/users.ts",
+    ]);
+    expect(layout.callerNodes.map((n) => n.title)).toEqual([
+      "src/api/public/webhooks.ts:42",
+      "src/api/users.ts:118",
+    ]);
   });
 
-  it("degrades to a single-row layout with no callers", () => {
-    const layout = layoutBlastGraph([]);
+  it("uses per-caller endpoints/crons when present, and the group facts otherwise", () => {
+    const layout = layoutBlastGraph(CHANGED_SYMBOLS, DOWNSTREAM);
+    // Group 1 has a caller-level endpoint fact; group 2 has none on its
+    // caller, so it falls back to the group's own crons_affected.
+    expect(layout.endpointNodes.map((n) => ({ id: n.id, kind: n.kind }))).toEqual([
+      { id: "endpoint:GET /users/:id", kind: "endpoint" },
+      { id: "cron:job:digest", kind: "cron" },
+    ]);
+  });
+
+  it("emits one symbol->caller edge per caller and one caller->fact edge per attributed fact", () => {
+    const layout = layoutBlastGraph(CHANGED_SYMBOLS, DOWNSTREAM);
+    // 3 callers total (2 + 1) plus 2 facts attributed = 5 edges.
+    expect(layout.edges).toHaveLength(5);
+    expect(layout.edges.every((e) => e.d.startsWith("M "))).toBe(true);
+  });
+
+  it("degrades to an empty layout with no downstream", () => {
+    const layout = layoutBlastGraph([], []);
     expect(layout.symbolNodes).toEqual([]);
-    expect(layout.fileNodes).toEqual([]);
+    expect(layout.callerNodes).toEqual([]);
+    expect(layout.endpointNodes).toEqual([]);
     expect(layout.edges).toEqual([]);
   });
 });
@@ -64,20 +95,30 @@ describe("shortenPath / truncate (pure)", () => {
 });
 
 describe("BlastGraph", () => {
-  it("renders an accessible graph with one <line> per caller edge", () => {
-    renderWithIntl(<BlastGraph downstream={DOWNSTREAM} />);
+  it("renders an accessible graph with symbol, caller and endpoint/cron nodes", () => {
+    renderWithIntl(<BlastGraph changedSymbols={CHANGED_SYMBOLS} downstream={DOWNSTREAM} />);
     const svg = screen.getByRole("img", { name: "Blast radius graph" });
-    expect(svg.querySelectorAll("line")).toHaveLength(3);
-    // Drawn labels are shortened to the last two path segments; the full
-    // symbol name / path travels as the node's <title> tooltip.
+    expect(svg.querySelectorAll("path")).toHaveLength(5);
     const labels = Array.from(svg.querySelectorAll("text")).map((n) => n.textContent);
-    const titles = Array.from(svg.querySelectorAll("title")).map((n) => n.textContent);
-    expect(labels).toEqual(["applyRateLimit", "RateLimitConfig", "…/public/webhooks.ts", "…/api/users.ts"]);
-    expect(titles).toEqual(["applyRateLimit", "RateLimitConfig", "src/api/public/webhooks.ts", "src/api/users.ts"]);
+    expect(labels).toEqual([
+      "applyRateLimit()",
+      "RateLimitConfig",
+      "registerPublicRoutes",
+      "createUser",
+      "GET /users/:id",
+      "job:digest",
+    ]);
+  });
+
+  it("renders a three-item legend below the graph", () => {
+    renderWithIntl(<BlastGraph changedSymbols={CHANGED_SYMBOLS} downstream={DOWNSTREAM} />);
+    expect(screen.getByText("changed symbol")).toBeInTheDocument();
+    expect(screen.getByText("callers")).toBeInTheDocument();
+    expect(screen.getByText("endpoints affected")).toBeInTheDocument();
   });
 
   it("shows the empty state when there is no downstream", () => {
-    renderWithIntl(<BlastGraph downstream={[]} />);
+    renderWithIntl(<BlastGraph changedSymbols={CHANGED_SYMBOLS} downstream={[]} />);
     expect(screen.getByText("No downstream callers to graph.")).toBeInTheDocument();
     expect(screen.queryByRole("img")).toBeNull();
   });
