@@ -47,7 +47,9 @@ export function BlastRadiusPanel({
     return (
       <section>
         <SectionLabel icon="Target">{t("title")}</SectionLabel>
-        <Skeleton height={72} />
+        <div style={s.card}>
+          <Skeleton height={72} />
+        </div>
       </section>
     );
   }
@@ -56,7 +58,9 @@ export function BlastRadiusPanel({
     return (
       <section>
         <SectionLabel icon="Target">{t("title")}</SectionLabel>
-        <ErrorState title={t("error")} onRetry={() => refetch()} />
+        <div style={s.card}>
+          <ErrorState title={t("error")} onRetry={() => refetch()} />
+        </div>
       </section>
     );
   }
@@ -106,45 +110,47 @@ export function BlastRadiusPanel({
         {t("title")}
       </SectionLabel>
 
-      <div role="group" aria-label={t("statsAria")} style={s.statsRow}>
-        {(["symbols", "callers", "endpoints", "crons"] as const).map((key) => (
-          <span key={key} style={s.stat}>
-            <span style={s.statNum}>{stats[key]}</span> {t(`stat.${key}`)}
-          </span>
-        ))}
-      </div>
+      <div style={s.card}>
+        <div role="group" aria-label={t("statsAria")} style={s.statsRow}>
+          {(["symbols", "callers", "endpoints", "crons"] as const).map((key) => (
+            <span key={key} style={s.stat}>
+              <span style={s.statNum}>{stats[key]}</span> {t(`stat.${key}`)}
+            </span>
+          ))}
+        </div>
 
-      {degraded && reason && <div style={s.reasonText}>{t(`reason.${reason}`)}</div>}
+        {degraded && reason && <div style={s.reasonText}>{t(`reason.${reason}`)}</div>}
 
-      {empty ?? (
-        <>
-          <div style={s.viewToggle}>
-            {VIEWS.map((v) => (
-              <button key={v} type="button" aria-pressed={view === v} style={s.toggleBtn(view === v)} onClick={() => setView(v)}>
-                {t(`view.${v}`)}
-              </button>
-            ))}
-          </div>
-
-          {view === "graph" ? (
-            <BlastGraph downstream={groups} />
-          ) : (
-            <div style={s.groupList}>
-              {groups.map((group, idx) => (
-                <BlastGroup
-                  key={group.symbol}
-                  group={group}
-                  declaredIn={declaringFiles(data, group.symbol).join(", ")}
-                  open={isOpen(group.symbol, idx)}
-                  onToggle={() => toggle(group.symbol, idx)}
-                  repoFullName={repoFullName}
-                  headSha={headSha}
-                />
+        {empty ?? (
+          <>
+            <div style={s.viewToggle}>
+              {VIEWS.map((v) => (
+                <button key={v} type="button" aria-pressed={view === v} style={s.toggleBtn(view === v)} onClick={() => setView(v)}>
+                  {t(`view.${v}`)}
+                </button>
               ))}
             </div>
-          )}
-        </>
-      )}
+
+            {view === "graph" ? (
+              <BlastGraph downstream={groups} />
+            ) : (
+              <div style={s.groupList}>
+                {groups.map((group, idx) => (
+                  <BlastGroup
+                    key={group.symbol}
+                    group={group}
+                    declaredIn={declaringFiles(data, group.symbol).join(", ")}
+                    open={isOpen(group.symbol, idx)}
+                    onToggle={() => toggle(group.symbol, idx)}
+                    repoFullName={repoFullName}
+                    headSha={headSha}
+                  />
+                ))}
+              </div>
+            )}
+          </>
+        )}
+      </div>
     </section>
   );
 }

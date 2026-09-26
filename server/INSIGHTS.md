@@ -88,6 +88,22 @@ append-only. Empty sections are expected — append under the one that fits.
   symbol" must re-cap after grouping (`src/modules/blast/helpers.ts`), and a PR
   with >20 resolved callers in total can show zero for its low-rank symbols.
 
+- 2026-09-26 — Running the API from a git worktree with the default
+  `DEVDIGEST_CLONE_DIR=./clones` (`.env:28`, resolved against `process.cwd()`
+  in `src/platform/config.ts:77`) points at `<worktree>/server/clones`, which
+  does not exist; the DB's `repos.clone_path` still names the main checkout.
+  Every resync then fails inside `git.sync` in milliseconds, `resyncRepo`
+  returns `sync_failed`, the job is marked `done`, and the stale index keeps
+  saying `full`. Fix for a worktree: a junction `<worktree>/server/clones` →
+  the main `server/clones` (git-ignored), no restart needed.
+- 2026-09-26 — `POST /repos/:id/resync` is a no-op when the clone's HEAD equals
+  `lastIndexedSha` (`pipeline/incremental.ts:97`, reason `sha_unchanged`), so
+  it cannot repair a broken index of the same commit. To force a full pass
+  without touching code, set `repo_index_state.indexer_version` to a value
+  other than `INDEXER_VERSION` and resync again (`incremental.ts:78` delegates
+  to `runFullIndex`).
+
+
 ## Codebase Patterns
 
 - 2026-09-18 — An onion ring is derived from the **filename**, not a folder:
@@ -293,6 +309,16 @@ append-only. Empty sections are expected — append under the one that fits.
   failed once inside a full `pnpm test` run and passed alone (7/7). It drives a
   whole review run under parallel Testcontainers; re-run the file alone before
   blaming a change outside `modules/reviews`.
+
+- 2026-09-26 — Blast radius shows N symbols and 0 callers on a `full` index.
+  Check `repo_index_state.stats->>'edgesWritten'`: if it is `0`, the depgraph
+  adapter dropped every edge and `references.decl_file` never resolved. On
+  Windows the cause was `path.relative()` returning backslashes in
+  `src/adapters/depgraph/index.ts` `toRel`, which never matched the POSIX
+  `files` set — fixed by re-joining with `/` (`test/depgraph-torel.test.ts`).
+  The adapter swallows cruise errors into `[]`, so `graphFailed` stays unset
+  and the index is still stamped `full`.
+
 
 
 ## Session Notes

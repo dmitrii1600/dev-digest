@@ -2,12 +2,22 @@ import type { CSSProperties } from "react";
 
 /** Co-located styles for BlastRadiusPanel. Colours are CSS tokens only. */
 export const s = {
+  /** Card chrome, matching IntentCard so the two sit as equals in the top row. */
+  card: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 12,
+    padding: 16,
+    borderRadius: 10,
+    border: "1px solid var(--border)",
+    background: "var(--bg-elevated)",
+    minWidth: 0,
+  } satisfies CSSProperties,
   statsRow: {
     display: "flex",
     alignItems: "center",
     gap: 18,
     flexWrap: "wrap",
-    marginBottom: 12,
   } satisfies CSSProperties,
   stat: {
     display: "inline-flex",
@@ -24,14 +34,12 @@ export const s = {
   reasonText: {
     fontSize: 13,
     color: "var(--warn)",
-    marginBottom: 14,
     lineHeight: 1.5,
   } satisfies CSSProperties,
   viewToggle: {
     display: "flex",
     alignItems: "center",
     gap: 8,
-    marginBottom: 14,
   } satisfies CSSProperties,
   toggleBtn: (pressed: boolean): CSSProperties => ({
     display: "inline-flex",

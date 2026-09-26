@@ -271,6 +271,14 @@ append-only. Empty sections are expected — append under the one that fits.
   and both route through the one canonical table,
   `.claude/skills/pr-self-review/routing.md`.
 
+- 2026-09-26 — A dev server started from a worktree shares the Postgres data
+  with the main checkout, but not its filesystem: `repos.clone_path` and any
+  relative `*_DIR` env resolve against whichever checkout started the process.
+  Before debugging "index says full but shows nothing", confirm which checkout
+  owns the process on :3001 (`Get-CimInstance Win32_Process` command line) and
+  whether the paths it resolves actually exist there.
+
+
 ## Tool & Library Notes
 
 - 2026-09-22 — Subagent frontmatter and Skill frontmatter are different schemas.

@@ -1,10 +1,16 @@
 import type { CSSProperties } from "react";
 
 export const s = {
-  svg: {
+  /** The SVG keeps its natural size so labels never squash; a wide graph
+      scrolls sideways inside the card instead of overlapping. */
+  scroller: {
     width: "100%",
-    height: "auto",
+    overflowX: "auto",
+    overflowY: "hidden",
+  } satisfies CSSProperties,
+  svg: {
     display: "block",
+    maxWidth: "none",
   } satisfies CSSProperties,
   empty: {
     fontSize: 13,
