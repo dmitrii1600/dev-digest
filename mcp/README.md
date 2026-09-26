@@ -4,8 +4,7 @@ A local **stdio MCP server** named `devdigest`. It is a thin HTTP adapter over
 the existing Fastify API (`server/`, default `http://localhost:3001`) and
 exposes five tools to Claude Code as `mcp__devdigest__<tool>`:
 `list_agents`, `run_agent_on_pr`, `get_findings`, `get_conventions`, and
-`get_blast_radius` (a stub — see [Blast radius: the homework
-seam](#blast-radius-the-homework-seam)).
+`get_blast_radius`.
 
 It never imports server runtime code. The only cross-package import is the
 `@devdigest/shared` Zod contracts (via a tsconfig path alias, the same way
@@ -52,15 +51,17 @@ only that protocol (see [Conventions](AGENTS.md#conventions)).
 | `run_agent_on_pr` | `repo`, `pr`, `agent` (name / id / `"all"`), `response_format` | Terminal: `{ pr, status: "done"\|"partial"\|"failed", attached?, reviews, truncated? }`. Wait-limit: `{ pr, status: "running", run_ids, waited_s, hint }` | `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: false`, `openWorldHint: false` |
 | `get_findings` | `repo`, `pr`, `agent?`, `run_id?`, `response_format` | `{ pr, reviews, in_progress?, truncated? }`, or a `running`/`hint` shape when nothing has finished yet | `readOnlyHint: true`, `idempotentHint: true`, `openWorldHint: false` |
 | `get_conventions` | `repo`, `status` (`accepted \| pending \| any`, default `any`) | `{ repo, scan, candidates, rejected_count, truncated? }` | `readOnlyHint: true`, `idempotentHint: true`, `openWorldHint: false` |
-| `get_blast_radius` | `repo`, `pr` | `{ status: "not_implemented", repo, pr, message }` — always, zero API calls | `readOnlyHint: true`, `idempotentHint: true`, `openWorldHint: false` |
+| `get_blast_radius` | `repo`, `pr` | `{ pr, head_sha, summary, degraded?, reason?, hint?, changed_symbols, downstream, truncated? }`, via `GET /pulls/:id` + `GET /pulls/:id/blast-radius`, read-only | `readOnlyHint: true`, `idempotentHint: true`, `openWorldHint: false` |
 
 None of the five declares `outputSchema` — see [No
 `outputSchema`](#no-outputschema-on-any-tool). `repo` accepts `"owner/name"`
 or a repo id; `pr` accepts a PR number, `"#482"`, or a PR id. Full argument
 descriptions (the `.describe()` text that ships in `tools/list`) live in
 [`../specs/06-mcp-server.md`](../specs/06-mcp-server.md) → *Final tool
-descriptions* — that section is canonical; this table is a map onto it, not a
-second copy to keep in sync.
+descriptions* — that section is canonical (for `get_blast_radius` and the
+server `instructions` it is [`../specs/07-blast-radius.md`](../specs/07-blast-radius.md)
+→ *MCP tool: final strings*); this table is a map onto it, not a second copy to
+keep in sync.
 
 ## Environment
 
@@ -157,11 +158,9 @@ hand against a seeded repo, e.g. `acme/payments-api` PR `482`.
   guard (`MAX_OUTPUT_CHARS`) then halves the shown findings until the
   serialized result fits, so one call can never blow the client's own output
   budget.
-- **No `outputSchema` on any tool, the stub included.** An `outputSchema`
-  adds bytes to every `tools/list` response for every session, whether or not
-  the tool is ever called. `get_blast_radius` especially must not carry one:
-  its return shape is not designed yet, and shipping a schema now would
-  freeze it before the homework exists.
+- **No `outputSchema` on any tool.** An `outputSchema` adds bytes to every
+  `tools/list` response for every session, whether or not the tool is ever
+  called.
 - **tsx at runtime, not a `dist/` build.** `tsc` does not rewrite the
   `@devdigest/shared` path alias, so a compiled `dist/` would not resolve it
   without adding a bundler — a new dependency this package does not need.
@@ -172,25 +171,19 @@ hand against a seeded repo, e.g. `acme/payments-api` PR `482`.
   `server/node_modules` absent — `test/stdio.test.ts` is the proof, in CI,
   that this holds.
 
-## Blast radius: the homework seam
+## Blast radius
 
-`get_blast_radius` is deliberately a stub: it makes **zero API calls** and
-always returns `{ status: "not_implemented", repo, pr, message }` (never an
-error — nothing about the shape invites a retry). The description tells the
-model not to select it for a real question. The seam for the course homework
-(lesson L04):
-
-1. `createResolver(api)` → `resolveRepo`, `resolvePr` — reuse as-is.
-2. A new `api.getPull(prId)` → `GET /pulls/:id` → `PrDetail.files[].path`
-   (`server/src/vendor/shared/contracts/platform.ts:211`) to get the changed
-   files.
-3. A **new server route** (e.g. `GET /pulls/:id/blast-radius`) backed by
-   `RepoIntel.getBlastRadius(repoId, changedFiles)`
-   (`server/src/modules/repo-intel/types.ts:147`), returning `BlastRadius`
-   (`server/src/vendor/shared/contracts/brief.ts:39`). This MCP process
-   cannot call `RepoIntel` directly — it only talks HTTP to the API.
-4. Shape the concise output from `changed_symbols` / `downstream` using the
-   same caps and truncation pattern `format.ts` already uses for findings.
+`get_blast_radius` calls `GET /pulls/:id` before `GET /pulls/:id/blast-radius`
+— the same refresh the studio's Overview tab triggers by loading the PR
+detail first — so the changed-file list the index read is scoped to is
+current, not whatever the API last persisted. Both calls are GETs; the tool
+never re-indexes or triggers a scan. `format.ts`'s `shapeBlastRadius` caps
+`changed_symbols` (`MAX_BLAST_SYMBOLS`) and `downstream` (`MAX_BLAST_DOWNSTREAM`)
+independently of the server's own per-symbol caller cap, and a degraded index
+(off, failed, partial, or never indexed) is a normal result — `degraded`,
+`reason` and a `hint` naming the reason, never `isError`. See
+[`specs/07-blast-radius.md`](../specs/07-blast-radius.md) for the route and
+the mapping rules behind the shape.
 
 ## SSE: a later upgrade
 

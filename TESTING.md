@@ -47,7 +47,8 @@ fails there if the win32 prebuilt is missing).
 **server-integration** — the `*.it.test.ts` files. Each starts a real Postgres
 (pgvector) via testcontainers, builds the Fastify app, migrates + seeds, and
 drives routes end-to-end: reviews + run lifecycle (incl. grounding), agents CRUD,
-repo-intel symbol clamping, pulls comments, settings models. They self-skip when
+repo-intel symbol clamping, pulls comments, the blast radius route, settings
+models. They self-skip when
 Docker is unavailable.
 
 **reviewer-core** — the pure engine: `toReview` selection, prompt construction,

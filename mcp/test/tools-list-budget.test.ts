@@ -21,6 +21,12 @@ import { createFixtureState } from './helpers/fixtures.js';
  * boilerplate per field beyond the raw description text) and are set here to
  * measured + ~15% headroom. A later regression means trim the text; raise
  * the budget only with a justification.
+ *
+ * `specs/07-blast-radius.md` replaced the `get_blast_radius` stub description
+ * and added blast radius to `SERVER_INSTRUCTIONS`, which re-measured as
+ * instructions 167 (was 156), descriptionsTotal 1127 (was 1058), tools/list
+ * JSON 4303 (was 4236). All three stay comfortably under the existing
+ * headroom, so the constants are unchanged.
  */
 const MAX_INSTRUCTIONS_CHARS = 200;
 const MAX_DESCRIPTIONS_TOTAL_CHARS = 1_217; // measured 1058 × 1.15

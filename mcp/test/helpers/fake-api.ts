@@ -85,6 +85,30 @@ export function createFakeApi(initialState: FixtureState): FakeApi {
       const repoId = parts[1]!;
       return json(state.conventions[repoId] ?? { scan: null, candidates: [], rejected_count: 0 });
     }
+    // GET /pulls/:id
+    if (method === 'GET' && parts[0] === 'pulls' && parts.length === 2) {
+      const prId = parts[1]!;
+      const detail = state.pullDetails[prId];
+      if (!detail) {
+        return new Response(JSON.stringify(errorBody(`fake-api: no pull ${prId}`)), {
+          status: 404,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      return json(detail);
+    }
+    // GET /pulls/:id/blast-radius
+    if (method === 'GET' && parts[0] === 'pulls' && parts[2] === 'blast-radius' && parts.length === 3) {
+      const prId = parts[1]!;
+      const blast = state.blast[prId];
+      if (!blast) {
+        return new Response(JSON.stringify(errorBody(`fake-api: no blast radius for ${prId}`)), {
+          status: 404,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      return json(blast);
+    }
     // POST /pulls/:id/review
     if (method === 'POST' && parts[0] === 'pulls' && parts[2] === 'review' && parts.length === 3) {
       const prId = parts[1]!;

@@ -475,6 +475,17 @@ lock-file do-not-touch list in `AGENTS.md` were extended rather than
 special-cased. Package-local lessons (two distinct TS2589 sources with SDK
 1.30.1, the measured tools/list budget) are in `mcp/INSIGHTS.md`.
 
+### 2026-09-26 — L04: Blast Radius (server `modules/blast`, client panel, MCP tool)
+Plan `specs/07-blast-radius.md` → contract step alone, then three implementers
+in parallel on disjoint file lists (server / client+P3 / mcp): no conflicts, all
+three lanes green first time. architecture-reviewer ∥ plan-verifier found one
+WARNING (the `repo-intel/constants.ts` edge, kept on purpose because the
+assignment's P2 asks for that file) and five suggestions, four applied. The
+assignment text disagrees with the tree in three places — `githubBlobUrl` path,
+route name, and `BFS_DEPTH` (only `getCriticalPaths` uses it; blast is 1-hop) —
+and the tree won each time. Package-local lessons are in the three module files.
+
+
 ## Open Questions
 
 - 2026-09-18 — The pr-self-review PreToolUse hook matches on command text, so a
@@ -492,3 +503,10 @@ special-cased. Package-local lessons (two distinct TS2589 sources with SDK
   tree enables both the `PreToolUse` gate and `.githooks/pre-push`. Options and
   a recommendation are in `specs/05-skills-lab-criteria-gaps.md` §21; the
   author decides.
+
+- 2026-09-26 — The `tsx watch` API on :3001 (started 18:21 from this worktree)
+  kept answering 404 on `/pulls/:id/blast-radius` after `modules/index.ts`
+  changed, so the new module never loaded without a manual restart. Unverified
+  whether tsx's watcher misses files created after start on a Windows worktree
+  path with spaces; if it recurs, restart `pnpm dev` after adding a module.
+

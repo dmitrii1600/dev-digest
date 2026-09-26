@@ -1,7 +1,9 @@
 import {
   Agent,
   ApiErrorBody,
+  BlastRadius,
   ConventionsPage,
+  PrDetail,
   PrMeta,
   Repo,
   ReviewRecord,
@@ -19,6 +21,8 @@ export interface ApiClient {
   listRuns(prId: string, opts?: RequestOpts): Promise<RunSummary[]>;
   listReviews(prId: string, opts?: RequestOpts): Promise<ReviewRecord[]>;
   getConventions(repoId: string, opts?: RequestOpts): Promise<ConventionsPage>;
+  getPull(prId: string, opts?: RequestOpts): Promise<PrDetail>;
+  getBlastRadius(prId: string, opts?: RequestOpts): Promise<BlastRadius>;
 }
 
 export interface RequestOpts {
@@ -169,6 +173,16 @@ export function createApiClient(opts: CreateApiClientOpts): ApiClient {
       const path = `/repos/${encodeURIComponent(repoId)}/conventions`;
       const json = await request('GET', path, undefined, reqOpts);
       return parseOrThrow(ConventionsPage, json, 'GET', path);
+    },
+    async getPull(prId, reqOpts) {
+      const path = `/pulls/${encodeURIComponent(prId)}`;
+      const json = await request('GET', path, undefined, reqOpts);
+      return parseOrThrow(PrDetail, json, 'GET', path);
+    },
+    async getBlastRadius(prId, reqOpts) {
+      const path = `/pulls/${encodeURIComponent(prId)}/blast-radius`;
+      const json = await request('GET', path, undefined, reqOpts);
+      return parseOrThrow(BlastRadius, json, 'GET', path);
     },
   };
 }

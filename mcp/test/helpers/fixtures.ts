@@ -1,6 +1,8 @@
 import type {
   Agent,
+  BlastRadius,
   ConventionsPage,
+  PrDetail,
   PrMeta,
   Repo,
   ReviewRecord,
@@ -111,6 +113,73 @@ function pr480(): PrMeta {
     score: null,
     cost_usd: null,
     findings_counts: null,
+  };
+}
+
+/** `GET /pulls/:id` — the 4 files match `server/src/db/seed.ts:129-132`. */
+function prDetail482(): PrDetail {
+  return {
+    ...pr482(),
+    body: 'Add rate limiting to public API endpoints to prevent abuse from unauthenticated clients.',
+    files: [
+      { path: 'src/middleware/ratelimit.ts', additions: 84, deletions: 0 },
+      { path: 'src/api/public/webhooks.ts', additions: 31, deletions: 6 },
+      { path: 'src/config.ts', additions: 4, deletions: 0 },
+      { path: 'src/api/users.ts', additions: 7, deletions: 2 },
+    ],
+    commits: [],
+    linked_issue: null,
+  };
+}
+
+function prDetail480(): PrDetail {
+  return {
+    ...pr480(),
+    body: 'Routine dependency bump.',
+    files: [{ path: 'pnpm-lock.yaml', additions: 4, deletions: 4 }],
+    commits: [],
+    linked_issue: null,
+  };
+}
+
+/** `GET /pulls/:id/blast-radius` for PR 482 — a healthy (non-degraded) index read. */
+function blast482(): BlastRadius {
+  return {
+    changed_symbols: [
+      { name: 'applyRateLimit', file: 'src/middleware/ratelimit.ts', kind: 'function' },
+      { name: 'RateLimitConfig', file: 'src/middleware/ratelimit.ts', kind: 'interface' },
+    ],
+    downstream: [
+      {
+        symbol: 'applyRateLimit',
+        callers: [
+          { name: 'registerPublicRoutes', file: 'src/api/public/webhooks.ts', line: 42 },
+          { name: 'createUser', file: 'src/api/users.ts', line: 118 },
+        ],
+        endpoints_affected: ['GET /users/:id', 'POST /webhooks/stripe'],
+        crons_affected: ['job:digest'],
+      },
+      {
+        symbol: 'RateLimitConfig',
+        callers: [{ name: 'loadConfig', file: 'src/config.ts', line: 9 }],
+        endpoints_affected: [],
+        crons_affected: [],
+      },
+    ],
+    summary: '2 changed symbols; 3 callers in 3 files; 2 endpoints; 1 cron.',
+    degraded: false,
+    reason: null,
+  };
+}
+
+/** `GET /pulls/:id/blast-radius` for PR 480 — an unindexed repo (`no_data`). */
+function blast480(): BlastRadius {
+  return {
+    changed_symbols: [],
+    downstream: [],
+    summary: 'No indexed symbols in the 1 changed file.',
+    degraded: true,
+    reason: 'no_data',
   };
 }
 
@@ -400,6 +469,8 @@ export interface FixtureState {
   runs: Record<string, RunSummary[]>;
   reviews: Record<string, ReviewRecord[]>;
   conventions: Record<string, ConventionsPage>;
+  pullDetails: Record<string, PrDetail>;
+  blast: Record<string, BlastRadius>;
 }
 
 /** A fresh, independent copy of the fixture graph — safe to hand to a new fake API per test. */
@@ -421,6 +492,14 @@ export function createFixtureState(): FixtureState {
     },
     conventions: {
       [REPO_PAYMENTS_ID]: conventionsForPayments(),
+    },
+    pullDetails: {
+      [PR_482_ID]: prDetail482(),
+      [PR_480_ID]: prDetail480(),
+    },
+    blast: {
+      [PR_482_ID]: blast482(),
+      [PR_480_ID]: blast480(),
     },
   };
 }

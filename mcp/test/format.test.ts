@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import type { FindingRecord, ReviewRecord, RunSummary } from '@devdigest/shared';
+import type { BlastRadius, DownstreamImpact, FindingRecord, ReviewRecord, RunSummary } from '@devdigest/shared';
 import {
   clip,
+  MAX_BLAST_DOWNSTREAM,
+  MAX_BLAST_SYMBOLS,
   MAX_FINDINGS_CONCISE,
   MAX_FINDINGS_DETAILED,
   MAX_OUTPUT_CHARS,
+  shapeBlastRadius,
   shapeReviews,
   sortFindings,
   toTextResult,
@@ -216,5 +219,121 @@ describe('toTextResult', () => {
     const payload = { blob: 'x'.repeat(MAX_OUTPUT_CHARS + 10) };
     const result = toTextResult(payload);
     expect(result.content[0].text.length).toBeGreaterThan(MAX_OUTPUT_CHARS);
+  });
+});
+
+function downstream(overrides: Partial<DownstreamImpact> & Pick<DownstreamImpact, 'symbol'>): DownstreamImpact {
+  return {
+    callers: [],
+    endpoints_affected: [],
+    crons_affected: [],
+    ...overrides,
+  };
+}
+
+function blast(overrides: Partial<BlastRadius> = {}): BlastRadius {
+  return {
+    changed_symbols: [],
+    downstream: [],
+    summary: 'summary',
+    degraded: false,
+    reason: null,
+    ...overrides,
+  };
+}
+
+describe('shapeBlastRadius', () => {
+  it('formats symbols and callers as compact strings, omitting empty endpoints/crons', () => {
+    const b = blast({
+      changed_symbols: [{ name: 'foo', file: 'a.ts', kind: 'function' }],
+      downstream: [downstream({ symbol: 'foo', callers: [{ name: 'bar', file: 'b.ts', line: 10 }] })],
+      summary: '1 changed symbol; 1 caller in 1 file; 0 endpoints; 0 crons.',
+    });
+    const result = shapeBlastRadius(b, { label: 'acme/x#1', headSha: 'sha1' });
+    expect(result.pr).toBe('acme/x#1');
+    expect(result.head_sha).toBe('sha1');
+    expect(result.summary).toBe(b.summary);
+    expect(result.changed_symbols).toEqual(['foo (function) a.ts']);
+    expect(result.downstream).toEqual([{ symbol: 'foo', callers: ['b.ts:10 bar'] }]);
+    expect(result.degraded).toBeUndefined();
+    expect(result.reason).toBeUndefined();
+    expect(result.hint).toBeUndefined();
+    expect(result.truncated).toBeUndefined();
+  });
+
+  it('includes endpoints and crons only when present, and keeps them apart', () => {
+    const b = blast({
+      changed_symbols: [{ name: 'foo', file: 'a.ts', kind: 'function' }],
+      downstream: [
+        downstream({
+          symbol: 'foo',
+          callers: [{ name: 'bar', file: 'b.ts', line: 10 }],
+          endpoints_affected: ['GET /x'],
+          crons_affected: ['job:digest'],
+        }),
+      ],
+    });
+    const result = shapeBlastRadius(b, { label: 'acme/x#1', headSha: 'sha1' });
+    const group = (result.downstream as Record<string, unknown>[])[0]!;
+    expect(group.endpoints).toEqual(['GET /x']);
+    expect(group.crons).toEqual(['job:digest']);
+  });
+
+  it('caps changed_symbols and downstream, reporting an accurate truncated block', () => {
+    const symbols = Array.from({ length: 60 }, (_, i) => ({ name: `s${i}`, file: 'a.ts', kind: 'function' }));
+    const groups = Array.from({ length: 40 }, (_, i) =>
+      downstream({ symbol: `s${i}`, callers: [{ name: 'c', file: 'a.ts', line: 1 }] }),
+    );
+    const b = blast({ changed_symbols: symbols, downstream: groups });
+    const result = shapeBlastRadius(b, { label: 'acme/x#1', headSha: 'sha1' });
+    expect((result.changed_symbols as unknown[]).length).toBe(MAX_BLAST_SYMBOLS);
+    expect((result.downstream as unknown[]).length).toBe(MAX_BLAST_DOWNSTREAM);
+    expect(result.truncated).toEqual({
+      symbols_shown: MAX_BLAST_SYMBOLS,
+      symbols_total: 60,
+      downstream_shown: MAX_BLAST_DOWNSTREAM,
+      downstream_total: 40,
+      hint: "Showing the highest-ranked symbols first. Open the PR's Overview tab in the DevDigest studio for the full map.",
+    });
+  });
+
+  it('sets degraded + reason + a hint that interpolates only the reason value', () => {
+    const b = blast({ degraded: true, reason: 'index_partial' });
+    const result = shapeBlastRadius(b, { label: 'acme/x#1', headSha: 'sha1' });
+    expect(result.degraded).toBe(true);
+    expect(result.reason).toBe('index_partial');
+    expect(result.hint).toBe('Index index_partial: callers may be missing. Re-index the repo from the DevDigest studio.');
+  });
+
+  it('omits degraded/reason/hint entirely when not degraded', () => {
+    const b = blast({ degraded: false, reason: null });
+    const result = shapeBlastRadius(b, { label: 'acme/x#1', headSha: 'sha1' });
+    expect('degraded' in result).toBe(false);
+    expect('reason' in result).toBe(false);
+    expect('hint' in result).toBe(false);
+  });
+
+  it('halves shown downstream under the char guard until the payload fits', () => {
+    const groups = Array.from({ length: 16 }, (_, i) =>
+      downstream({
+        symbol: `s${i}`,
+        callers: Array.from({ length: 20 }, (_, j) => ({
+          name: `caller_${'x'.repeat(80)}_${j}`,
+          file: `src/file_${'y'.repeat(80)}_${i}_${j}.ts`,
+          line: j,
+        })),
+        endpoints_affected: [`GET /endpoint_${'z'.repeat(80)}_${i}`],
+      }),
+    );
+    const b = blast({ downstream: groups });
+    const result = shapeBlastRadius(b, { label: 'acme/x#1', headSha: 'sha1' });
+    expect(JSON.stringify(result).length).toBeLessThanOrEqual(MAX_OUTPUT_CHARS);
+    const truncated = result.truncated as
+      | { downstream_shown: number; downstream_total: number }
+      | undefined;
+    expect(truncated).toBeDefined();
+    expect(truncated!.downstream_total).toBe(16);
+    expect((result.downstream as unknown[]).length).toBe(truncated!.downstream_shown);
+    expect(truncated!.downstream_shown).toBeLessThan(16);
   });
 });

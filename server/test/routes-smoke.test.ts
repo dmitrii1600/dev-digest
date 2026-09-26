@@ -64,6 +64,14 @@ describe('routes (no DB)', () => {
     expect(res.json().error.code).toBe('validation_error');
     await app.close();
   });
+
+  it('GET /pulls/not-a-uuid/blast-radius → 422 validation_error (param validation, no DB touched)', async () => {
+    const app = await buildApp({ config });
+    const res = await app.inject({ method: 'GET', url: '/pulls/not-a-uuid/blast-radius' });
+    expect(res.statusCode).toBe(422);
+    expect(res.json().error.code).toBe('validation_error');
+    await app.close();
+  });
 });
 
 describe('skills import-from-URL (no DB — auth and fetcher mocked)', () => {

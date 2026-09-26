@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createApiClient } from '../src/api-client.js';
 import { ApiError } from '../src/errors.js';
 import { createFakeApi } from './helpers/fake-api.js';
-import { createFixtureState, PR_482_ID, REPO_PAYMENTS_ID } from './helpers/fixtures.js';
+import { createFixtureState, PR_480_ID, PR_482_ID, REPO_PAYMENTS_ID } from './helpers/fixtures.js';
 
 const TIMEOUT_MS = 30_000;
 
@@ -29,6 +29,12 @@ describe('createApiClient', () => {
 
     const conventions = await api.getConventions(REPO_PAYMENTS_ID);
     expect(conventions.candidates).toHaveLength(3);
+
+    const detail = await api.getPull(PR_482_ID);
+    expect(detail.files).toHaveLength(4);
+
+    const blast = await api.getBlastRadius(PR_482_ID);
+    expect(blast.downstream).toHaveLength(2);
   });
 
   it('percent-encodes path identifiers', async () => {
@@ -110,5 +116,21 @@ describe('createApiClient', () => {
     (fake.state.agents as unknown as { name?: unknown }[])[0]!.name = 123;
     const api = createApiClient({ baseUrl: 'http://localhost:3001', fetchImpl: fake.fetchImpl, timeoutMs: TIMEOUT_MS });
     await expect(api.listAgents()).rejects.toMatchObject({ kind: 'contract' });
+  });
+
+  it('parses a degraded blast radius (PR 480, no_data)', async () => {
+    const fake = createFakeApi(createFixtureState());
+    const api = createApiClient({ baseUrl: 'http://localhost:3001', fetchImpl: fake.fetchImpl, timeoutMs: TIMEOUT_MS });
+    const blast = await api.getBlastRadius(PR_480_ID);
+    expect(blast.degraded).toBe(true);
+    expect(blast.reason).toBe('no_data');
+    expect(blast.changed_symbols).toEqual([]);
+  });
+
+  it('maps a malformed blast radius body to ApiError(contract)', async () => {
+    const fake = createFakeApi(createFixtureState());
+    (fake.state.blast[PR_482_ID] as unknown as { summary?: unknown }).summary = 123;
+    const api = createApiClient({ baseUrl: 'http://localhost:3001', fetchImpl: fake.fetchImpl, timeoutMs: TIMEOUT_MS });
+    await expect(api.getBlastRadius(PR_482_ID)).rejects.toMatchObject({ kind: 'contract' });
   });
 });

@@ -52,6 +52,18 @@ append-only. Empty sections are expected — append under the one that fits.
   (`test/tools-list-budget.test.ts:26-27`). A red budget test means trim the
   text; raise the constant only with a written reason.
 
+- 2026-09-26 — `toTextResult`'s char guard trims only a `reviews` array
+  (`src/format.ts:238-252`); any other large payload passes through unguarded.
+  A tool with its own big list needs its own halving loop before
+  `toTextResult` (`shapeBlastRadius` in `src/format.ts`), and it decides what
+  to trim — the generic funnel cannot know that downstream groups are the
+  expendable part.
+- 2026-09-26 — `get_blast_radius` calls `GET /pulls/:id` before
+  `GET /pulls/:id/blast-radius` (`src/tools/get-blast-radius.ts`) because the
+  server fills `pr_files` only in the detail route. Skipping it returns an
+  empty map for any PR the studio never opened.
+
+
 ## Tool & Library Notes
 
 - 2026-09-26 — SDK 1.30.1's `CallToolResult` is an indexed type
@@ -83,6 +95,14 @@ Two TS2589 sources surfaced and were split apart (generic wrapper vs zod v3
 shapes); both fixes are above. The API and Docker were down in this session, so
 step 11's live checks (`/mcp`, `/context`, inspector against seeded data) are
 still open — see Open Questions.
+
+### 2026-09-26 — get_blast_radius: stub → real tool (specs/07-blast-radius.md)
+Replaced the L04 stub with two `ApiClient` methods, `shapeBlastRadius` with
+caps (50 symbols / 30 groups) and a 253-char description; instructions grew to
+167 chars. Budgets after: descriptions 1,127 / 1,217, `tools/list` 4,303 /
+4,872. Live parity with the studio is still unchecked — the API on :3001 was
+a stale `tsx watch` from before the route existed.
+
 
 ## Open Questions
 

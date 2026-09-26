@@ -72,6 +72,15 @@ append-only. Empty sections are expected — append under the one that fits.
   The hook is still useful — one schema name, one fixture — but the design it
   hints at is not a requirement.
 
+- 2026-09-26 — Do not read `MAX_CALLERS_PER_SYMBOL` as a per-symbol limit.
+  The persistent facade path applies it once across all symbols after a global
+  rank sort, `callers.slice(0, MAX_CALLERS_PER_SYMBOL)`
+  (`src/modules/repo-intel/service.ts:386`), and the ripgrep fallback
+  (`service.ts:236-295`) applies no cap at all. A consumer that promises "N per
+  symbol" must re-cap after grouping (`src/modules/blast/helpers.ts`), and a PR
+  with >20 resolved callers in total can show zero for its low-rank symbols.
+
+
 ## Codebase Patterns
 
 - 2026-09-18 — An onion ring is derived from the **filename**, not a folder:
@@ -180,6 +189,26 @@ append-only. Empty sections are expected — append under the one that fits.
   which for a seven-row list is nothing; revisit only if the list endpoint ever
   pages thousands.
 
+- 2026-09-26 — `repoIntel.getBlastRadius` never emits `flag_off`, `index_failed`
+  or `index_partial`: it returns `degraded:true, reason:'no_data'` or
+  `degraded:false` (`src/modules/repo-intel/service.ts:233,302,338,389`), and a
+  `partial` index comes back non-degraded. Derive the reason from
+  `config.repoIntelEnabled` plus `getIndexState` (`src/modules/blast/helpers.ts`
+  `resolveDegraded`) — the facade knows whether rows exist, not why they are
+  missing.
+- 2026-09-26 — `pr_files` is written only by `GET /pulls/:id`
+  (`src/modules/pulls/routes.ts:241-252`); the list sync never fills it. A route
+  that reads a PR's changed files (`GET /pulls/:id/blast-radius`) sees an empty
+  list until the detail was fetched once. The studio relies on mount order, the
+  MCP tool calls `getPull` first. A third consumer is the moment to move that
+  refresh behind a service.
+- 2026-09-26 — `GET /pulls/:id/blast-radius` is the first route with a
+  `response: { 200: Schema }` (`src/modules/blast/routes.ts:37`). A mapper bug
+  now surfaces as a generic 500 `internal_error` through
+  `isResponseSerializationError` (`src/app.ts:130-134`), never as malformed
+  JSON — the `.it.test.ts` `safeParse` assertion is where it becomes visible.
+
+
 ## Tool & Library Notes
 
 - 2026-09-20 — `drizzle-kit generate` asks interactively ("is `scan_id`
@@ -231,6 +260,14 @@ append-only. Empty sections are expected — append under the one that fits.
   whole thing is driven by a stubbed `fetchImpl` returning `new Response(...)`
   with a `location` header — no server, no network (`test/url-fetcher.test.ts`).
 
+- 2026-09-26 — The depcruise exemption for `repo-intel/constants.ts` is on the
+  *target* path (`.dependency-cruiser.cjs:85`), so every module may import it,
+  while `.claude/skills/onion-architecture/enforcement.md:115` describes it as
+  one pinned edge. `modules/blast/routes.ts:7` is the second consumer and
+  `pnpm arch` stays green. Pin the rule to `from: repos/service.ts` when the
+  read limits move to `modules/_shared/`.
+
+
 ## Recurring Errors & Fixes
 
 - 2026-09-15 — `pnpm exec vitest run --exclude '**/*.it.test.ts'` fails 6 tests
@@ -244,6 +281,12 @@ append-only. Empty sections are expected — append under the one that fits.
   produced a path one character short, and `mkdir -p` on that happened to create
   the real parent as a side effect. A latent bug that silently works is why the
   fix went into both files rather than only the failing one.
+
+- 2026-09-26 — `conventions.it.test.ts:474` (`trace.prompt_assembly` undefined)
+  failed once inside a full `pnpm test` run and passed alone (7/7). It drives a
+  whole review run under parallel Testcontainers; re-run the file alone before
+  blaming a change outside `modules/reviews`.
+
 
 ## Session Notes
 

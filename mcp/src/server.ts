@@ -30,12 +30,14 @@ export interface CreateServerDeps {
 
 /**
  * The server's one always-visible sentence — injected into the system prompt
- * whole, ahead of any per-tool description. Canonical text lives in
- * `specs/06-mcp-server.md` → *Final tool descriptions → Server `instructions`*;
+ * whole, ahead of any per-tool description. Canonical text now lives in
+ * `specs/07-blast-radius.md` → *MCP tool: final strings* (superseding the
+ * original `specs/06-mcp-server.md` → *Final tool descriptions → Server
+ * `instructions`*, which shipped before blast radius existed);
  * `test/tools-list-budget.test.ts` guards its length.
  */
 export const SERVER_INSTRUCTIONS =
-  'Local DevDigest PR-review studio: run review agents on imported pull requests and read findings and repo conventions; repos are owner/name, PRs are numbers.';
+  'Local DevDigest PR-review studio: run review agents on imported pull requests, read findings, repo conventions and blast radius; repos are owner/name, PRs are numbers.';
 
 const DEFAULT_CLOCK: Clock = {
   now: () => Date.now(),

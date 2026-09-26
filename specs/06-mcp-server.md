@@ -154,6 +154,7 @@ Every description follows one shape: **what it returns · when to call it · whe
 Local DevDigest PR-review studio: run review agents on imported pull requests and read findings and repo conventions; repos are owner/name, PRs are numbers.
 ```
 - Rules: *token cost at start* — one sentence, ≤200 chars, because it is injected into the system prompt whole and is never deferred; *flat arguments* — it states the identifier format once, so no per-tool description has to repeat it.
+- Superseded by `specs/07-blast-radius.md` → *MCP tool: final strings*.
 
 ### `list_agents` (146 chars)
 
@@ -189,6 +190,7 @@ Read the coding conventions DevDigest extracted from a repository: rule, categor
 Not implemented yet — always returns status "not_implemented"; do not call it to answer a real question. Will list the symbols a pull request changes and the code that depends on them.
 ```
 - Rules: *no wasted turns / no retries* — the limitation is the first clause, so the agent never selects it for real work, and the handler returns a normal (non-`isError`) result so nothing invites a retry; *homework seam* — the second sentence fixes the intent and the input shape (`repo`, `pr`) that the future implementation keeps; *token cost* — no `outputSchema`, so the stub costs one line, not a schema.
+- Superseded by `specs/07-blast-radius.md` → *MCP tool: final strings*.
 
 ### Parameter descriptions (`params.ts` and per-tool)
 

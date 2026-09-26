@@ -1,4 +1,4 @@
-import type { FindingRecord, ReviewRecord, RunSummary } from '@devdigest/shared';
+import type { BlastRadius, DownstreamImpact, FindingRecord, ReviewRecord, RunSummary } from '@devdigest/shared';
 import { clip } from './errors.js';
 
 export { clip };
@@ -8,6 +8,10 @@ export const MAX_FINDINGS_CONCISE = 50;
 export const MAX_FINDINGS_DETAILED = 20;
 /** Convention candidates shown at once (`get_conventions`). */
 export const MAX_LIST = 50;
+/** Changed symbols / downstream groups shown at once (`get_blast_radius`). Per-symbol
+ *  caller counts are NOT re-capped here — the server already applied `MAX_CALLERS_PER_SYMBOL`. */
+export const MAX_BLAST_SYMBOLS = 50;
+export const MAX_BLAST_DOWNSTREAM = 30;
 /**
  * ~10k tokens, far below Claude Code's 25k `MAX_MCP_OUTPUT_TOKENS` — a hard
  * ceiling on any single tool result, findings included.
@@ -268,4 +272,89 @@ export function toTextResult(payload: Record<string, unknown>): ToolTextResult {
   }
 
   return { content: [{ type: 'text', text }] };
+}
+
+export interface BlastTruncationInfo {
+  symbols_shown: number;
+  symbols_total: number;
+  downstream_shown: number;
+  downstream_total: number;
+  hint: string;
+}
+
+const BLAST_TRUNCATED_HINT =
+  "Showing the highest-ranked symbols first. Open the PR's Overview tab in the DevDigest studio for the full map.";
+
+function shapeDownstream(d: DownstreamImpact): Record<string, unknown> {
+  const out: Record<string, unknown> = {
+    symbol: d.symbol,
+    callers: d.callers.map((c) => `${c.file}:${c.line} ${c.name}`),
+  };
+  if (d.endpoints_affected.length > 0) out.endpoints = d.endpoints_affected;
+  if (d.crons_affected.length > 0) out.crons = d.crons_affected;
+  return out;
+}
+
+/**
+ * Shapes a `BlastRadius` (from `GET /pulls/:id/blast-radius`) into the
+ * concise map `get_blast_radius` returns: symbols and callers as compact
+ * strings, caps on both arrays, and a degraded `hint` whose only
+ * interpolated value is the `reason` enum. Degraded/empty is a normal
+ * result, never an error.
+ */
+export function shapeBlastRadius(
+  blast: BlastRadius,
+  opts: { label: string; headSha: string },
+): Record<string, unknown> {
+  const symbolsTotal = blast.changed_symbols.length;
+  const downstreamTotal = blast.downstream.length;
+
+  const shownSymbols = blast.changed_symbols.slice(0, MAX_BLAST_SYMBOLS);
+  let shownDownstream = blast.downstream.slice(0, MAX_BLAST_DOWNSTREAM);
+
+  const payload: Record<string, unknown> = {
+    pr: opts.label,
+    head_sha: opts.headSha,
+    summary: blast.summary,
+  };
+
+  if (blast.degraded) {
+    payload.degraded = true;
+    if (blast.reason) {
+      payload.reason = blast.reason;
+      payload.hint = `Index ${blast.reason}: callers may be missing. Re-index the repo from the DevDigest studio.`;
+    }
+  }
+
+  payload.changed_symbols = shownSymbols.map((s) => `${s.name} (${s.kind}) ${s.file}`);
+  payload.downstream = shownDownstream.map(shapeDownstream);
+
+  if (shownSymbols.length < symbolsTotal || shownDownstream.length < downstreamTotal) {
+    payload.truncated = {
+      symbols_shown: shownSymbols.length,
+      symbols_total: symbolsTotal,
+      downstream_shown: shownDownstream.length,
+      downstream_total: downstreamTotal,
+      hint: BLAST_TRUNCATED_HINT,
+    } satisfies BlastTruncationInfo;
+  }
+
+  // Char guard: this payload never carries a `reviews` array, so
+  // `toTextResult`'s own guard passes it through untouched — halve the
+  // shown downstream groups here instead until it fits.
+  let text = JSON.stringify(payload);
+  while (text.length > MAX_OUTPUT_CHARS && shownDownstream.length > 1) {
+    shownDownstream = shownDownstream.slice(0, Math.floor(shownDownstream.length / 2));
+    payload.downstream = shownDownstream.map(shapeDownstream);
+    payload.truncated = {
+      symbols_shown: shownSymbols.length,
+      symbols_total: symbolsTotal,
+      downstream_shown: shownDownstream.length,
+      downstream_total: downstreamTotal,
+      hint: BLAST_TRUNCATED_HINT,
+    } satisfies BlastTruncationInfo;
+    text = JSON.stringify(payload);
+  }
+
+  return payload;
 }

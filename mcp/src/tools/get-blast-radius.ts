@@ -1,28 +1,21 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { safe } from '../errors.js';
-import { toTextResult } from '../format.js';
+import { shapeBlastRadius, toTextResult } from '../format.js';
+import { createResolver } from '../resolve.js';
 import type { ServerDeps } from '../server.js';
 import { pr, repo } from './params.js';
 
 const DESCRIPTION =
-  'Not implemented yet — always returns status "not_implemented"; do not call it to answer a real question. Will list the symbols a pull request changes and the code that depends on them.';
+  'List the symbols a pull request changes, their callers (file:line) and the HTTP endpoints and crons that depend on them, read from the DevDigest repo index (no LLM, no re-analysis). If the index is partial, failed or off, it says degraded with a reason.';
 
 /**
- * Homework seam (course lesson L04 — Blast Radius). This tool is a stub on
- * purpose: it keeps the final input shape stable so the real implementation
- * is a drop-in. Building it means:
- *   1. `createResolver(api)` → `resolveRepo`, `resolvePr` (see resolve.ts).
- *   2. `GET /pulls/:id` → `PrDetail.files[].path` (server/src/vendor/shared/
- *      contracts/platform.ts:211), via a new `api.getPull` method.
- *   3. A NEW server route (e.g. `GET /pulls/:id/blast-radius`) backed by
- *      `RepoIntel.getBlastRadius(repoId, changedFiles)`
- *      (server/src/modules/repo-intel/types.ts:147), returning `BlastRadius`
- *      (server/src/vendor/shared/contracts/brief.ts:39). This MCP process
- *      cannot call RepoIntel directly — it only ever talks HTTP to the API.
- *   4. Shape concise output from `changed_symbols` / `downstream` with the
- *      caps in `format.ts`.
+ * Blast radius (course lesson L04 — see specs/07-blast-radius.md). Resolves
+ * repo/PR, refreshes the PR's changed-file list via `GET /pulls/:id` (the
+ * same call the studio makes on open), then reads
+ * `GET /pulls/:id/blast-radius` — a repo-intel index READ, never a
+ * re-index. Degraded or empty is a normal result, not `isError`.
  */
-export function register(server: McpServer, _deps: ServerDeps): void {
+export function register(server: McpServer, deps: ServerDeps): void {
   server.registerTool(
     'get_blast_radius',
     {
@@ -32,14 +25,16 @@ export function register(server: McpServer, _deps: ServerDeps): void {
     },
     (args) =>
       safe(async () => {
-        // Zero API calls — the stub never touches the network.
-        return toTextResult({
-          status: 'not_implemented',
-          repo: args.repo,
-          pr: args.pr,
-          message:
-            'Blast radius is not implemented yet (course lesson L04 homework). Use get_findings for review results.',
-        });
+        const resolver = createResolver(deps.api);
+        const resolvedRepo = await resolver.resolveRepo(args.repo);
+        const resolvedPr = await resolver.resolvePr(resolvedRepo, args.pr);
+
+        const detail = await deps.api.getPull(resolvedPr.id);
+        const blast = await deps.api.getBlastRadius(resolvedPr.id);
+
+        return toTextResult(
+          shapeBlastRadius(blast, { label: resolvedPr.label, headSha: detail.head_sha }),
+        );
       }),
   );
 }
