@@ -103,6 +103,18 @@ append-only. Empty sections are expected — append under the one that fits.
   other than `INDEXER_VERSION` and resync again (`incremental.ts:78` delegates
   to `runFullIndex`).
 
+- 2026-09-26 — A clone dir reached through a junction/symlink (the worktree
+  `server/clones` → main `server/clones` shortcut) gave the depgraph adapter
+  **0 edges even after the backslash fix**: dependency-cruiser reports
+  `module.source` through the path it was given but `dependency.resolved`
+  through the real path, so `relative(root, resolved)` climbed out of the root
+  and every edge was dropped. `toRel` now realpaths both sides
+  (`src/adapters/depgraph/index.ts`, junction case in
+  `test/depgraph-torel.test.ts`), and `INDEXER_VERSION` went to 4 so every
+  v3 index (all of which carry 0 edges) rebuilds itself. Diagnosis shortcut:
+  `repo_index_state.stats->>'edgesWritten'` = 0 with `referencesWritten` > 0.
+
+
 
 ## Codebase Patterns
 

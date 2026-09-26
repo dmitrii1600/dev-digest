@@ -40,8 +40,13 @@ export const MAX_CALLERS_PER_SYMBOL = 20;
  * matched the POSIX file set), so every `references.decl_file` stayed NULL and
  * blast radius showed no callers. Bumping forces one full rebuild per repo on
  * its next refresh/resync instead of a manual `repo_index_state` edit.
+ *
+ * v4: the same adapter still emitted zero edges when the clone dir sat behind
+ * a junction/symlink (cruise reports sources through the given path but
+ * resolves imports through the real one). `toRel` now realpaths both sides;
+ * every v3 index carries 0 edges and must be rebuilt once more.
  */
-export const INDEXER_VERSION = 3;
+export const INDEXER_VERSION = 4;
 
 // --- [T2] Full-index limits (documented now, enforced in the pipeline) ------
 export const MAX_INDEXED_FILES = 5000;
