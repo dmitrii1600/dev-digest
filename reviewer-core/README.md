@@ -15,22 +15,38 @@ emits JS — its `build` is a type-check.
 
 ```mermaid
 flowchart LR
-  IN["inputs<br/>diff · system prompt · repo map"] --> PROMPT["assemblePrompt()<br/>prompt.ts"]
+  IN["inputs<br/>diff · system prompt · repo map · derived intent"] --> PROMPT["assemblePrompt()<br/>prompt.ts"]
   PROMPT --> WRAP["wrapUntrusted() + INJECTION_GUARD<br/>fence untrusted content vs prompt injection"]
   WRAP --> LLM["LLMProvider (injected)<br/>llm/openrouter.ts"]
   LLM --> STRUCT["structured output<br/>llm/structured.ts<br/>Zod → JSON Schema · parse-with-repair"]
   STRUCT --> GROUND["groundFindings()<br/>grounding.ts<br/>mechanical citation gate vs the diff"]
-  GROUND --> OUT["Review<br/>verdict · score · grounded findings"]
+  GROUND --> SCOPE["filterByScope()<br/>review/scope.ts<br/>drop out_of_scope perf/style/test,<br/>never CRITICAL · security · bug"]
+  SCOPE --> OUT["Review<br/>verdict · score · grounded, in-scope findings"]
 ```
 
 The grounding step is the mandatory gate: a finding that doesn't cite a real line
-in the diff is dropped, so the engine can't hallucinate locations. The score is
-recomputed deterministically from the **surviving** findings, not trusted from the
-model. `review/run.ts` orchestrates the run (single-pass by default).
+in the diff is dropped, so the engine can't hallucinate locations. Immediately
+after it, a SEPARATE gate — `filterByScope()` (`review/scope.ts`, L03) — drops a
+finding the reviewer itself labelled `Finding.scope === 'out_of_scope'`, but
+**only** when its severity isn't `CRITICAL`, **only** when its category isn't
+`security` or `bug` (the intent is author-derived, so it may never descope a real
+defect), and **only** when the caller supplied
+an `intent` block at all (`grounding.ts` is never opened by this gate). The score
+is recomputed deterministically from the findings that survive **both** gates,
+not trusted from the model. `review/run.ts` orchestrates the run (single-pass by
+default).
 
 The engine also accepts optional prompt slots the **course lessons** feed it —
 `memory` (L07), `specs` (L05), `callers` — plus a `reduce()`/map-reduce path and
-a `toReview()` CI payload helper used from L06. **`skills` (L02) is now fed**:
+a `toReview()` CI payload helper used from L06. **`intent` (L03) is now fed**:
+the server derives a PR's intent/scope (`modules/intent/`, ring 2, resolved
+through `container.intent`) and passes the resulting text as
+`ReviewInput.intent`; `assemblePrompt` renders it as `## Derived intent`,
+`wrapUntrusted`-wrapped, right after `## PR description` — it is a claim ABOUT
+the PR, so it sits beside the author's own claim, before the sections that are
+the reviewer's instructions and evidence. Empty/undefined → the section is
+omitted byte-identically, same contract as every other optional slot. **`skills`
+(L02) is now fed**:
 the server resolves an agent's enabled, ordered skill bodies
 (`SkillsRepository.blocksForAgent`) and spreads them in at the
 `reviewPullRequest` call site (`modules/reviews/run-executor.ts`); nothing in
@@ -46,10 +62,10 @@ out — unchanged, byte for byte.
 ## Public API
 
 Exported from `src/index.ts`: `assemblePrompt` / `wrapUntrusted` (prompt),
-`groundFindings` / `groundingSummary` (grounding), `toJsonSchema` / `extractJson`
-/ `parseWithRepair` (structured output), plus the `run` entrypoint and
-`reduce`. Contracts (`Review`, `Finding`, `Verdict`, …) come from
-`@devdigest/shared`.
+`groundFindings` / `groundingSummary` (grounding), `filterByScope` (scope, L03),
+`toJsonSchema` / `extractJson` / `parseWithRepair` (structured output), plus the
+`run` entrypoint and `reduce`. Contracts (`Review`, `Finding`, `Verdict`, …)
+come from `@devdigest/shared`.
 
 ## Testing
 

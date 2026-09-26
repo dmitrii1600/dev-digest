@@ -31,8 +31,8 @@ export interface CreateServerDeps {
 /**
  * The server's one always-visible sentence — injected into the system prompt
  * whole, ahead of any per-tool description. Canonical text now lives in
- * `specs/07-blast-radius.md` → *MCP tool: final strings* (superseding the
- * original `specs/06-mcp-server.md` → *Final tool descriptions → Server
+ * `specs/09-blast-radius.md` → *MCP tool: final strings* (superseding the
+ * original `specs/08-mcp-server.md` → *Final tool descriptions → Server
  * `instructions`*, which shipped before blast radius existed);
  * `test/tools-list-budget.test.ts` guards its length.
  */

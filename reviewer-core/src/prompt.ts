@@ -66,6 +66,16 @@ export interface PromptParts {
    * undefined → section omitted.
    */
   prDescription?: string;
+  /**
+   * Derived intent/scope (untrusted — code-derived from author-controlled
+   * evidence, including any plan/spec it points at). Delimiter-wrapped.
+   * Rendered right after `## PR description` — it is a claim ABOUT the PR, so
+   * it belongs beside the author's own claim, and BEFORE the skills/memory/
+   * repo-context sections, which are the reviewer's instructions and evidence
+   * and must not be framed by it. Empty / undefined → section omitted (no
+   * behavior change) — the routing.md judgement rule for an optional slot.
+   */
+  intent?: string;
   /** The unified diff / user task (untrusted content). */
   diff: string;
   /** Optional task framing line, e.g. "Review PR #482 '…'". */
@@ -106,6 +116,9 @@ export function assemblePrompt(parts: PromptParts): AssembledPrompt {
   if (prDescription) {
     userSections.push(`## PR description\n${wrapUntrusted('pr-description', prDescription)}`);
   }
+  if (parts.intent && parts.intent.trim().length > 0) {
+    userSections.push(`## Derived intent\n${wrapUntrusted('intent', parts.intent)}`);
+  }
   if (skillsBlock) userSections.push(`## Skills / rules\n${skillsBlock}`);
   if (memoryBlock) userSections.push(`## Relevant memory\n${memoryBlock}`);
   if (parts.repoMap && parts.repoMap.trim().length > 0) {
@@ -134,6 +147,7 @@ export function assemblePrompt(parts: PromptParts): AssembledPrompt {
     callers: parts.callers ?? null,
     repo_map: parts.repoMap ?? null,
     pr_description: prDescription ?? null,
+    intent: parts.intent ?? null,
     user,
   };
 

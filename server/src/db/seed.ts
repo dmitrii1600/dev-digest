@@ -12,6 +12,7 @@ import {
 } from './seed-prompts.js';
 import { SEED_SKILLS, SEED_SKILL_LINKS } from './seed-skills.js';
 import { seedConventions } from './seed-conventions.js';
+import { seedIntent } from './seed-intent.js';
 
 /** Default provider/model for the built-in reviewer agents. */
 const DEFAULT_PROVIDER = 'openrouter' as const;
@@ -320,6 +321,9 @@ export async function seed(db: Db): Promise<{ workspaceId: string; userId: strin
 
   // ---- conventions (L02 second half): one finished scan + three candidates ----
   await seedConventions(db, workspaceId, repoId);
+
+  // ---- intent (L03): one derived intent for PR #482 ----
+  await seedIntent(db, pr!.id, pr!.headSha);
 
   // ---- demo agent runs for PR #482 (+ their traces) ----
   // Without these the run timeline, the trace drawer and the PR list's COST

@@ -56,9 +56,63 @@ export const ReviewRunResponse = z.object({
 });
 export type ReviewRunResponse = z.infer<typeof ReviewRunResponse>;
 
-/** Intent persisted for a PR (the Intent plus the pr_id it scopes). */
-export const PrIntentRecord = Intent.extend({ pr_id: z.string() });
+export const IntentSourceStatus = z.enum(['available', 'partial', 'unavailable']);
+export type IntentSourceStatus = z.infer<typeof IntentSourceStatus>;
+
+// plan_spec covers all four retrieval tiers; `origin` says which one.
+export const IntentSourceKind = z.enum([
+  'pr_title',
+  'pr_body',
+  'changed_files',
+  'project_context',
+  'plan_spec',
+  'linked_issue',
+]);
+export type IntentSourceKind = z.infer<typeof IntentSourceKind>;
+
+export const PlanOrigin = z.enum(['inline', 'repo_file', 'github_issue', 'external_url']);
+export type PlanOrigin = z.infer<typeof PlanOrigin>;
+
+export const IntentSource = z.object({
+  kind: IntentSourceKind,
+  /** Which retrieval tier produced it; null for the non-plan kinds. */
+  origin: PlanOrigin.nullish(),
+  /** What it points at: '#123', 'https://…', '9 files', '0 spec chunks'. */
+  ref: z.string(),
+  status: IntentSourceStatus,
+  /** Why it is partial/unavailable, for the card. */
+  detail: z.string().nullish(),
+});
+export type IntentSource = z.infer<typeof IntentSource>;
+
+/** Intent persisted for a PR (the Intent plus provenance the UI and the
+ *  reviewer prompt both need). Provenance hangs off this wrapper, not
+ *  `Intent` itself, because `Intent` is also embedded in `PrBrief`. */
+export const PrIntentRecord = Intent.extend({
+  pr_id: z.string(),
+  /** Derived in code from `sources`; never self-reported by the model. */
+  confidence: z.number().min(0).max(1),
+  sources: z.array(IntentSource),
+  /** The commit this was derived from; null when unknown ⇒ treated as stale. */
+  head_sha: z.string().nullable(),
+  provider: z.string().nullable(),
+  model: z.string().nullable(),
+  tokens_in: z.number().int().nullable(),
+  tokens_out: z.number().int().nullable(),
+  /** null = unknown, never 0. */
+  cost_usd: z.number().nullable(),
+  /** Last derivation failure; the previous good text is kept alongside it. */
+  error: z.string().nullish(),
+  generated_at: z.string(),
+  /** Per-request: head_sha !== the PR's current head. Not a column. */
+  stale: z.boolean(),
+});
 export type PrIntentRecord = z.infer<typeof PrIntentRecord>;
+
+/** `GET /pulls/:id/intent` — wraps in `{ derived }` so "never derived" and
+ *  "derived but failed" are distinguishable from a bare nullable body. */
+export const PrIntentResponse = z.object({ derived: PrIntentRecord.nullable() });
+export type PrIntentResponse = z.infer<typeof PrIntentResponse>;
 
 /** Smart-diff response for a PR (the SmartDiff). */
 export const SmartDiffResponse = SmartDiff;

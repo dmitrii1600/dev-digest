@@ -10,6 +10,7 @@ import { Review as ReviewSchema } from '@devdigest/shared';
 import { assemblePrompt } from '../prompt.js';
 import { groundFindings, groundingSummary } from '../grounding.js';
 import { reduceReviews, scoreFromFindings, sliceDiff } from './reduce.js';
+import { filterByScope } from './scope.js';
 
 /**
  * reviewPullRequest — the review engine entry point.
@@ -71,6 +72,10 @@ export interface ReviewInput {
   /** PR author's description/body (untrusted; truncated + delimiter-wrapped in
       the prompt). Empty/undefined → section omitted. */
   prDescription?: string;
+  /** Derived intent/scope block (untrusted; delimiter-wrapped in the prompt,
+      rendered right after the PR description). Empty/undefined → section
+      omitted. See `assemblePrompt`'s `intent` doc for why it sits there. */
+  intent?: string;
   /** Task framing line, e.g. "Review PR #482 …". */
   task?: string;
   /** Override the structured-output retry budget. */
@@ -99,6 +104,8 @@ export interface ReviewOutcome {
   grounding: string;
   /** Findings dropped by grounding, with reasons (for logs / "never go silent"). */
   dropped: { finding: Finding; reason: string }[];
+  /** Findings dropped by the scope filter (after grounding); never a CRITICAL. */
+  scopeDropped: { finding: Finding; reason: string }[];
   /** Which path ran. */
   mode: ReviewMode;
   /** Prompt assembly (for the run trace). Single-pass: the one call; map-reduce: the whole-diff assembly. */
@@ -135,6 +142,7 @@ export async function reviewPullRequest(input: ReviewInput): Promise<ReviewOutco
     callers: input.callers,
     repoMap: input.repoMap,
     prDescription: input.prDescription,
+    intent: input.intent,
     task: input.task,
   };
 
@@ -201,13 +209,28 @@ export async function reviewPullRequest(input: ReviewInput): Promise<ReviewOutco
   }
   emit('result', `Citation grounding: ${grounding}`);
 
-  // Score is derived from the findings that SURVIVED grounding (not the model's
-  // self-reported number, and not the pre-grounding set) so the score, the
-  // findings list, and the deterministic event always agree.
+  // Scope filter — a SEPARATE gate, strictly after grounding. Only runs when
+  // an intent block was actually supplied (without it the model's `scope`
+  // label has no basis); CRITICALs and security/bug findings are never dropped by it. `grounding` (the
+  // string) is computed from the grounding gate alone, above, so its meaning
+  // is unchanged by this second gate.
+  const scopeOn = !!input.intent?.trim();
+  const scoped = scopeOn ? filterByScope(ground.kept) : { kept: ground.kept, dropped: [] };
+  for (const d of scoped.dropped) {
+    emit('info', `scope dropped "${d.finding.title}": ${d.reason}`);
+  }
+  if (scoped.dropped.length > 0) {
+    emit('result', `Scope filter: ${scoped.kept.length}/${ground.kept.length} kept (CRITICAL, security and bug findings are never dropped)`);
+  }
+
+  // Score is derived from the findings that SURVIVED BOTH gates (not the
+  // model's self-reported number, and not the pre-grounding set) so the
+  // score, the findings list, and the deterministic events always agree.
   return {
-    review: { ...merged, findings: ground.kept, score: scoreFromFindings(ground.kept) },
+    review: { ...merged, findings: scoped.kept, score: scoreFromFindings(scoped.kept) },
     grounding,
     dropped: ground.dropped,
+    scopeDropped: scoped.dropped,
     mode,
     assembly,
     chunks: chunks.map((c) => ({ label: c.label })),

@@ -1,4 +1,4 @@
-/* BlastRadiusPanel — Overview-tab block for spec 07 (Blast Radius). Reads
+/* BlastRadiusPanel — Overview-tab block for spec 09 (Blast Radius). Reads
    GET /pulls/:id/blast-radius through usePrBlastRadius: which symbols a PR
    changes, who calls them (file:line), and the endpoints/crons those callers
    live in. No LLM, no re-indexing — a plain index read.

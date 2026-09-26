@@ -12,7 +12,7 @@ import { BlastService } from './service.js';
  * Blast radius module — reads the repo-intel index only; never re-indexes.
  *   GET /pulls/:id/blast-radius → BlastRadius   changed symbols, callers,
  *                                                endpoints/crons, degraded flag
- * See `specs/07-blast-radius.md` and `README.md` in this folder.
+ * See `specs/09-blast-radius.md` and `README.md` in this folder.
  */
 export default async function blastRoutes(appBase: FastifyInstance) {
   const app = appBase.withTypeProvider<ZodTypeProvider>();

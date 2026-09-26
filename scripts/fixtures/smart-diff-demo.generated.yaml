@@ -1,0 +1,11 @@
+# Smart Diff demo fixture — not read by any code.
+#
+# Exists so this PR's own "Files changed" tab has something in the
+# `boilerplate` group: the `.generated.` basename matches the first
+# classification rule in server/src/modules/smart-diff/constants.ts.
+# Deliberately NOT named pnpm-lock.yaml — the four real lock-files are
+# do-not-touch, and a fake one would confuse pnpm and the self-review gate.
+generatedBy: smart-diff-demo
+entries:
+  - name: example
+    version: 0.0.0

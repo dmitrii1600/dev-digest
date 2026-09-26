@@ -72,6 +72,14 @@ append-only. Empty sections are expected — append under the one that fits.
   The hook is still useful — one schema name, one fixture — but the design it
   hints at is not a requirement.
 
+- 2026-09-24 — `test/reviews.it.test.ts` is **not hermetic** since L03: every review run
+  calls `container.intent.ensure` (`src/modules/reviews/run-executor.ts:134`), `appWith()`
+  overrides `llm.openai` only (not `intent`), `review_intent` defaults to `openrouter`,
+  and `SecretsProvider` finds a real `OPENROUTER_API_KEY` in `~/.devdigest/secrets.json` —
+  so the test makes a paid OpenRouter call (2.8–8s+) inside `waitForPrRuns`' 10s budget
+  (`test/helpers/runs.ts:19`). "grounding drops the hallucinated finding" failed 2/3 on
+  an untouched tree. Do not read that failure as a regression; stub `intent` in `appWith`.
+
 - 2026-09-26 — Do not read `MAX_CALLERS_PER_SYMBOL` as a per-symbol limit.
   The persistent facade path applies it once across all symbols after a global
   rank sort, `callers.slice(0, MAX_CALLERS_PER_SYMBOL)`
@@ -79,7 +87,6 @@ append-only. Empty sections are expected — append under the one that fits.
   (`service.ts:236-295`) applies no cap at all. A consumer that promises "N per
   symbol" must re-cap after grouping (`src/modules/blast/helpers.ts`), and a PR
   with >20 resolved callers in total can show zero for its low-rank symbols.
-
 
 ## Codebase Patterns
 

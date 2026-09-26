@@ -77,6 +77,15 @@ per domain · `src/vendor/shared/` canonical Zod contracts.
   the filesystem) and keeps `helpers.ts` pure; `resolveFeatureModel` lives in
   `modules/_shared/feature-models.ts` so any module can read the Settings
   choice without a cross-module import.
+- `modules/intent/` (L03) is now live. `run-executor.ts` reaches it ONLY
+  through `container.intent` (the `RepoIntel` precedent — a type-only edge,
+  `no-cross-module-reach-in` forbids a direct import). Plan/spec retrieval is
+  four tiers, all resolved (inline, in-repo file, linked issue, external URL
+  through `container.urlFetcher`); an unresolved reference is recorded on the
+  `IntentSource` as `unavailable` with its real reason, never fabricated. The
+  scope filter that drops a reviewer's `out_of_scope` finding lives in
+  `reviewer-core/src/review/scope.ts`, applied after grounding — a CRITICAL is
+  never dropped by it.
 
 ## Read when
 

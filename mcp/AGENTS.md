@@ -58,8 +58,8 @@ imported.
 - **Tool descriptions are the product.** They are the only thing the model
   sees before deciding whether to call a tool, and they are budget-tested by
   `test/tools-list-budget.test.ts`. Change a description only through the
-  canonical strings in `specs/06-mcp-server.md` → *Final tool descriptions*
-  (`get_blast_radius` and the server `instructions`: `specs/07-blast-radius.md`
+  canonical strings in `specs/08-mcp-server.md` → *Final tool descriptions*
+  (`get_blast_radius` and the server `instructions`: `specs/09-blast-radius.md`
   → *MCP tool: final strings*).
 - **Every test is `*.test.ts`.** Nothing here touches Postgres, so there is no
   `*.it.test.ts` file in this package.
@@ -94,7 +94,7 @@ imported.
 - Architecture, tool table, env vars, `.mcp.json`, troubleshooting →
   `./README.md` — **read before adding or changing an MCP tool**
 - The canonical tool descriptions and argument shapes →
-  `../specs/06-mcp-server.md` → *Final tool descriptions* — **read before
+  `../specs/08-mcp-server.md` → *Final tool descriptions* — **read before
   editing any tool's description or input schema**
 - API and DI map → `../server/README.md` — **read before adding a call this
   package makes**

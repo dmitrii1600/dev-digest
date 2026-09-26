@@ -47,7 +47,7 @@ append-only. Empty sections are expected — append under the one that fits.
   pinned `zod@3.25.76`, which ships the v4 API under the `zod/v4` subpath, so
   this costs no extra dependency (`src/tools/params.ts:8`).
 - 2026-09-26 — Tool descriptions are copied verbatim from
-  `specs/06-mcp-server.md` → *Final tool descriptions* and budget-tested; the
+  `specs/08-mcp-server.md` → *Final tool descriptions* and budget-tested; the
   budgets are **measured × 1.15**, not round numbers
   (`test/tools-list-budget.test.ts:26-27`). A red budget test means trim the
   text; raise the constant only with a written reason.
@@ -87,7 +87,7 @@ append-only. Empty sections are expected — append under the one that fits.
 
 ## Session Notes
 
-### 2026-09-26 — @devdigest/mcp built from specs/06-mcp-server.md
+### 2026-09-26 — @devdigest/mcp built from specs/08-mcp-server.md
 Five tools (`list_agents`, `run_agent_on_pr`, `get_findings`,
 `get_conventions`, `get_blast_radius` stub) as a stdio adapter over the API.
 Two implementers ran in parallel (code vs docs/CI/gate) with no file overlap.
@@ -96,7 +96,7 @@ shapes); both fixes are above. The API and Docker were down in this session, so
 step 11's live checks (`/mcp`, `/context`, inspector against seeded data) are
 still open — see Open Questions.
 
-### 2026-09-26 — get_blast_radius: stub → real tool (specs/07-blast-radius.md)
+### 2026-09-26 — get_blast_radius: stub → real tool (specs/09-blast-radius.md)
 Replaced the L04 stub with two `ApiClient` methods, `shapeBlastRadius` with
 caps (50 symbols / 30 groups) and a 253-char description; instructions grew to
 167 chars. Budgets after: descriptions 1,127 / 1,217, `tools/list` 4,303 /

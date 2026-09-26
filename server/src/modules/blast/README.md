@@ -47,7 +47,7 @@ group. `BFS_DEPTH` is not used here — blast is one hop by construction.
   symbol (`repo-intel/service.ts:372,386`) — with more than the cap resolved
   in total, a low-rank symbol can show zero callers even though the mapper's
   per-symbol cap has room. This module does not change the facade (out of
-  scope for `specs/07-blast-radius.md`).
+  scope for `specs/09-blast-radius.md`).
 - Two changed symbols sharing the same bare name in different files are
   merged into one `downstream` entry (`viaSymbol` is a bare name); the
   declaring-file guard can then drop a genuine cross-file caller in that case.

@@ -57,9 +57,9 @@ None of the five declares `outputSchema` — see [No
 `outputSchema`](#no-outputschema-on-any-tool). `repo` accepts `"owner/name"`
 or a repo id; `pr` accepts a PR number, `"#482"`, or a PR id. Full argument
 descriptions (the `.describe()` text that ships in `tools/list`) live in
-[`../specs/06-mcp-server.md`](../specs/06-mcp-server.md) → *Final tool
+[`../specs/08-mcp-server.md`](../specs/08-mcp-server.md) → *Final tool
 descriptions* — that section is canonical (for `get_blast_radius` and the
-server `instructions` it is [`../specs/07-blast-radius.md`](../specs/07-blast-radius.md)
+server `instructions` it is [`../specs/09-blast-radius.md`](../specs/09-blast-radius.md)
 → *MCP tool: final strings*); this table is a map onto it, not a second copy to
 keep in sync.
 
@@ -182,7 +182,7 @@ never re-indexes or triggers a scan. `format.ts`'s `shapeBlastRadius` caps
 independently of the server's own per-symbol caller cap, and a degraded index
 (off, failed, partial, or never indexed) is a normal result — `degraded`,
 `reason` and a `hint` naming the reason, never `isError`. See
-[`specs/07-blast-radius.md`](../specs/07-blast-radius.md) for the route and
+[`specs/09-blast-radius.md`](../specs/09-blast-radius.md) for the route and
 the mapping rules behind the shape.
 
 ## SSE: a later upgrade

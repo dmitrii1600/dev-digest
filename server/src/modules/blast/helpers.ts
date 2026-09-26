@@ -5,7 +5,7 @@ import type { BlastCallerRow, BlastResult, IndexState } from '../repo-intel/type
  * Pure mapper: `BlastResult` (repo-intel's flat facade shape) → `BlastRadius`
  * (the contract), plus the degraded resolution and the plain-English summary.
  * No Drizzle, no Fastify, no runtime `zod` — see *Contract → Mapping rules*
- * in `specs/07-blast-radius.md`.
+ * in `specs/09-blast-radius.md`.
  */
 
 /** Pluralise a count word: `n === 1 ? word : word + 's'`. */

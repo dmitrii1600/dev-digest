@@ -1,6 +1,6 @@
 # Development Plan: Blast Radius (L04 HW part 2): Overview-tab block and a working `get_blast_radius` MCP tool
 
-**Plan ID:** 07-blast-radius  ·  **Packages:** `server/`, `client/`, `mcp/` (+ root docs)  ·  **Assumptions:** (a) repo-intel is starter infrastructure. `server/src/modules/repo-intel/**` code is **not** edited; its README gets one line. (b) Route path is `GET /pulls/:id/blast-radius` (reasons in *Contract*). (c) Caller links point at the PR head sha, as the assignment says (see Open questions).
+**Plan ID:** 09-blast-radius  ·  **Packages:** `server/`, `client/`, `mcp/` (+ root docs)  ·  **Assumptions:** (a) repo-intel is starter infrastructure. `server/src/modules/repo-intel/**` code is **not** edited; its README gets one line. (b) Route path is `GET /pulls/:id/blast-radius` (reasons in *Contract*). (c) Caller links point at the PR head sha, as the assignment says (see Open questions).
 
 ## Problem
 A reviewer sees the diff but not what else in the repo it can break. `repo-intel` already computes this at clone/index time: symbols, resolved references, file rank, and per-file endpoint/cron facts. The facade `getBlastRadius` exists (`server/src/modules/repo-intel/service.ts:220`) but nothing consumes it:
@@ -65,7 +65,7 @@ The contract is fixed first (step 0). After that, three tracks run in parallel o
 | [mcp/README.md](mcp/README.md) `:5-8,55,160-164,175-194`, [mcp/AGENTS.md](mcp/AGENTS.md) | tool table row; the "homework seam" section to remove |
 | `mcp/src/{api-client.ts,resolve.ts:39,51,105-131,format.ts:6-15,230-260,errors.ts:114-115,server.ts:37-38,81-85}`, `mcp/src/tools/{params.ts,get-conventions.ts}` | client/method pattern; `resolvePr` → `{id, number, label}`; caps; `toTextResult` char guard is reviews-only; the not-found text; `SERVER_INSTRUCTIONS` |
 | `mcp/test/{get-blast-radius.test.ts,tools-list-budget.test.ts:62-64,helpers/fake-api.ts,helpers/fixtures.ts:396-427}` | budgets: descriptions ≤ **1,217**, `tools/list` JSON ≤ **4,872**, instructions ≤ 200. Fake API has no `GET /pulls/:id` route yet |
-| [specs/06-mcp-server.md](specs/06-mcp-server.md) `:145-209` | description rules and format; the canonical-strings section to point here |
+| [specs/08-mcp-server.md](specs/08-mcp-server.md) `:145-209` | description rules and format; the canonical-strings section to point here |
 | [TESTING.md](TESTING.md), `.claude/skills/pr-self-review/routing.md` | suite map; file-group → skill routing (below) |
 | [INSIGHTS.md](INSIGHTS.md), [server/INSIGHTS.md](server/INSIGHTS.md), [client/INSIGHTS.md](client/INSIGHTS.md), [mcp/INSIGHTS.md](mcp/INSIGHTS.md) | see next section. `server/src/modules/repo-intel/INSIGHTS.md` does **not** exist |
 
@@ -310,7 +310,7 @@ Derived from `.claude/skills/pr-self-review/routing.md` (Groups table) and `ROUT
 - Then **three parallel tracks** with no shared files:
   - **Server (S1–S6):** `server/src/modules/blast/**`, `server/src/modules/index.ts`, `server/test/blast*`, `server/test/routes-smoke.test.ts`, `server/README.md`, `server/src/modules/repo-intel/README.md`
   - **Client (C1–C5):** `client/messages/en/blast.json`, `client/src/lib/hooks/{blast,index}.ts`, `…/[number]/_components/{BlastRadiusPanel,OverviewTab}/**`, `…/[number]/page.tsx`, `client/README.md`
-  - **MCP (M1–M4):** `mcp/src/**`, `mcp/test/**`, `mcp/README.md`, `specs/06-mcp-server.md`
+  - **MCP (M1–M4):** `mcp/src/**`, `mcp/test/**`, `mcp/README.md`, `specs/08-mcp-server.md`
 - Client and MCP depend only on the step-0 shape and the route path fixed above, not on server code: client tests mock the hook, MCP tests use the fake API.
 - **Wrap-up (W1–W3)** runs after all three.
 - **P3 steps** (end) are optional and independent.
@@ -563,14 +563,14 @@ Derived from `.claude/skills/pr-self-review/routing.md` (Groups table) and `ROUT
 - **Files:** [`mcp/src/tools/get-blast-radius.ts`](mcp/src/tools/get-blast-radius.ts) (edit) · [`mcp/src/server.ts`](mcp/src/server.ts) (edit `:31-38` comment + `SERVER_INSTRUCTIONS`) · [`mcp/test/get-blast-radius.test.ts`](mcp/test/get-blast-radius.test.ts) (rewrite) · [`mcp/test/tools-list-budget.test.ts`](mcp/test/tools-list-budget.test.ts) (edit comment only)
 - **Skills:** `typescript-expert`, `security`, `zod`
 - **Do:**
-  - `DESCRIPTION` = the 253-char string, verbatim. `inputSchema: { repo, pr }` and the same annotations. Delete the TODO block and replace it with a 3-line header naming the route and spec 07.
+  - `DESCRIPTION` = the 253-char string, verbatim. `inputSchema: { repo, pr }` and the same annotations. Delete the TODO block and replace it with a 3-line header naming the route and spec 09.
   - Handler `(args) => safe(async () => …)`:
     1. `createResolver(deps.api)`, then `resolveRepo`, then `resolvePr`. An unknown repo or PR raises the existing actionable `ToolError`.
     2. `const detail = await deps.api.getPull(pr.id)`. This refreshes the server's changed-file list exactly as opening the PR in the studio does (`pulls/routes.ts:241-252`).
     3. `const blast = await deps.api.getBlastRadius(pr.id)`.
     4. `return toTextResult(shapeBlastRadius(blast, { label: pr.label, headSha: detail.head_sha }))`.
     - A degraded or empty map is a **normal** result, not `isError`.
-  - `SERVER_INSTRUCTIONS` = the 167-char string; update the comment to cite `specs/07-blast-radius.md`.
+  - `SERVER_INSTRUCTIONS` = the 167-char string; update the comment to cite `specs/09-blast-radius.md`.
   - Tests:
     - happy path on `acme/payments-api` `#482`: `fake.calls` equal `GET /repos`, `GET /repos/:id/pulls`, `GET /pulls/:id`, `GET /pulls/:id/blast-radius`, in that order; payload `pr`, `summary`, caller strings; `isError` falsy;
     - degraded PR 480 → `degraded`, `reason`, `hint`;
@@ -582,7 +582,7 @@ Derived from `.claude/skills/pr-self-review/routing.md` (Groups table) and `ROUT
 - **Verify:** `cd mcp && npm test && npm run lint && npm run typecheck`
 
 #### M4. MCP docs + spec pointer
-- **Files:** [`mcp/README.md`](mcp/README.md) (edit) · [`specs/06-mcp-server.md`](specs/06-mcp-server.md) (edit, two pointers)
+- **Files:** [`mcp/README.md`](mcp/README.md) (edit) · [`specs/08-mcp-server.md`](specs/08-mcp-server.md) (edit, two pointers)
 - **Skills:** none
 - **Do:**
   - README:
@@ -591,7 +591,7 @@ Derived from `.claude/skills/pr-self-review/routing.md` (Groups table) and `ROUT
     - "No `outputSchema`" bullet `:160-164`: remove the stub-specific sentence;
     - **delete** the "Blast radius: the homework seam" section `:175-194`;
     - add a short "Blast radius" design note: why `getPull` first, the caps, degraded is not an error.
-  - `specs/06-mcp-server.md`: under `### get_blast_radius (stub, 184 chars)` (`:186`) and `### Server instructions` (`:151`), add one line: "Superseded by `specs/07-blast-radius.md` → *MCP tool: final strings*."
+  - `specs/08-mcp-server.md`: under `### get_blast_radius (stub, 184 chars)` (`:186`) and `### Server instructions` (`:151`), add one line: "Superseded by `specs/09-blast-radius.md` → *MCP tool: final strings*."
   - `.mcp.json`: no change (same server, same launch).
 - **Done when:** README has no "stub", "not_implemented" or "homework seam" text for this tool (`rg -n "not_implemented|homework seam" mcp/README.md` is empty).
 - **Verify:** `rg -n "not_implemented|homework seam" mcp/` (only historic INSIGHTS lines may remain)

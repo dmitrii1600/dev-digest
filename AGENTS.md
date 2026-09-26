@@ -14,6 +14,7 @@ Docker runs **Postgres only**; API and web run on the host.
 
 ```sh
 ./scripts/dev.sh                 # Postgres + API :3001 + web :3000 (+ migrate + seed)
+./scripts/dev.sh --free-ports    # same, after killing a leftover dev server on :3000/:3001
 cd server && pnpm db:migrate     # NOT run on boot — do this before first use
 cd server && pnpm db:seed        # idempotent demo data
 cd server && pnpm test           # unit + integration
@@ -138,6 +139,8 @@ wrong thing, rather than failing.
 - Unit vs integration split → `TESTING.md` — **read before adding a test file**
 - MCP tools, env vars, `.mcp.json`, troubleshooting → `mcp/README.md` — **read
   before adding or changing an MCP tool**
+- Subagents, their tools and the chain → `.claude/agents/README.md` — **read before
+  invoking or adding an agent**
 - Feature specs for the current lesson → `specs/` — **read before implementing a
   lesson feature**
 - Hard-won lessons and decisions → the touched module's `INSIGHTS.md` **and**

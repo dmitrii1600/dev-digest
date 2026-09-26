@@ -1,4 +1,4 @@
-/* hooks/blast.ts — React Query hook over the blast-radius route (spec 07):
+/* hooks/blast.ts — React Query hook over the blast-radius route (spec 09):
      GET /pulls/:id/blast-radius → BlastRadius (symbols, callers, endpoints,
      crons, degraded/reason). No LLM, no re-indexing — a plain index read. */
 "use client";

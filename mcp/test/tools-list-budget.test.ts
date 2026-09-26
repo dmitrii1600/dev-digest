@@ -11,7 +11,7 @@ import { createFixtureState } from './helpers/fixtures.js';
  * byte here is a byte the model always pays for.
  *
  * `MAX_INSTRUCTIONS_CHARS` is the fixed product rule from the canonical
- * "Server instructions" text (specs/06-mcp-server.md — "one sentence,
+ * "Server instructions" text (specs/08-mcp-server.md — "one sentence,
  * ≤200 chars"), not a measured-and-tightened number.
  *
  * The other two were measured on the first green run of this suite
@@ -22,7 +22,7 @@ import { createFixtureState } from './helpers/fixtures.js';
  * measured + ~15% headroom. A later regression means trim the text; raise
  * the budget only with a justification.
  *
- * `specs/07-blast-radius.md` replaced the `get_blast_radius` stub description
+ * `specs/09-blast-radius.md` replaced the `get_blast_radius` stub description
  * and added blast radius to `SERVER_INSTRUCTIONS`, which re-measured as
  * instructions 167 (was 156), descriptionsTotal 1127 (was 1058), tools/list
  * JSON 4303 (was 4236). All three stay comfortably under the existing
