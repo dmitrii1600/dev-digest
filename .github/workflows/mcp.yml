@@ -1,0 +1,54 @@
+# mcp suite — the stdio MCP server (@devdigest/mcp).
+# Thin HTTP adapter over the API; tests are hermetic (InMemoryTransport + a
+# fake fetch, plus one real stdio spawn). Uses npm (package-lock.json).
+#
+# server/src/vendor/shared/** is in the path filter because mcp aliases
+# @devdigest/shared to it at type-check and test time. The vitest alias also
+# points `zod` at mcp/node_modules/zod, so this workflow never needs to
+# install server/ — the shared files only import zod plus type-only local
+# files.
+name: mcp
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'mcp/**'
+      - 'server/src/vendor/shared/**'
+      - '.github/workflows/mcp.yml'
+  pull_request:
+    paths:
+      - 'mcp/**'
+      - 'server/src/vendor/shared/**'
+      - '.github/workflows/mcp.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mcp-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mcp
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mcp/package-lock.json
+
+      - run: npm ci
+
+      - run: npm run lint
+
+      - run: npm run typecheck
+
+      - run: npm test

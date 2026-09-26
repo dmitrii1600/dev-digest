@@ -132,6 +132,13 @@ append-only. Empty sections are expected — append under the one that fits.
   the container from there. The four WARNINGs it emits are noise, not a naming
   bug — add `startPg|helpers\/pg` to that regex when the gate is next touched.
 
+- 2026-09-26 — The `mcp` route in `pr-self-review-gate.mjs` matches
+  `mcp/src/**/*.ts` only, so non-test helpers under `mcp/test/helpers/*.ts`
+  (`connect.ts`, `fake-api.ts`, `fixtures.ts`) fall to `unrouted` and emit
+  three `unrouted-file` WARNINGs on every run. They are test scaffolding, not
+  product code: mark `mcp/test/**` convention-only in `ROUTES` when the gate is
+  next touched, the same treatment `*.test.ts` already gets.
+
 ## Codebase Patterns
 
 - 2026-09-15 — Unknown cost renders "—", never "$0.00", on every surface. The
@@ -247,6 +254,21 @@ append-only. Empty sections are expected — append under the one that fits.
   heredoc runs either** — the whole command is rejected at parse time. Write the
   script to the scratchpad with the Write tool and `python that-file.py`; keep
   shell heredocs for short, quote-free content.
+
+- 2026-09-26 — Never launch a stdio MCP server through `npm run`/`npx`: `npm
+  run` prints its `> pkg@ver script` banner to **stdout**, which is the
+  JSON-RPC channel, and `npx.cmd` needs a `cmd /c` wrapper on Windows (same
+  family as the `pnpm.cmd` ENOENT above). `.mcp.json` runs `node` against the
+  tsx CLI file directly (`.mcp.json:5-9`); the package's own `npm run inspect`
+  is fine because the inspector, not the model, reads that stdout.
+
+- 2026-09-26 — Windows PowerShell 5.1 swallows the `--` separator before it
+  reaches `claude mcp add … -- node <file> --tsconfig …`, so the CLI parses
+  `--tsconfig` as its own flag and fails with `unknown option`. Use
+  `claude mcp add-json <name> '<json>'` (no separator needed) or run the
+  `add` form from Git Bash. `claude mcp get <name>` run inside a worktree
+  reports the **project** `.mcp.json` entry first (`Scope: Project config`,
+  `⏸ Pending approval`) even when a user-scope entry of the same name exists.
 
 ## Recurring Errors & Fixes
 
@@ -444,6 +466,14 @@ spent a detour blaming the 404/500 on the orphan before the existing
 verifying, not after. `./scripts/e2e.sh` still cannot run here
 (`agent-browser` not on PATH); the flows were updated and the UI verified
 through the browser pane instead.
+
+### 2026-09-26 — L04: `mcp/` package (devdigest MCP server)
+Added the fifth standalone package (`mcp/`, npm) as a stdio adapter over the
+API, plus `.mcp.json`, `mcp.yml` and the pr-self-review gate routing for it.
+The repo now has **five** packages; the `<pm>`-by-lockfile rule and the
+lock-file do-not-touch list in `AGENTS.md` were extended rather than
+special-cased. Package-local lessons (two distinct TS2589 sources with SDK
+1.30.1, the measured tools/list budget) are in `mcp/INSIGHTS.md`.
 
 ## Open Questions
 

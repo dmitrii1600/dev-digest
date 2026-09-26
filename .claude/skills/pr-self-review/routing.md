@@ -12,6 +12,7 @@ decide. If the two ever disagree, the script is right and this file is stale.
 | **frontend-tests** | `client/**/*.test.tsx?` | `react-testing-library` | — |
 | **backend** | `server/src/**/*.ts`, not `vendor/ui` | `onion-architecture` | `fastify-best-practices` for `routes.ts`, `app.ts`, `server.ts`, `platform/**` · `drizzle-orm-patterns` for `repository*.ts`, `db/**` · `postgresql-table-design` for `db/schema/**` · `security` for `routes.ts`, `adapters/{auth,secrets,github}/**` · `zod` + `typescript-expert` for `vendor/shared/contracts/**` |
 | **engine** | `reviewer-core/src/**/*.ts`, not tests | `typescript-expert` | `security` for `prompt.ts`, `grounding.ts`, `llm/**` · `zod` for schema / structured-output files |
+| **mcp** | `mcp/src/**/*.ts`, not tests | `typescript-expert`, `security` | `zod` for `tools/**`, `api-client.ts`, `resolve.ts`, `config.ts` |
 | **convention-only** | `e2e/**`, `server/test/**`, `client/messages/**`, vendored trees, `.claude/**`, `.github/**`, `scripts/**`, `docs/**`, specs, migrations, configs, every non-source extension | — (static rules + machine checks only) | — |
 | **unrouted** | any other `.ts/.tsx/.js/.mjs/.cjs` | — | reported as a WARNING so the table gets extended |
 

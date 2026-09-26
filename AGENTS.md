@@ -21,6 +21,7 @@ cd server && pnpm exec vitest run --exclude '**/*.it.test.ts'   # unit only, no 
 cd client && pnpm test && pnpm typecheck
 cd reviewer-core && npm test     # npm, not pnpm
 ./scripts/e2e.sh                 # hermetic browser e2e on alternate ports
+cd mcp && npm test                # npm, not pnpm
 /pr-self-review                  # before every PR — the gate blocks gh pr create / git push otherwise
 ```
 
@@ -32,7 +33,7 @@ cd <pkg> && <pm> run typecheck   # tsc --noEmit
 cd <pkg> && <pm> test            # vitest (e2e: agent-browser)
 ```
 
-`<pm>` is `pnpm` for `server`/`client` and `npm` for `reviewer-core`/`e2e` —
+`<pm>` is `pnpm` for `server`/`client` and `npm` for `reviewer-core`/`e2e`/`mcp` —
 match the lockfile in the folder. Lint is deliberately narrow: `typecheck`
 already owns correctness, so the rules cover what the compiler cannot see —
 dead code, unsafe escapes, and React hook misuse in `client`.
@@ -45,9 +46,10 @@ dead code, unsafe escapes, and React hook misuse in `client`.
 | `client/` | `@devdigest/web` | Next.js studio |
 | `reviewer-core/` | `@devdigest/reviewer-core` | pure review engine: diff → prompt → LLM → findings |
 | `e2e/` | `@devdigest/e2e` | deterministic browser flows (agent-browser, no LLM) |
+| `mcp/` | `@devdigest/mcp` | stdio MCP server — five tools over the local API |
 | `server/src/vendor/shared` | `@devdigest/shared` | canonical Zod contracts |
 
-**Not a monorepo.** Four standalone packages, each with its own `package.json`
+**Not a monorepo.** Five standalone packages, each with its own `package.json`
 and lockfile. Cross-package code is wired through tsconfig `paths`, never
 published modules. Each package has its own `AGENTS.md` that loads on demand.
 
@@ -60,8 +62,8 @@ published modules. Each package has its own `AGENTS.md` that loads on demand.
 - Secrets never live in the DB, in `AppConfig`, or in committed env files. They
   go through `SecretsProvider` → `~/.devdigest/secrets.json` (mode 0600), with
   `process.env` as fallback.
-- `server/` and `client/` use **pnpm**; `reviewer-core/` and `e2e/` use **npm**.
-  Use the one that matches the lockfile in that folder.
+- `server/` and `client/` use **pnpm**; `reviewer-core/`, `e2e/` and `mcp/`
+  use **npm**. Use the one that matches the lockfile in that folder.
 - A PR is opened only after `/pr-self-review` reports `PASS` for the exact tree
   being pushed. The gate (`.claude/hooks/pr-self-review-gate.mjs`) runs as a
   Claude Code `PreToolUse` hook and as `.githooks/pre-push`; it blocks
@@ -100,11 +102,11 @@ wrong thing, rather than failing.
   new one with `pnpm db:generate`.
 - Generated / vendored-in trees: `client/.next`, `*/node_modules`, `clones/`.
 - **Lock-files** — `server/pnpm-lock.yaml`, `client/pnpm-lock.yaml`,
-  `reviewer-core/package-lock.json`, `e2e/package-lock.json`. Never hand-edit
-  one, never copy one between packages, and never delete one to "fix" an
-  install. They are four independent dependency graphs (this is not a
-  monorepo); change them only by running the package manager that owns the
-  folder, in that folder.
+  `reviewer-core/package-lock.json`, `e2e/package-lock.json`,
+  `mcp/package-lock.json`. Never hand-edit one, never copy one between
+  packages, and never delete one to "fix" an install. They are five
+  independent dependency graphs (this is not a monorepo); change them only by
+  running the package manager that owns the folder, in that folder.
 - `docker compose down -v` — the `-v` drops `devdigest_pgdata` and every
   imported repo and review with it.
 
@@ -134,6 +136,8 @@ wrong thing, rather than failing.
 - Writing reviewer prompts → `docs/agent-prompts/README.md` — **read before
   editing any agent system prompt**
 - Unit vs integration split → `TESTING.md` — **read before adding a test file**
+- MCP tools, env vars, `.mcp.json`, troubleshooting → `mcp/README.md` — **read
+  before adding or changing an MCP tool**
 - Feature specs for the current lesson → `specs/` — **read before implementing a
   lesson feature**
 - Hard-won lessons and decisions → the touched module's `INSIGHTS.md` **and**

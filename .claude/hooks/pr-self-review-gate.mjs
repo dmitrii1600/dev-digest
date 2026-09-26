@@ -62,13 +62,14 @@ const FILES = {
 const REPORT_VERSION = 1;
 const SEVERITY_SOURCE = 'server/src/vendor/shared/contracts/findings.ts';
 const SKILLS_DIR = join(ROOT, '.claude', 'skills');
-const PACKAGES = ['server', 'client', 'reviewer-core', 'e2e'];
-const PM = { server: 'pnpm', client: 'pnpm', 'reviewer-core': 'npm', e2e: 'npm' };
+const PACKAGES = ['server', 'client', 'reviewer-core', 'e2e', 'mcp'];
+const PM = { server: 'pnpm', client: 'pnpm', 'reviewer-core': 'npm', e2e: 'npm', mcp: 'npm' };
 const LOCKFILES = {
   server: 'server/pnpm-lock.yaml',
   client: 'client/pnpm-lock.yaml',
   'reviewer-core': 'reviewer-core/package-lock.json',
   e2e: 'e2e/package-lock.json',
+  mcp: 'mcp/package-lock.json',
 };
 const SIZE_LIMITS = { files: 40, lines: 1500 };
 const INSIGHTS_THRESHOLD_LINES = 150;
@@ -141,6 +142,12 @@ const ROUTES = [
     },
   },
   {
+    group: 'mcp',
+    test: (p) => p.startsWith('mcp/src/') && /\.ts$/.test(p) && !/\.test\.ts$/.test(p),
+    skills: ['typescript-expert', 'security'],
+    extra: (p) => (/\/(tools\/|api-client|resolve|config)/.test(p) ? ['zod'] : []),
+  },
+  {
     group: 'convention-only',
     test: (p) =>
       p.startsWith('e2e/') ||
@@ -195,6 +202,10 @@ const CHECKS = {
     ['npm', ['run', 'typecheck']],
   ],
   e2e: [
+    ['npm', ['run', 'lint']],
+    ['npm', ['run', 'typecheck']],
+  ],
+  mcp: [
     ['npm', ['run', 'lint']],
     ['npm', ['run', 'typecheck']],
   ],
@@ -439,6 +450,10 @@ function packagesTouched(files) {
   // A contract change must still type-check in the client's mirrored copy.
   if (files.some((f) => f.path.startsWith('server/src/vendor/shared/')) && !pkgs.has('client')) {
     checks.set('client', new Set(['pnpm run typecheck']));
+  }
+  // mcp aliases @devdigest/shared to the same canonical copy at type-check time.
+  if (files.some((f) => f.path.startsWith('server/src/vendor/shared/')) && !pkgs.has('mcp')) {
+    checks.set('mcp', new Set(['npm run typecheck']));
   }
   return {
     packages: [...pkgs],
