@@ -13,6 +13,8 @@ import {
 import { SEED_SKILLS, SEED_SKILL_LINKS } from './seed-skills.js';
 import { seedConventions } from './seed-conventions.js';
 import { seedIntent } from './seed-intent.js';
+import { seedBlast } from './seed-blast.js';
+import { DEFAULT_WORKSPACE_NAME, SYSTEM_USER_EMAIL } from './seed-constants.js';
 
 /** Default provider/model for the built-in reviewer agents. */
 const DEFAULT_PROVIDER = 'openrouter' as const;
@@ -28,14 +30,15 @@ const DEFAULT_MODEL = 'deepseek/deepseek-v4-flash';
  * Performance + Test Quality + API Contract), all on the default
  * openrouter/deepseek-v4-flash provider+model. Also seeds the L02 skills
  * and their bindings onto the two newest agents (`seed-skills.ts`) and a
- * demo conventions scan (`seed-conventions.ts`).
+ * demo conventions scan (`seed-conventions.ts`). A synthetic `full`
+ * repo-intel index plus one cached prior PR (`seed-blast.ts`) so Blast
+ * Radius (L04) renders real data without a clone.
  *
  * Course lessons populate the remaining tables (conventions, memory, eval,
  * …) once their features are built — they start empty here.
  */
 
-export const DEFAULT_WORKSPACE_NAME = 'default';
-export const SYSTEM_USER_EMAIL = 'you@local';
+export { DEFAULT_WORKSPACE_NAME, SYSTEM_USER_EMAIL } from './seed-constants.js';
 
 export async function seed(db: Db): Promise<{ workspaceId: string; userId: string }> {
   // ---- workspace + user (no-auth defaults) ----
@@ -324,6 +327,9 @@ export async function seed(db: Db): Promise<{ workspaceId: string; userId: strin
 
   // ---- intent (L03): one derived intent for PR #482 ----
   await seedIntent(db, pr!.id, pr!.headSha);
+
+  // ---- blast radius (L04): synthetic full index + one cached prior PR ----
+  await seedBlast(db, repoId, { id: pr!.id, headSha: pr!.headSha });
 
   // ---- demo agent runs for PR #482 (+ their traces) ----
   // Without these the run timeline, the trace drawer and the PR list's COST
