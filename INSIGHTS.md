@@ -165,6 +165,14 @@ append-only. Empty sections are expected — append under the one that fits.
   product code: mark `mcp/test/**` convention-only in `ROUTES` when the gate is
   next touched, the same treatment `*.test.ts` already gets.
 
+- 2026-09-27 — Checking an e2e assertion against the long-lived dev DB is
+  misleading: `seed()` is idempotent per row, so the dev DB still carried the
+  L03 intent row from an older `seed-intent.ts` (2 of 4 sources, 45 %) while a
+  fresh seed gives 6 sources / 77 %, and the demo runs with findings on all
+  four PR files were missing. Verify flow strings only on the hermetic stack
+  (`./scripts/e2e.sh`) or re-run `pnpm db:seed` and re-check the specific row.
+
+
 ## Codebase Patterns
 
 - 2026-09-22 — A change confined to `.claude/**` gets **no automated verification at

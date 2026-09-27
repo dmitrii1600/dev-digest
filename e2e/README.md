@@ -82,6 +82,10 @@ Env knobs:
 
 - Runner: `E2E_BASE_URL`, `AGENT_BROWSER_BIN` (default `agent-browser`),
   `E2E_STEP_TIMEOUT` (ms, default 60000).
+  **Windows (Git Bash):** `run.ts` spawns the driver with `execFile`, without a
+  shell, which cannot launch npm's `agent-browser.cmd` shim (`spawn agent-browser
+  ENOENT` on every step). Point `AGENT_BROWSER_BIN` at the native binary:
+  `$APPDATA/npm/node_modules/agent-browser/bin/agent-browser-win32-x64.exe`.
 - Hermetic stack (`scripts/e2e.sh`): `E2E_PG_PORT` (5433), `E2E_API_PORT` (3101),
   `E2E_WEB_PORT` (3100), `E2E_PG_CONTAINER` (`devdigest-e2e-postgres`),
   `E2E_PG_IMAGE` (`pgvector/pgvector:pg16`).
@@ -93,10 +97,16 @@ a CI artifact by `.github/workflows/e2e-web.yml`).
 
 | Spec | Flow |
 |------|------|
-| `01-app-boot` | root → redirect to first repo's PR list → seeded PR #482 |
+| `01-app-boot` | root → redirect to the first repo's PR list → the "Pull Requests" heading |
 | `02-repo-pulls-detail` | PR list → open PR #482 → review detail route |
 | `03-agents` | agents list renders the seeded reviewer agents |
 | `04-pr-findings` | PR #482 → Agent runs tab → seeded run verdict + findings; expand → FindingCard |
 | `05-pr-diff` | PR #482 → Files changed tab → seeded file renders in the diff viewer |
 | `06-onboarding` | `/onboarding` → add-repository form renders (no submit) |
 | `07-settings` | `/settings/api-keys` + `/settings/models` → section titles render |
+| `08-findings-severity` | PR list FINDINGS column → PR #482 Agent runs → click the CRITICAL pill → "Show all findings" appears → clear → WARNING back |
+| `09-skills` | skills list → editor (Config / Preview) → agent editor Skills tab → seeded bindings |
+| `10-conventions` | sidebar → Conventions → seeded scan, candidate card (rule, evidence, confidence, Accept/Reject/Edit), ReScan, selection bar |
+| `11-intent-card` | PR #482 Overview → Intent card: sentence, in/out of scope, confidence, per-source badges incl. unavailable ones (no Re-run — that is an LLM call) |
+| `12-smart-diff` | PR #482 Files changed → role groups + hints, files-with-findings counter, file card, Original order ↔ Smart order |
+| `13-blast-radius` | PR #482 Overview → Blast radius: stats row, tree (callers, endpoint/cron chips), Graph ↔ Tree toggle, "Prior PRs touching these files" (data from `server/src/db/seed-blast.ts`) |

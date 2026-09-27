@@ -211,6 +211,14 @@ append-only. Empty sections are expected — append under the one that fits.
   crashes with "is not a function" far from the line that changed. Give the
   sibling its own test and keep the panel's mock returning quiet defaults.
 
+- 2026-09-27 — A stat that a browser flow must read as one string ("3 symbols")
+  keeps its number and label inside ONE inline span, with the flex container
+  (icon + text) around it (`BlastRadiusPanel.tsx:132`). A flex container renders
+  each item on its own innerText line, which agent-browser's `wait --text`
+  cannot join; RTL is unaffected either way (`getByText("symbols", {exact:
+  false})` + `toHaveTextContent("2 symbols")` in `BlastRadiusPanel.test.tsx:86`).
+
+
 
 
 ## Tool & Library Notes
