@@ -1,0 +1,33 @@
+{
+  "name": "Blast Radius — stats, tree groups, graph legend and Prior PRs",
+  "description": "Walks the Overview tab's Blast Radius panel (L04) on the seeded index fixture (server/src/db/seed-blast.ts): the four stat counts, the tree view's first-open rateLimit() group with its caller and endpoint chip, expanding the collapsed-by-default listUsers() group to see its caller and cron chip, the graph view's legend (never asserts SVG node text — node labels are shortened to fit and carry only a <title>), switching back to tree, and the collapsed-by-default Prior PRs block with its one seeded cached history row (no GitHub call). Degraded badge, Resync button and an empty Prior PRs list never render against this fixture (the seeded index is 'full') and are covered where their absence can actually be asserted: BlastRadiusPanel.test.tsx and PriorPrs.test.tsx. Never clicks Run Review or Re-run — both call the LLM. Read-only seeded data, no model call. Assumes a freshly-seeded DB where acme/payments-api (PR #482) is the first repo — guaranteed by e2e-web.yml.",
+  "steps": [
+    { "cmd": ["open", "{BASE}/"], "label": "load the app root" },
+    { "cmd": ["wait", "--url", "/pulls"], "label": "root redirects to the seeded repo's PR list" },
+    { "cmd": ["wait", "--load", "networkidle"], "label": "PR list data settles" },
+    { "cmd": ["wait", "--text", "Add rate limiting to public API endpoints"], "label": "the seeded PR row has rendered (clicking straight after the redirect is a race that `next dev` loses)" },
+    { "cmd": ["find", "text", "Add rate limiting to public API endpoints", "click"], "label": "open the seeded PR row (title from seed.ts)" },
+    { "cmd": ["wait", "--url", "/pulls/482"], "label": "navigate to the PR detail route" },
+    { "cmd": ["wait", "--load", "networkidle"], "label": "PR detail data settles; Overview is the default tab" },
+    { "cmd": ["wait", "--text", "BLAST RADIUS"], "label": "the Blast Radius SectionLabel renders (CSS-uppercased blast.json title)" },
+    { "cmd": ["wait", "--text", "3 symbols"], "label": "stats row: 3 changed symbols — rateLimit, listUsers, RateLimitOptions (seed-blast.ts)" },
+    { "cmd": ["wait", "--text", "4 callers"], "label": "stats row: 4 callers across both downstream groups" },
+    { "cmd": ["wait", "--text", "3 endpoints"], "label": "stats row: 3 distinct endpoints across the callers' file_facts" },
+    { "cmd": ["wait", "--text", "1 cron/jobs"], "label": "stats row: 1 cron/job (blast.json stat.crons label)" },
+    { "cmd": ["wait", "--text", "rateLimit()"], "label": "the rateLimit group is open by default — the first downstream group (BlastRadiusPanel/helpers.ts defaultExpandedIndexes)" },
+    { "cmd": ["wait", "--text", "src/api/public/index.ts:11"], "label": "its first caller renders as a file:line link (registerPublicRoutes)" },
+    { "cmd": ["wait", "--text", "POST /api/public/webhooks"], "label": "the endpoint chip for that caller's file_facts" },
+    { "cmd": ["find", "role", "button", "click", "--name", "listUsers()"], "label": "expand the second downstream group (collapsed by default)" },
+    { "cmd": ["wait", "--text", "src/jobs/digest.ts:22"], "label": "its caller renders (sendDailyDigest)" },
+    { "cmd": ["wait", "--text", "job:daily_digest"], "label": "the cron chip for that caller's file_facts" },
+    { "cmd": ["find", "role", "button", "click", "--name", "graph", "--exact"], "label": "switch to the graph view (blast.json view.graph, lowercase)" },
+    { "cmd": ["wait", "--text", "changed symbol"], "label": "the graph legend renders (blast.json graph.legend.symbol) — not asserting any SVG node text" },
+    { "cmd": ["wait", "--text", "endpoints affected"], "label": "the graph legend's endpoints entry (blast.json graph.legend.endpoints)" },
+    { "cmd": ["find", "role", "button", "click", "--name", "tree", "--exact"], "label": "switch back to the tree view (blast.json view.tree, lowercase)" },
+    { "cmd": ["wait", "--text", "src/api/public/index.ts:11"], "label": "the tree view is restored with its caller link" },
+    { "cmd": ["find", "role", "button", "click", "--name", "Prior PRs touching these files"], "label": "expand the Prior PRs block (collapsed by default, blast.json priorPrs.title)" },
+    { "cmd": ["wait", "--text", "Move public routes under /api/public"], "label": "the seeded cached prior PR's title renders (seed-blast.ts, no GitHub call)" },
+    { "cmd": ["wait", "--text", "Touched 2 of this PR's files; merged 2026-08-14."], "label": "its code-built note renders (blast/helpers.ts buildHistoryNote)" },
+    { "cmd": ["wait", "--text", "dev.okafor · Aug 14, 2026"], "label": "author and merged date render (PriorPrs.tsx; date via Intl.DateTimeFormat en-US; · is U+00B7)" }
+  ]
+}

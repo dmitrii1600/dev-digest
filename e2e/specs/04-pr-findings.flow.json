@@ -19,6 +19,14 @@
     },
     {
       "cmd": [
+        "wait",
+        "--text",
+        "Add rate limiting to public API endpoints"
+      ],
+      "label": "the seeded PR row has rendered (the list fetches after the redirect; clicking before the row exists is a race that `next dev` loses)"
+    },
+    {
+      "cmd": [
         "find",
         "text",
         "Add rate limiting to public API endpoints",
