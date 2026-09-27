@@ -13,7 +13,7 @@
     { "cmd": ["wait", "--url", "tab=findings"], "label": "findings tab is active in the URL" },
     { "cmd": ["wait", "--text", "Hardcoded Stripe secret key in commit"], "label": "the CRITICAL finding is listed (newest run is open by default)" },
     { "cmd": ["wait", "--text", "N+1 query in user list endpoint"], "label": "the WARNING finding is listed too" },
-    { "cmd": ["find", "role", "button", "click", "--name", "Show only this severity"], "label": "click the first severity pill (CRITICAL)" },
+    { "cmd": ["find", "role", "button", "click", "--name", "Critical"], "label": "click the CRITICAL pill (its accessible name is its content — icon, count, 'Critical'; 'Show only this severity' is only the title tooltip)" },
     { "cmd": ["wait", "--text", "Show all findings"], "label": "the filter engaged — the clear control appeared" },
     { "cmd": ["wait", "--text", "Hardcoded Stripe secret key in commit"], "label": "the CRITICAL finding survives the filter" },
     { "cmd": ["find", "role", "button", "click", "--name", "Show all findings"], "label": "clear the severity filter" },
