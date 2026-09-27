@@ -5,7 +5,7 @@
     { "cmd": ["open", "{BASE}/"], "label": "load the app root" },
     { "cmd": ["wait", "--url", "/pulls"], "label": "land on the PR list" },
     { "cmd": ["wait", "--load", "networkidle"], "label": "PR list data settles" },
-    { "cmd": ["wait", "--text", "Findings"], "label": "the FINDINGS column header is present" },
+    { "cmd": ["wait", "--text", "FINDINGS"], "label": "the FINDINGS column header is present (the head row is CSS-uppercased, and `wait --text` sees rendered innerText, not the source string)" },
     { "cmd": ["find", "text", "Add rate limiting to public API endpoints", "click"], "label": "open the PR row" },
     { "cmd": ["wait", "--url", "/pulls/482"], "label": "navigate to the PR detail route" },
     { "cmd": ["wait", "--load", "networkidle"], "label": "PR detail data settles" },
