@@ -72,6 +72,33 @@ describe("layoutBlastGraph (pure)", () => {
     expect(layout.edges.every((e) => e.d.startsWith("M "))).toBe(true);
   });
 
+  it("keeps edge keys unique when a caller repeats across lines and groups", () => {
+    // createUser references applyRateLimit from two lines, and reaches the
+    // same cron through two symbol groups: the layout must draw one curve per
+    // (node, node) pair, never two children with the same key.
+    const layout = layoutBlastGraph(CHANGED_SYMBOLS, [
+      {
+        symbol: "applyRateLimit",
+        callers: [
+          { name: "createUser", file: "src/api/users.ts", line: 118 },
+          { name: "createUser", file: "src/api/users.ts", line: 140 },
+        ],
+        endpoints_affected: [],
+        crons_affected: ["job:digest"],
+      },
+      {
+        symbol: "RateLimitConfig",
+        callers: [{ name: "createUser", file: "src/api/users.ts", line: 120 }],
+        endpoints_affected: [],
+        crons_affected: ["job:digest"],
+      },
+    ]);
+    const keys = layout.edges.map((e) => e.key);
+    expect(new Set(keys).size).toBe(keys.length);
+    // 2 symbol->caller edges (one per symbol) + 1 caller->cron edge.
+    expect(layout.edges).toHaveLength(3);
+  });
+
   it("degrades to an empty layout with no downstream", () => {
     const layout = layoutBlastGraph([], []);
     expect(layout.symbolNodes).toEqual([]);

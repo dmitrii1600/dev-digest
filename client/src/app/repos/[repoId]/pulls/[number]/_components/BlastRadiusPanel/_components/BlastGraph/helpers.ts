@@ -203,21 +203,29 @@ export function layoutBlastGraph(changedSymbols: ChangedSymbol[], downstream: Do
   const callerIndex = new Map(callerNodes.map((n, i) => [n.id, i]));
   const endpointIndex = new Map(endpointNodes.map((n, i) => [n.id, i]));
 
+  // Edges are one per (node, node) pair, keyed by the two node indexes, so
+  // the key is unique by construction. Without the dedupe a caller that
+  // references a symbol from two lines, or reaches the same endpoint through
+  // two symbol groups, produced identical overlapping curves with identical
+  // React keys ("two children with the same key").
   const edges: GraphEdge[] = [];
+  const seenEdges = new Set<string>();
+  const addEdge = (key: string, d: string) => {
+    if (seenEdges.has(key)) return;
+    seenEdges.add(key);
+    edges.push({ key, d });
+  };
 
-  // Symbol -> caller: one edge per caller row, not deduped — a caller shared
-  // by two symbols draws two edges into the same node.
+  // Symbol -> caller: a caller shared by two symbols draws two edges into the
+  // same caller node (one per symbol).
   for (const group of downstream) {
     const si = symbolIndex.get(group.symbol);
     if (si == null) continue;
-    group.callers.forEach((caller, ci) => {
+    for (const caller of group.callers) {
       const callerIdx = callerIndex.get(`${caller.name}::${caller.file}`);
-      if (callerIdx == null) return;
-      edges.push({
-        key: `sym-${group.symbol}-${caller.name}-${caller.file}-${ci}`,
-        d: bezier(leftWidth, rowY(si), midX, rowY(callerIdx)),
-      });
-    });
+      if (callerIdx == null) continue;
+      addEdge(`sym-${si}-${callerIdx}`, bezier(leftWidth, rowY(si), midX, rowY(callerIdx)));
+    }
   }
 
   // Caller -> endpoint/cron: the same per-group fallback as the node list.
@@ -226,14 +234,14 @@ export function layoutBlastGraph(changedSymbols: ChangedSymbol[], downstream: Do
     for (const caller of group.callers) {
       const callerIdx = callerIndex.get(`${caller.name}::${caller.file}`);
       if (callerIdx == null) continue;
-      factsFor(group, caller, hasFacts).forEach((fact, fi) => {
+      for (const fact of factsFor(group, caller, hasFacts)) {
         const endpointIdx = endpointIndex.get(`${fact.kind}:${fact.value}`);
-        if (endpointIdx == null) return;
-        edges.push({
-          key: `fact-${caller.name}-${caller.file}-${fact.kind}-${fact.value}-${fi}`,
-          d: bezier(midX + midWidth, rowY(callerIdx), rightX, rowY(endpointIdx)),
-        });
-      });
+        if (endpointIdx == null) continue;
+        addEdge(
+          `fact-${callerIdx}-${endpointIdx}`,
+          bezier(midX + midWidth, rowY(callerIdx), rightX, rowY(endpointIdx)),
+        );
+      }
     }
   }
 
