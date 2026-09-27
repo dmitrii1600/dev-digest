@@ -53,6 +53,19 @@ append-only. Empty sections are expected — append under the one that fits.
   locally only. Always `wait --text` for the row before clicking it, as 02 and 08
   already did.
 
+- 2026-09-27 — On Linux CI a `find … click` on an element **below the fold**
+  reports success and does nothing: agent-browser scrolls neither the window
+  nor the app's scrolling `<main>` first (`scrollintoview "text=…"` also leaves
+  `main.scrollTop` at 0), and the headless viewport is only ~1280×577. Every
+  click that passed in CI was inside that first screen; the severity pill
+  (flow 08) and the Prior PRs toggle (flow 13) were not, and both "passed" the
+  click and failed the next `wait`. Windows Chrome happened to click through.
+  Fix: `["set","viewport","1280","1800"]` right after the first `open` (it does
+  not stick when issued before a page exists, but persists across later
+  `open`s in the shared session) — `08-findings-severity.flow.json:6`,
+  `13-blast-radius.flow.json:6`.
+
+
 
 ## Codebase Patterns
 
