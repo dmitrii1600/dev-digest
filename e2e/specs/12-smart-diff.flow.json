@@ -1,0 +1,27 @@
+{
+  "name": "Smart Diff — role groups, group hints, findings counter and order toggle",
+  "description": "Walks the Files changed tab's Smart Diff view (L03): the grouped-by-role header, two groups' hint text, the findings counter on the group that has them, a seeded changed file rendered inside its group, and a file with no fetched patch showing the 'no diff text' placeholder — then Original order swaps in the flat GitHub-order list and Smart order restores the grouping. Per-group file counts and the 'Grouped by role, most relevant first' hint's disappearance under Original order are counted in DiffTab.test.tsx / DiffGroup.test.tsx — this suite has no negative wait, so it only asserts what (re)appears. Never touches a finding's Accept/Reject/Learn (FindingCard's own tests) and never clicks Run Review or Re-run — both call the LLM. Read-only seeded data (server/src/db/seed.ts's PR #482 files and findings), no model call. Assumes a freshly-seeded DB where acme/payments-api (PR #482) is the first repo — guaranteed by e2e-web.yml.",
+  "steps": [
+    { "cmd": ["open", "{BASE}/"], "label": "load the app root" },
+    { "cmd": ["wait", "--url", "/pulls"], "label": "root redirects to the seeded repo's PR list" },
+    { "cmd": ["wait", "--load", "networkidle"], "label": "PR list data settles" },
+    { "cmd": ["wait", "--text", "Add rate limiting to public API endpoints"], "label": "the seeded PR row has rendered (clicking straight after the redirect is a race that `next dev` loses)" },
+    { "cmd": ["find", "text", "Add rate limiting to public API endpoints", "click"], "label": "open the seeded PR row (title from seed.ts)" },
+    { "cmd": ["wait", "--url", "/pulls/482"], "label": "navigate to the PR detail route" },
+    { "cmd": ["wait", "--load", "networkidle"], "label": "PR detail data settles" },
+    { "cmd": ["find", "role", "button", "click", "--name", "Files changed"], "label": "switch to the Files changed tab (PrDetailHeader.tsx tab label)" },
+    { "cmd": ["wait", "--url", "tab=diff"], "label": "diff tab is active in the URL" },
+    { "cmd": ["wait", "--load", "networkidle"], "label": "diff and Smart Diff data settle" },
+    { "cmd": ["wait", "--text", "FILES CHANGED · 9 FILES"], "label": "the SectionLabel renders the seeded file count (CSS-uppercased prReview.json smartDiff.filesChanged; · is U+00B7)" },
+    { "cmd": ["wait", "--text", "Grouped by role, most relevant first"], "label": "Smart order is the default view (prReview.json smartDiff.reviewerOrdered)" },
+    { "cmd": ["wait", "--text", "Business logic"], "label": "the Core group's hint renders (prReview.json smartDiff.coreHint)" },
+    { "cmd": ["wait", "--text", "Lockfiles & generated code"], "label": "the Boilerplate group's hint renders (prReview.json smartDiff.boilerplateHint)" },
+    { "cmd": ["wait", "--text", "4 files with findings"], "label": "the findings counter renders on the group that has them (prReview.json smartDiff.filesWithFindings, plural)" },
+    { "cmd": ["wait", "--text", "src/middleware/ratelimit.ts"], "label": "the seeded changed file renders inside its Smart Diff group" },
+    { "cmd": ["wait", "--text", "No diff text available (binary or unfetched patch)."], "label": "a file with no fetched patch shows the placeholder (shell.json diffViewer.noDiffText)" },
+    { "cmd": ["find", "role", "button", "click", "--name", "Original order"], "label": "switch to the flat GitHub-order list (prReview.json smartDiff.originalOrder)" },
+    { "cmd": ["wait", "--text", "src/api/users.ts"], "label": "a seeded file renders in the flat order too" },
+    { "cmd": ["find", "role", "button", "click", "--name", "Smart order"], "label": "switch back to Smart order (prReview.json smartDiff.smartOrder)" },
+    { "cmd": ["wait", "--text", "Grouped by role, most relevant first"], "label": "role grouping is restored" }
+  ]
+}

@@ -55,8 +55,12 @@ Docker is unavailable.
 and a `run` with a stubbed model → grounded findings. No DB / GitHub / FS.
 
 **e2e web** — see `e2e/README.md`. Deterministic agent-browser flows over the
-main journeys (boot → PR list → PR detail; agents) against a real seeded stack.
-No `chat`, no model key.
+main journeys (boot → PR list → PR detail → findings / severity filter / Files
+changed (Smart Diff) / Intent card / Blast Radius; agents, skills, conventions,
+onboarding, settings) against a real seeded stack. No `chat`, no model key.
+Gates PRs again since 2026-09-27: `e2e-web.yml` runs on `pull_request` and on
+pushes to `main` that touch `client/`, `server/`, `e2e/`, `reviewer-core/` or the
+workflow itself, and can be dispatched by hand from the Actions tab.
 
 ## Running locally
 
@@ -70,10 +74,14 @@ cd server && pnpm exec vitest run --exclude '**/*.it.test.ts'   # unit, no Docke
 cd server && pnpm exec vitest run .it.test                      # integration, needs Docker
 cd server && pnpm test                                          # both
 
-# browser e2e (needs the full stack + agent-browser CLI)
-./scripts/dev.sh
+# browser e2e — hermetic: own Postgres :5433, API :3101, web :3100, fresh seed.
+# Do NOT run the flows against ./scripts/dev.sh — several follow the home
+# redirect to the FIRST repo and assume the seeded demo repo is the only one.
 npm i -g agent-browser && agent-browser install
-cd e2e && npm install && npm test
+./scripts/e2e.sh
+# Windows (Git Bash): run.ts spawns the driver without a shell, which cannot
+# launch the npm .cmd shim — point it at the native binary:
+#   AGENT_BROWSER_BIN=$APPDATA/npm/node_modules/agent-browser/bin/agent-browser-win32-x64.exe ./scripts/e2e.sh
 ```
 
 ## Conventions

@@ -36,13 +36,14 @@ do that, for three reasons:
 | | `modules/_shared/severity.ts` | a pure cross-module transform |
 | | `platform/{model-router,run-logger,trace-builder,price-book}.ts` | application services with no I/O of their own |
 | **3 — Infrastructure** | `adapters/**` | one folder per concern, one file per technology |
-| | `db/**` | schema, client, rows, migrations, seed |
+| | `db/**` (except the two CLI entrypoints below) | schema, client, rows, migrations |
 | | `modules/*/repository.ts`, `modules/reviews/repository/*.repo.ts` | the only place a query is written |
 | | `modules/repo-intel/pipeline/**` | walks the filesystem and drives astgrep/graphology |
 | | `platform/{jobs,sse,prompts}.ts` | DB-backed queue, in-memory bus, template loader (reads `src/prompts/*.md`) |
 | **4 — Transport + composition root** | `modules/*/routes.ts` | Fastify plugins; the HTTP edge |
 | | `modules/index.ts` | the static module registry |
 | | `app.ts`, `server.ts` | the Fastify instance and the process entrypoint |
+| | `db/migrate.ts`, `db/seed*.ts` | CLI entrypoints: like the composition root they may build repositories (ring 3) and call pure helpers/constants (ring 2), so demo data is produced by the same code paths as runtime (`seed-intent.ts`, `seed-blast.ts`) |
 | | `platform/container.ts` | **the composition root** |
 | | `modules/_shared/context.ts` | `getContext(container, req)` — the one shared file that may touch `FastifyRequest` |
 

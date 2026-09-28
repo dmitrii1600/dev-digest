@@ -1,0 +1,24 @@
+{
+  "name": "Intent card — derived intent, scope lists, confidence and sources",
+  "description": "Walks the Overview tab's Intent card (L03) on the seeded PR #482 intent row (server/src/db/seed-intent.ts): the derived intent sentence, the IN SCOPE / OUT OF SCOPE lists (SectionLabel-style headers are CSS-uppercased), the confidence bar's computed 77% (deriveConfidence(SEED_SOURCES) = 0.765, rounds to 77) with its 'Derived from 4 of 6 source(s)' detail, and two of the six source badges that show their real unresolved reason rather than hiding or inventing one (the linked RFC's 404, the repo's 0 indexed spec chunks). Never clicks Re-run — deriving intent calls the LLM. Read-only seeded data, no model call. Assumes a freshly-seeded DB where acme/payments-api (PR #482) is the first repo — guaranteed by e2e-web.yml; run locally via the hermetic stack (see e2e/README.md).",
+  "steps": [
+    { "cmd": ["open", "{BASE}/"], "label": "load the app root" },
+    { "cmd": ["wait", "--url", "/pulls"], "label": "root redirects to the seeded repo's PR list" },
+    { "cmd": ["wait", "--load", "networkidle"], "label": "PR list data settles" },
+    { "cmd": ["wait", "--text", "Add rate limiting to public API endpoints"], "label": "the seeded PR row has rendered (clicking straight after the redirect is a race that `next dev` loses)" },
+    { "cmd": ["find", "text", "Add rate limiting to public API endpoints", "click"], "label": "open the seeded PR row (title from seed.ts)" },
+    { "cmd": ["wait", "--url", "/pulls/482"], "label": "navigate to the PR detail route" },
+    { "cmd": ["wait", "--load", "networkidle"], "label": "PR detail data settles; Overview is the default tab" },
+    { "cmd": ["wait", "--text", "INTENT"], "label": "the Intent card's SectionLabel renders (CSS-uppercased intent.json card.title)" },
+    { "cmd": ["wait", "--text", "Add rate limiting middleware to the public API endpoints so an unauthenticated client cannot abuse them."], "label": "the derived intent sentence renders (seed-intent.ts SEED_INTENT_TEXT)" },
+    { "cmd": ["wait", "--text", "Re-run"], "label": "the Re-run control is present (never clicked here — deriving intent calls the LLM)" },
+    { "cmd": ["wait", "--text", "IN SCOPE"], "label": "the in-scope column header renders (CSS-uppercased intent.json card.inScope)" },
+    { "cmd": ["wait", "--text", "Rate limiting middleware"], "label": "the first seeded in-scope item renders (seed-intent.ts SEED_IN_SCOPE)" },
+    { "cmd": ["wait", "--text", "OUT OF SCOPE"], "label": "the out-of-scope column header renders (CSS-uppercased intent.json card.outOfScope)" },
+    { "cmd": ["wait", "--text", "Authentication flow"], "label": "the first seeded out-of-scope item renders (seed-intent.ts SEED_OUT_OF_SCOPE)" },
+    { "cmd": ["wait", "--text", "Derived from 4 of 6 source(s)"], "label": "confidence detail counts the 4 available of 6 seeded sources (intent.json card.confidenceDetail)" },
+    { "cmd": ["wait", "--text", "77%"], "label": "confidence percentage renders (deriveConfidence(SEED_SOURCES) = 0.765 -> Math.round(76.5) = 77)" },
+    { "cmd": ["wait", "--text", "Plan/spec · unavailable (404)"], "label": "the linked-RFC source shows its real unresolved reason, never hidden (IntentCard.tsx:171-173; · is U+00B7)" },
+    { "cmd": ["wait", "--text", "Project context · unavailable (0 spec chunks indexed)"], "label": "the unindexed-repo source shows its real unresolved reason too" }
+  ]
+}

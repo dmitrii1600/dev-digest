@@ -93,3 +93,16 @@ in rather than overwriting the whole document. A cache hit at the PR's current
 **Failure mode.** When the GitHub adapter throws (no `GITHUB_TOKEN`, rate
 limit, network) the route returns `{ history: [] }` and logs a warning — it
 never 500s and never persists a failed attempt as if it were a real result.
+
+## Demo data
+
+`acme/payments-api` (the seeded demo repo) has no clone, so nothing can index
+it. `src/db/seed-blast.ts` therefore seeds a small **synthetic** `full` index
+for it — `repo_index_state`, `symbols`, `references`, `file_edges`, `file_rank`
+and `file_facts` for PR #482 — written through `RepoIntelRepository` so
+`decl_file` resolution is the indexer's own SQL, plus one cached prior merged
+PR in `pr_brief.json.history`. The Overview tab then shows a real map (3
+symbols, 4 callers, 3 endpoints, 1 cron) and `e2e/specs/13-blast-radius.flow.json`
+asserts it. The fixture is rebuilt by `pnpm db:seed` whenever its
+`repo_index_state` row is missing or carries an older `INDEXER_VERSION`; a
+Resync on this repo is a `no_clone` no-op and never overwrites it.

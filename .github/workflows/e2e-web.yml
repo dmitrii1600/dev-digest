@@ -8,13 +8,27 @@
 # serves the seeded read-only data the specs exercise — no LLM is called.
 name: e2e web
 
-# Manual-only for now (2026-09-27): the browser flows have never been green in
-# CI — the seed step was fixed, then flow 08 kept failing on seeded-data
-# assumptions (the severity pill) that need their own session to sort out.
-# Until then this workflow runs only from the Actions tab. To re-enable it on
-# PRs, restore the `push`/`pull_request` triggers with the `paths` filters:
-#   client/**, server/**, e2e/**, .github/workflows/e2e-web.yml
+# `reviewer-core/**` is in the path filter because the API and the seed import
+# reviewer-core's raw source (see "Install reviewer-core deps" below): a change
+# there can break this stack even when client/server/e2e are untouched.
+# `workflow_dispatch` stays so a branch can be proven from the Actions tab
+# before its PR runs.
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'client/**'
+      - 'server/**'
+      - 'e2e/**'
+      - 'reviewer-core/**'
+      - '.github/workflows/e2e-web.yml'
+  pull_request:
+    paths:
+      - 'client/**'
+      - 'server/**'
+      - 'e2e/**'
+      - 'reviewer-core/**'
+      - '.github/workflows/e2e-web.yml'
   workflow_dispatch:
 
 permissions:

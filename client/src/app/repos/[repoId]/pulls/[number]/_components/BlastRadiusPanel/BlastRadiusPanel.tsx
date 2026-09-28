@@ -129,7 +129,12 @@ export function BlastRadiusPanel({
               return (
                 <span key={key} style={s.stat}>
                   <StatIcon size={13} style={s.statIcon} aria-hidden="true" />
-                  <span style={s.statNum}>{stats[key]}</span> {t(`stat.${key}`)}
+                  {/* Number + label in ONE inline span: the outer is inline-flex, and a
+                      flex container renders each item on its own innerText line
+                      ("3" / "symbols"), which no text locator can match as "3 symbols". */}
+                  <span>
+                    <span style={s.statNum}>{stats[key]}</span> {t(`stat.${key}`)}
+                  </span>
                 </span>
               );
             })}

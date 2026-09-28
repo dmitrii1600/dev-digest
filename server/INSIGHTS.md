@@ -257,6 +257,16 @@ append-only. Empty sections are expected — append under the one that fits.
   `pr_brief.json.history` (`blast/repository.ts`). A missing token or a rate
   limit degrades to `{ history: [] }` with a warn log, never a 500.
 
+- 2026-09-27 — A hand-seeded repo-intel index is only "live" for blast if it has
+  ALL of: `file_edges` caller→decl (so `resolveReferences` sets `decl_file`),
+  `file_rank` rows for every **caller** file (`getResolvedCallers` inner-joins
+  `file_rank` on `from_path`, `modules/repo-intel/repository.ts:517`), and a
+  `repo_index_state` row at the current `INDEXER_VERSION` written LAST.
+  `src/db/seed-blast.ts` does exactly that through `RepoIntelRepository`; rank
+  rows are deliberately absent for the changed files so the review prompt's
+  "top 5%" note stays byte-identical. Proof: `test/seed-blast.it.test.ts`.
+
+
 
 
 ## Tool & Library Notes
