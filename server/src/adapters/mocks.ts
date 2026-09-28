@@ -128,6 +128,13 @@ export interface MockGitHubOptions {
   login?: string;
   /** Existing inline review comments returned by listReviewComments. */
   comments?: PrReviewComment[];
+  /** `listCommitsForPath` fixtures, keyed by path — "Prior PRs" history. */
+  commitsByPath?: Record<string, { sha: string }[]>;
+  /** `listPullsForCommit` fixtures, keyed by commit sha. */
+  pullsByCommit?: Record<
+    string,
+    { number: number; title: string; merged_at: string | null; author: string }[]
+  >;
 }
 
 export class MockGitHubClient implements GitHubClient {
@@ -135,6 +142,8 @@ export class MockGitHubClient implements GitHubClient {
   public openedPrs: OpenPrPayload[] = [];
   public committed: CommitFilesPayload[] = [];
   public createdComments: CreateReviewCommentInput[] = [];
+  public commitsForPathCalls: { repo: RepoRef; path: string; perPage: number }[] = [];
+  public pullsForCommitCalls: { repo: RepoRef; sha: string }[] = [];
 
   constructor(private opts: MockGitHubOptions = {}) {}
 
@@ -239,6 +248,19 @@ export class MockGitHubClient implements GitHubClient {
 
   async currentLogin(): Promise<string> {
     return this.opts.login ?? 'mock-user';
+  }
+
+  async listCommitsForPath(repo: RepoRef, path: string, perPage: number): Promise<{ sha: string }[]> {
+    this.commitsForPathCalls.push({ repo, path, perPage });
+    return this.opts.commitsByPath?.[path] ?? [];
+  }
+
+  async listPullsForCommit(
+    repo: RepoRef,
+    sha: string,
+  ): Promise<{ number: number; title: string; merged_at: string | null; author: string }[]> {
+    this.pullsForCommitCalls.push({ repo, sha });
+    return this.opts.pullsByCommit?.[sha] ?? [];
   }
 }
 

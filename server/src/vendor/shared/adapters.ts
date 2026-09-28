@@ -164,6 +164,21 @@ export interface GitHubClient {
   getIssue(repo: RepoRef, n: number): Promise<IssueMeta>;
   /** GET /user — for "posting as @user". */
   currentLogin(): Promise<string>;
+  /**
+   * Commits touching one path, newest first (`GET /repos/{o}/{r}/commits?path=`).
+   * Used by "Prior PRs touching these files" (blast module) to seed a
+   * per-file commit history — no PR body, no diff.
+   */
+  listCommitsForPath(repo: RepoRef, path: string, perPage: number): Promise<{ sha: string }[]>;
+  /**
+   * The PR(s) associated with a commit (`GET /repos/{o}/{r}/commits/{sha}/pulls`),
+   * usually zero or one. Used to turn a commit sha into the merged PR that
+   * introduced it.
+   */
+  listPullsForCommit(
+    repo: RepoRef,
+    sha: string,
+  ): Promise<{ number: number; title: string; merged_at: string | null; author: string }[]>;
 }
 
 // ---------- Git (simple-git, heavy) ----------

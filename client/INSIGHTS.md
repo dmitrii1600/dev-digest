@@ -66,6 +66,12 @@ append-only. Empty sections are expected — append under the one that fits.
   `·` bullet and `overflowWrap: "anywhere"`
   (`src/app/repos/[repoId]/pulls/[number]/_components/OverviewTab/_components/IntentCard/styles.ts:60`).
 
+- 2026-09-26 — `aria-label` on a collapsible group header replaces its
+  accessible name, so a screen reader hears "Collapse" and never the symbol the
+  button opens. Put the Expand/Collapse hint in `title` and keep the name in the
+  children (`…/_components/BlastRadiusPanel/BlastRadiusPanel.tsx:168`); the RTL
+  query is then `getByRole("button", { name: /symbol/ })`.
+
 ## Codebase Patterns
 
 - 2026-09-20 — `Checkbox` in `src/vendor/ui/kit` is a `<button role="checkbox"
@@ -188,6 +194,25 @@ append-only. Empty sections are expected — append under the one that fits.
   three different mutations do not want one footer; switching tabs discarding
   the draft is the intended semantics, not a bug (`AddSkillModal.tsx`).
 
+- 2026-09-26 — Export the query-key builder next to its hook
+  (`src/lib/hooks/blast.ts` `blastRadiusKey`) and invalidate through it. A
+  literal key retyped in a component (`…/[number]/page.tsx:52,57` still does
+  this) silently stops matching after a rename — React Query matches keys
+  structurally and never warns.
+- 2026-09-26 — `githubBlobUrl` lives in the page segment
+  (`src/app/repos/[repoId]/pulls/[number]/github-urls.ts`), not in `src/lib/`;
+  the L04 assignment text names the wrong path. From `_components/*` import it
+  through the `@/app/repos/[repoId]/pulls/[number]/github-urls` alias
+  (`FindingCard.tsx:23` still climbs with `../../`).
+
+- 2026-09-26 — A panel that mounts a sibling data block (`BlastRadiusPanel`
+  → `PriorPrs`) must extend its `vi.mock("@/lib/hooks/blast", …)` with every
+  hook that sibling reads (`usePrHistory`, `prHistoryKey`), or the panel test
+  crashes with "is not a function" far from the line that changed. Give the
+  sibling its own test and keep the panel's mock returning quiet defaults.
+
+
+
 ## Tool & Library Notes
 
 - 2026-09-16 — `@testing-library/user-event` is **not** installed; the suite uses
@@ -231,6 +256,16 @@ b")` never matches a multi-line
   (`icons.tsx:146-147`) — `icon: "Pencil"` typechecks nowhere even though the
   glyph exists. Use `"Edit"`. `ShieldAlert` does not exist either; `AlertOctagon`
   is the "blocked" glyph.
+
+- 2026-09-26 — `Chip` (`src/vendor/ui/primitives/Chip.tsx:4-18`) has no
+  `aria-*` or `type` pass-through, so a pressed-state toggle cannot use it.
+  Hand-roll `<button type="button" aria-pressed>` styled like Chip (precedent:
+  `SeverityPills.tsx:43`, `PRRow.tsx:101`, `BlastRadiusPanel.tsx:138`); the
+  third copy is the signal to add the pass-through upstream.
+- 2026-09-26 — `ErrorState` (`src/vendor/ui/primitives/ErrorState.tsx`) renders
+  its own retry label; a `retry` key in a messages namespace is dead. Pass only
+  `title` and `onRetry`.
+
 
 ## Recurring Errors & Fixes
 

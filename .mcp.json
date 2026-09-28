@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "devdigest": {
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "${CLAUDE_PROJECT_DIR}/mcp/node_modules/tsx/dist/cli.mjs",
+        "--tsconfig", "${CLAUDE_PROJECT_DIR}/mcp/tsconfig.json",
+        "${CLAUDE_PROJECT_DIR}/mcp/src/index.ts"
+      ],
+      "env": { "DEVDIGEST_API_URL": "${DEVDIGEST_API_URL:-http://localhost:3001}" }
+    }
+  }
+}

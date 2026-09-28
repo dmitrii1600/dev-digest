@@ -158,6 +158,13 @@ append-only. Empty sections are expected — append under the one that fits.
   permissions.deny`, which is session-wide and binds the author's own session
   too. Everything else an agent body forbids is convention, not enforcement.
 
+- 2026-09-26 — The `mcp` route in `pr-self-review-gate.mjs` matches
+  `mcp/src/**/*.ts` only, so non-test helpers under `mcp/test/helpers/*.ts`
+  (`connect.ts`, `fake-api.ts`, `fixtures.ts`) fall to `unrouted` and emit
+  three `unrouted-file` WARNINGs on every run. They are test scaffolding, not
+  product code: mark `mcp/test/**` convention-only in `ROUTES` when the gate is
+  next touched, the same treatment `*.test.ts` already gets.
+
 ## Codebase Patterns
 
 - 2026-09-22 — A change confined to `.claude/**` gets **no automated verification at
@@ -264,6 +271,14 @@ append-only. Empty sections are expected — append under the one that fits.
   and both route through the one canonical table,
   `.claude/skills/pr-self-review/routing.md`.
 
+- 2026-09-26 — A dev server started from a worktree shares the Postgres data
+  with the main checkout, but not its filesystem: `repos.clone_path` and any
+  relative `*_DIR` env resolve against whichever checkout started the process.
+  Before debugging "index says full but shows nothing", confirm which checkout
+  owns the process on :3001 (`Get-CimInstance Win32_Process` command line) and
+  whether the paths it resolves actually exist there.
+
+
 ## Tool & Library Notes
 
 - 2026-09-22 — Subagent frontmatter and Skill frontmatter are different schemas.
@@ -340,6 +355,21 @@ append-only. Empty sections are expected — append under the one that fits.
   expression or statement` pointing at an unrelated line, and nothing in the
   file ran. Keep repo `.ps1` ASCII-only (the file says so at its top) rather
   than adding a BOM — unlike `.sh`, these are read by the ANSI-default host.
+
+- 2026-09-26 — Never launch a stdio MCP server through `npm run`/`npx`: `npm
+  run` prints its `> pkg@ver script` banner to **stdout**, which is the
+  JSON-RPC channel, and `npx.cmd` needs a `cmd /c` wrapper on Windows (same
+  family as the `pnpm.cmd` ENOENT above). `.mcp.json` runs `node` against the
+  tsx CLI file directly (`.mcp.json:5-9`); the package's own `npm run inspect`
+  is fine because the inspector, not the model, reads that stdout.
+
+- 2026-09-26 — Windows PowerShell 5.1 swallows the `--` separator before it
+  reaches `claude mcp add … -- node <file> --tsconfig …`, so the CLI parses
+  `--tsconfig` as its own flag and fails with `unknown option`. Use
+  `claude mcp add-json <name> '<json>'` (no separator needed) or run the
+  `add` form from Git Bash. `claude mcp get <name>` run inside a worktree
+  reports the **project** `.mcp.json` entry first (`Scope: Project config`,
+  `⏸ Pending approval`) even when a user-scope entry of the same name exists.
 
 ## Recurring Errors & Fixes
 
@@ -584,6 +614,24 @@ then made it self-service: `scripts/free-port.ps1` (climb the wrapper chain,
 the default path still blocking with a PID and now a pointer to the flag, and
 the allowlist refusing Docker on :5432.
 
+### 2026-09-26 — L04: `mcp/` package (devdigest MCP server)
+Added the fifth standalone package (`mcp/`, npm) as a stdio adapter over the
+API, plus `.mcp.json`, `mcp.yml` and the pr-self-review gate routing for it.
+The repo now has **five** packages; the `<pm>`-by-lockfile rule and the
+lock-file do-not-touch list in `AGENTS.md` were extended rather than
+special-cased. Package-local lessons (two distinct TS2589 sources with SDK
+1.30.1, the measured tools/list budget) are in `mcp/INSIGHTS.md`.
+
+### 2026-09-26 — L04: Blast Radius (server `modules/blast`, client panel, MCP tool)
+Plan `specs/09-blast-radius.md` → contract step alone, then three implementers
+in parallel on disjoint file lists (server / client+P3 / mcp): no conflicts, all
+three lanes green first time. architecture-reviewer ∥ plan-verifier found one
+WARNING (the `repo-intel/constants.ts` edge, kept on purpose because the
+assignment's P2 asks for that file) and five suggestions, four applied. The
+assignment text disagrees with the tree in three places — `githubBlobUrl` path,
+route name, and `BFS_DEPTH` (only `getCriticalPaths` uses it; blast is 1-hop) —
+and the tree won each time. Package-local lessons are in the three module files.
+
 
 ## Open Questions
 
@@ -602,3 +650,10 @@ the allowlist refusing Docker on :5432.
   tree enables both the `PreToolUse` gate and `.githooks/pre-push`. Options and
   a recommendation are in `specs/05-skills-lab-criteria-gaps.md` §21; the
   author decides.
+
+- 2026-09-26 — The `tsx watch` API on :3001 (started 18:21 from this worktree)
+  kept answering 404 on `/pulls/:id/blast-radius` after `modules/index.ts`
+  changed, so the new module never loaded without a manual restart. Unverified
+  whether tsx's watcher misses files created after start on a Windows worktree
+  path with spaces; if it recurs, restart `pnpm dev` after adding a module.
+

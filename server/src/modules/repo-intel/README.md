@@ -51,3 +51,5 @@ and a per-agent `repo_intel` flag.
 
 - `GET /repos/:id/index-state` — index status (drives the **Indexed** badge).
 - `POST /repos/:id/resync` — enqueue a re-index.
+
+`getBlastRadius` is consumed by `modules/blast/` (`GET /pulls/:id/blast-radius`).

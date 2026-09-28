@@ -30,6 +30,7 @@ If a test wouldn't catch a class of regression we care about, we don't write it.
 | server-unit | `server/` | unit (hermetic) | vitest | `server-unit.yml` | no |
 | server-integration | `server/` | integration (real Postgres) | vitest | `server-integration.yml` | **yes** |
 | reviewer-core | `reviewer-core/` | unit (engine) | vitest | `reviewer-core.yml` | no |
+| mcp | `mcp/` | unit (hermetic, fake API) | vitest | `mcp.yml` | no |
 | e2e web | `e2e/` | browser e2e (deterministic) | agent-browser + `run.ts` | `e2e-web.yml` | yes (stack) |
 
 ## What each suite covers
@@ -46,7 +47,8 @@ fails there if the win32 prebuilt is missing).
 **server-integration** — the `*.it.test.ts` files. Each starts a real Postgres
 (pgvector) via testcontainers, builds the Fastify app, migrates + seeds, and
 drives routes end-to-end: reviews + run lifecycle (incl. grounding), agents CRUD,
-repo-intel symbol clamping, pulls comments, settings models. They self-skip when
+repo-intel symbol clamping, pulls comments, the blast radius route, settings
+models. They self-skip when
 Docker is unavailable.
 
 **reviewer-core** — the pure engine: `toReview` selection, prompt construction,

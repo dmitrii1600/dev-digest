@@ -47,6 +47,12 @@ export const BlastCaller = z.object({
   name: z.string(),
   file: z.string(),
   line: z.number().int(),
+  // Endpoints / crons declared in the caller's own file (from the index's
+  // per-file facts). Optional: absent on the fallback path and in documents
+  // persisted before the field existed; the per-symbol unions below stay the
+  // source of truth for the counts.
+  endpoints: z.array(z.string()).optional(),
+  crons: z.array(z.string()).optional(),
 });
 export type BlastCaller = z.infer<typeof BlastCaller>;
 
@@ -58,10 +64,28 @@ export const DownstreamImpact = z.object({
 });
 export type DownstreamImpact = z.infer<typeof DownstreamImpact>;
 
+// `index_stale` is blast's own: the index exists but was built by an older
+// indexer version; the route queues a rebuild and says so instead of showing
+// a half-empty map as if it were complete.
+export const BlastDegradedReason = z.enum([
+  'flag_off',
+  'index_failed',
+  'index_partial',
+  'index_stale',
+  'repo_too_large',
+  'no_data',
+]);
+export type BlastDegradedReason = z.infer<typeof BlastDegradedReason>;
+
+// `degraded` / `reason` are set by `GET /pulls/:id/blast-radius`; they are
+// optional because `PrBrief` (which embeds this shape) is persisted in
+// `pr_brief.json` and older documents will not carry them.
 export const BlastRadius = z.object({
   changed_symbols: z.array(ChangedSymbol),
   downstream: z.array(DownstreamImpact),
   summary: z.string(),
+  degraded: z.boolean().optional(),
+  reason: BlastDegradedReason.nullish(),
 });
 export type BlastRadius = z.infer<typeof BlastRadius>;
 

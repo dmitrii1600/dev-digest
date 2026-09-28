@@ -80,6 +80,42 @@ append-only. Empty sections are expected — append under the one that fits.
   (`test/helpers/runs.ts:19`). "grounding drops the hallucinated finding" failed 2/3 on
   an untouched tree. Do not read that failure as a regression; stub `intent` in `appWith`.
 
+- 2026-09-26 — Do not read `MAX_CALLERS_PER_SYMBOL` as a per-symbol limit.
+  The persistent facade path applies it once across all symbols after a global
+  rank sort, `callers.slice(0, MAX_CALLERS_PER_SYMBOL)`
+  (`src/modules/repo-intel/service.ts:386`), and the ripgrep fallback
+  (`service.ts:236-295`) applies no cap at all. A consumer that promises "N per
+  symbol" must re-cap after grouping (`src/modules/blast/helpers.ts`), and a PR
+  with >20 resolved callers in total can show zero for its low-rank symbols.
+
+- 2026-09-26 — Running the API from a git worktree with the default
+  `DEVDIGEST_CLONE_DIR=./clones` (`.env:28`, resolved against `process.cwd()`
+  in `src/platform/config.ts:77`) points at `<worktree>/server/clones`, which
+  does not exist; the DB's `repos.clone_path` still names the main checkout.
+  Every resync then fails inside `git.sync` in milliseconds, `resyncRepo`
+  returns `sync_failed`, the job is marked `done`, and the stale index keeps
+  saying `full`. Fix for a worktree: a junction `<worktree>/server/clones` →
+  the main `server/clones` (git-ignored), no restart needed.
+- 2026-09-26 — `POST /repos/:id/resync` is a no-op when the clone's HEAD equals
+  `lastIndexedSha` (`pipeline/incremental.ts:97`, reason `sha_unchanged`), so
+  it cannot repair a broken index of the same commit. To force a full pass
+  without touching code, set `repo_index_state.indexer_version` to a value
+  other than `INDEXER_VERSION` and resync again (`incremental.ts:78` delegates
+  to `runFullIndex`).
+
+- 2026-09-26 — A clone dir reached through a junction/symlink (the worktree
+  `server/clones` → main `server/clones` shortcut) gave the depgraph adapter
+  **0 edges even after the backslash fix**: dependency-cruiser reports
+  `module.source` through the path it was given but `dependency.resolved`
+  through the real path, so `relative(root, resolved)` climbed out of the root
+  and every edge was dropped. `toRel` now realpaths both sides
+  (`src/adapters/depgraph/index.ts`, junction case in
+  `test/depgraph-torel.test.ts`), and `INDEXER_VERSION` went to 4 so every
+  v3 index (all of which carry 0 edges) rebuilds itself. Diagnosis shortcut:
+  `repo_index_state.stats->>'edgesWritten'` = 0 with `referencesWritten` > 0.
+
+
+
 ## Codebase Patterns
 
 - 2026-09-18 — An onion ring is derived from the **filename**, not a folder:
@@ -188,6 +224,41 @@ append-only. Empty sections are expected — append under the one that fits.
   which for a seven-row list is nothing; revisit only if the list endpoint ever
   pages thousands.
 
+- 2026-09-26 — `repoIntel.getBlastRadius` never emits `flag_off`, `index_failed`
+  or `index_partial`: it returns `degraded:true, reason:'no_data'` or
+  `degraded:false` (`src/modules/repo-intel/service.ts:233,302,338,389`), and a
+  `partial` index comes back non-degraded. Derive the reason from
+  `config.repoIntelEnabled` plus `getIndexState` (`src/modules/blast/helpers.ts`
+  `resolveDegraded`) — the facade knows whether rows exist, not why they are
+  missing.
+- 2026-09-26 — `pr_files` is written only by `GET /pulls/:id`
+  (`src/modules/pulls/routes.ts:241-252`); the list sync never fills it. A route
+  that reads a PR's changed files (`GET /pulls/:id/blast-radius`) sees an empty
+  list until the detail was fetched once. The studio relies on mount order, the
+  MCP tool calls `getPull` first. A third consumer is the moment to move that
+  refresh behind a service.
+- 2026-09-26 — `GET /pulls/:id/blast-radius` is the first route with a
+  `response: { 200: Schema }` (`src/modules/blast/routes.ts:37`). A mapper bug
+  now surfaces as a generic 500 `internal_error` through
+  `isResponseSerializationError` (`src/app.ts:130-134`), never as malformed
+  JSON — the `.it.test.ts` `safeParse` assertion is where it becomes visible.
+
+- 2026-09-26 — When indexer output changes shape, bump `INDEXER_VERSION`
+  (`src/modules/repo-intel/constants.ts`) rather than editing rows: the
+  incremental pass delegates to `runFullIndex` on a version mismatch
+  (`pipeline/incremental.ts:78`). Nothing triggers that pass on its own, so
+  `modules/blast/service.ts` nudges it — a blast read on a stale index
+  enqueues one `repo-intel-resync` per repo per 10 min (`REINDEX_NUDGE_INTERVAL_MS`)
+  and answers `degraded: true, reason: 'index_stale'` with the old map. Why:
+  the read path must stay a read, but a user opening a PR is the only moment
+  anyone looks at the index, so that is where the rebuild has to be kicked.
+- 2026-09-26 — "Prior PRs touching these files" is 12 + ≤40 GitHub calls on a
+  cache miss (`modules/blast/constants.ts`), so it is cached per PR head sha in
+  `pr_brief.json.history` (`blast/repository.ts`). A missing token or a rate
+  limit degrades to `{ history: [] }` with a warn log, never a 500.
+
+
+
 ## Tool & Library Notes
 
 - 2026-09-20 — `drizzle-kit generate` asks interactively ("is `scan_id`
@@ -239,6 +310,14 @@ append-only. Empty sections are expected — append under the one that fits.
   whole thing is driven by a stubbed `fetchImpl` returning `new Response(...)`
   with a `location` header — no server, no network (`test/url-fetcher.test.ts`).
 
+- 2026-09-26 — The depcruise exemption for `repo-intel/constants.ts` is on the
+  *target* path (`.dependency-cruiser.cjs:85`), so every module may import it,
+  while `.claude/skills/onion-architecture/enforcement.md:115` describes it as
+  one pinned edge. `modules/blast/routes.ts:7` is the second consumer and
+  `pnpm arch` stays green. Pin the rule to `from: repos/service.ts` when the
+  read limits move to `modules/_shared/`.
+
+
 ## Recurring Errors & Fixes
 
 - 2026-09-15 — `pnpm exec vitest run --exclude '**/*.it.test.ts'` fails 6 tests
@@ -252,6 +331,22 @@ append-only. Empty sections are expected — append under the one that fits.
   produced a path one character short, and `mkdir -p` on that happened to create
   the real parent as a side effect. A latent bug that silently works is why the
   fix went into both files rather than only the failing one.
+
+- 2026-09-26 — `conventions.it.test.ts:474` (`trace.prompt_assembly` undefined)
+  failed once inside a full `pnpm test` run and passed alone (7/7). It drives a
+  whole review run under parallel Testcontainers; re-run the file alone before
+  blaming a change outside `modules/reviews`.
+
+- 2026-09-26 — Blast radius shows N symbols and 0 callers on a `full` index.
+  Check `repo_index_state.stats->>'edgesWritten'`: if it is `0`, the depgraph
+  adapter dropped every edge and `references.decl_file` never resolved. On
+  Windows the cause was `path.relative()` returning backslashes in
+  `src/adapters/depgraph/index.ts` `toRel`, which never matched the POSIX
+  `files` set — fixed by re-joining with `/` (`test/depgraph-torel.test.ts`).
+  The adapter swallows cruise errors into `[]`, so `graphFailed` stays unset
+  and the index is still stamped `full`.
+
+
 
 ## Session Notes
 
