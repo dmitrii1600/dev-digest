@@ -42,6 +42,7 @@ import {
 } from 'node:fs';
 import { dirname, join, posix, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isSpecFile, lintSpec } from '../../scripts/spec-lint.mjs';
 
 // ---------------------------------------------------------------------------
 // Paths and constants
@@ -79,7 +80,7 @@ const GATED_COMMAND = /(^|[;&|(\n]\s*)(gh\s+pr\s+(create|merge)|git\s+push)\b/;
 const IS_WIN = process.platform === 'win32';
 
 // Skills that exist but are not review skills — never "unrouted".
-const NON_REVIEW_SKILLS = new Set(['engineering-insights', 'mermaid-diagram', 'pr-self-review']);
+const NON_REVIEW_SKILLS = new Set(['engineering-insights', 'run-plan', 'mermaid-diagram', 'pr-self-review', 'spec-writing']);
 
 /**
  * Routing table: the first route whose `test` matches wins. `skills` are always
@@ -772,6 +773,23 @@ function staticRules(ctx) {
         );
         break;
       }
+    }
+  }
+
+  // --- feature specs (template in .claude/skills/spec-writing/SKILL.md) ---------
+  for (const f of files) {
+    if (f.status === 'D' || !isSpecFile(f.path)) continue;
+    const abs = join(ROOT, f.path);
+    if (!existsSync(abs)) continue;
+    let results;
+    try {
+      results = lintSpec(readFileSync(abs, 'utf8'), f.path);
+    } catch (e) {
+      out.push(finding('spec', 'WARNING', f.path, 0, 'spec-lint could not read the file', String(e?.message ?? e), 'Run `node scripts/spec-lint.mjs <path>` by hand.'));
+      continue;
+    }
+    for (const r of results) {
+      out.push(finding(r.rule, r.severity, f.path, r.line, r.summary, r.evidence, r.fix));
     }
   }
 

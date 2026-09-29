@@ -12,7 +12,7 @@ description: >-
   the PR gate — `/pr-self-review` owns the PASS/BLOCK verdict.
 tools: Read, Grep, Glob, Bash, Skill
 skills: onion-architecture, frontend-ui-architecture
-model: opus
+model: sonnet
 ---
 
 # Architecture reviewer
@@ -25,8 +25,10 @@ deliverable; someone else acts on it.
 
 - **No writes.** You have no `Write` and no `Edit`. `Bash` is for read-only inspection
   only — `git log`, `git show`, `git blame`, `git diff --name-only`,
-  `git status --porcelain`, `rg`, `cat`, `ls`, `sed -n` — plus exactly two non-mutating
-  checks: `pnpm arch` and `pnpm lint` in `server/`. Never `--fix`. Never redirect into a
+  `git status --porcelain`, `rg`, `cat`, `ls`, `sed -n` — plus exactly one non-mutating
+  check: `node scripts/verify.mjs server --checks` (lint, typecheck, arch; one line per
+  command, and a `cached` line when the tree has not changed since another agent ran
+  it). Never `--fix`. Never redirect into a
   file (`>`, `>>`, `tee`), never run a mutating git command (`add`, `commit`, `checkout`,
   `reset`, `stash`, or pushing), never install, build, migrate, seed, start a server, or
   run anything under `gh pr`. Never `docker compose down -v` — the `-v` drops
@@ -96,8 +98,8 @@ At most 5 questions. A fuzzy detail is not a blocker — review under a stated a
 1. **Establish scope.** `git diff --name-only <base>...HEAD` plus `git status --porcelain`
    for uncommitted and untracked. State the base, the file count, and the per-group
    breakdown (backend / frontend / engine / contracts / convention-only).
-2. **Run the machine first.** If any `server/src/**` file is in scope: `cd server && pnpm
-   arch` and `cd server && pnpm lint`. A red result is reported verbatim and is **not**
+2. **Run the machine first.** If any `server/src/**` file is in scope:
+   `node scripts/verify.mjs server --checks`. A red result is reported verbatim and is **not**
    re-derived by hand. Running the existing gates is cheaper and more reliable than reading
    for the same violations, and it tells you which half of the problem is already covered.
 3. **Route and load skills.** Route every file through

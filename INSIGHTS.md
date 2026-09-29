@@ -47,8 +47,33 @@ append-only. Empty sections are expected — append under the one that fits.
   and exited 1 rather than taking Postgres down (`scripts/free-port.ps1:33`).
   Default behaviour is unchanged — the guard still only reports
   (`scripts/dev.sh:161`); killing is opt-in.
+- 2026-09-29 — One verify entry point for every agent: `node scripts/verify.mjs
+  <pkg> [--checks | --tests | --file <p>] [--it]` runs lint/typecheck/arch and
+  vitest with `--reporter=dot`, prints one line per command and the tail only on
+  failure, and caches green results under `.devdigest/verify/` keyed by a
+  fingerprint of HEAD + diff + untracked blobs (`scripts/verify.mjs:100`). A
+  second agent on the identical tree gets a `cached` line instead of a rerun;
+  a failure is never cached (`scripts/verify.mjs:218`). Measured on
+  `reviewer-core` + `mcp`: 6 commands, second run 6 cached, output 8 lines
+  instead of the full vitest listing.
 
 ## What Doesn't Work
+
+- 2026-09-29 — A tree-fingerprinted cache that lives inside the tree. The first
+  run of `verify.mjs` wrote `.devdigest/verify/cache.json`, which was untracked
+  and therefore part of the next fingerprint — so the cache never hit once.
+  Exclude the cache dir (and vitest's transient
+  `vitest.config.ts.timestamp-*.mjs`) from the untracked set
+  (`scripts/verify.mjs:106`) **and** gitignore it; either alone is not enough.
+- 2026-09-29 — "Load the skills per step" in an agent body. The `Skill` tool
+  appends the whole body every call, so a three-step server plan loaded
+  `onion-architecture` three times. The rule is now once per run, at the first
+  step that needs it (`.claude/agents/implementer.md:72`).
+- 2026-09-29 — Preloading a review catalogue into a writing agent. `security`
+  (≈270 lines, mostly Express/Mongo/JWT) sat in every `spec-creator` run for one
+  table, and `react-testing-library` (≈600 lines of jsdom) in every
+  `test-writer` run including server-only ones. Both are on-demand now; the
+  one-table need became a *Validation vocabulary* in the `spec-writing` skill.
 
 - 2026-09-15 — On Windows, `pnpm db:migrate` and `pnpm db:seed` exit 0 having
   done **nothing**. Both guard their CLI entrypoint with
@@ -173,7 +198,49 @@ append-only. Empty sections are expected — append under the one that fits.
   (`./scripts/e2e.sh`) or re-run `pnpm db:seed` and re-check the specific row.
 
 
+- 2026-09-29 — Editing from a pre-restart read. After the desktop app quit and
+  resumed a session, `Edit` on `.claude/agents/README.md` failed on a stale
+  `old_string`: another session had renamed `planner.md` →
+  `implementation-planner.md` and rewritten the README between the read and the
+  edit, and `Write` on `specs/README.md` had already overwritten a version never
+  seen. After any resume, run `git status --short` and re-read every file before
+  editing it; a snapshot from before the restart is not the tree.
+
 ## Codebase Patterns
+
+- 2026-09-29 — Skills are split into write-time and review-time
+  (`.claude/skills/pr-self-review/routing.md:34`). `security` and
+  `typescript-expert` grade a finished diff and never appear in a plan's Skill
+  contract; the implementer loads only what changes what gets typed, the gate
+  applies the rest. Why: together they are ~700 lines of context on a blank file
+  and change nothing about the code written.
+- 2026-09-29 — `implementation-planner` writes `plans/<stem>.md` itself
+  (`Write`, no `Edit`, limited by prompt text — `.claude/agents/implementation-planner.md:32`)
+  and returns a short Plan Report. Why: a plan relayed through the caller's
+  context costs a second copy and was once summarised on the way; structural
+  read-only was traded for the guarantee, the same trade `spec-creator` makes.
+- 2026-09-29 — Chain order is implementer → plan-verifier → (test-writer ∥
+  architecture-reviewer) → plan-verifier in delta mode
+  (`.claude/agents/plan-verifier.md:85`). Why: a DIVERGES goes back to the
+  implementer through the fix loop (plan path + report path + item numbers), so
+  tests written before that pass would be written against the wrong behaviour;
+  the delta pass re-checks only rows not MET or whose evidence file changed.
+- 2026-09-29 — The build half of the chain is one command, `/run-plan
+  plans/<stem>.md` (`.claude/skills/run-plan/SKILL.md`); the spec and the plan
+  are made by hand before it because a person approves each. Every agent reply
+  is saved verbatim to `.devdigest/sdd/<stem>/NN-<agent>.md` and the next agent
+  gets a path plus item numbers; fix loops are capped at 2 (verifier, arch) and
+  1 (gate), then the run stops with a summary. Why: an uncapped loop is where an
+  orchestrator burns tokens, and a report relayed by summary loses the items the
+  fix needs. A new skill without a route must be added to `NON_REVIEW_SKILLS`
+  in the gate (`.claude/hooks/pr-self-review-gate.mjs:83`) or `unrouted-skill`
+  fires.
+- 2026-09-29 — `plan-verifier` and `architecture-reviewer` run on sonnet;
+  `spec-creator` and `implementation-planner` stay on opus. Why: the two
+  reviewers emit a forced structure (four-status ledger, finding with
+  `path:line` + verbatim evidence + table-read severity) and run two to four
+  times per feature inside fix loops; the two authors decide once and everything
+  downstream inherits it.
 
 - 2026-09-22 — A change confined to `.claude/**` gets **no automated verification at
   all**, and that is by design, not a gap to fill. `ROUTES` files it as
@@ -378,6 +445,34 @@ append-only. Empty sections are expected — append under the one that fits.
   `add` form from Git Bash. `claude mcp get <name>` run inside a worktree
   reports the **project** `.mcp.json` entry first (`Scope: Project config`,
   `⏸ Pending approval`) even when a user-scope entry of the same name exists.
+
+- 2026-09-29 — `AskUserQuestion` is stripped from every subagent even when its
+  `tools:` lists it (sub-agents docs, fetched 2026-09-28), so "ask the user if
+  unclear" cannot be a tool call inside an agent. The only working shape is the
+  one `.claude/agents/implementation-planner.md` uses: a required prompt input
+  (`mode: single-agent | multi-agent`) plus a structured block that is the
+  agent's **whole** reply when the input or an answer is missing; the caller
+  relays it with its own `AskUserQuestion` and re-invokes. Two invocations are
+  the normal case.
+
+- 2026-09-29 — The desktop app's agent registry picks up a new or deleted
+  `.claude/agents/*.md` with a lag of **minutes**, not the "few seconds" the docs
+  promise: `implementation-planner` was refused as unknown (and the deleted
+  `planner` still listed) on two calls one and two minutes after the file was
+  written, and appeared roughly five minutes later without a restart. Do not
+  conclude the frontmatter is broken; in the meantime the body can be exercised
+  by a `general-purpose` agent told to read the file and obey it. Confirmed the
+  same day for `spec-creator` (refused ~3 min after the write; the refusal lists
+  the registry's current names, which is the quickest way to see the lag). The
+  stand-in reproduced both branches of the body — the *Need clarification* block
+  on a vague request and a full 14-section spec on a concrete one — so a new
+  agent can be validated before the registry catches up. The registry also
+  **snapshots the body**: after `spec-creator.md` was edited (numbering → dated
+  stems) the registered agent still reported "my instructions say `NN-`" and
+  only followed the new rule because it read `specs/README.md` from the tree.
+  Keep the load-bearing convention in a repo file the agent is told to read,
+  not only in the agent body, and expect an edited agent to run stale for a few
+  minutes.
 
 ## Recurring Errors & Fixes
 
@@ -639,6 +734,72 @@ assignment's P2 asks for that file) and five suggestions, four applied. The
 assignment text disagrees with the tree in three places — `githubBlobUrl` path,
 route name, and `BFS_DEPTH` (only `getCriticalPaths` uses it; blast is 1-hop) —
 and the tree won each time. Package-local lessons are in the three module files.
+
+### 2026-09-29 — `planner` → `implementation-planner`, plans leave `specs/`
+The planner had drifted into writing specs: `specs/08` and `specs/09` are
+Development Plans with Problem/Contract/Acceptance sections, saved where agents
+read current intent. Split it: specs are human-written input, the renamed agent
+starts with a Requirements review (ledger quoting the spec with four statuses,
+questions, recommendations, single-agent vs multi-agent question) and only then
+emits an Implementation Plan, saved to the new `plans/NN-slug.md`. Multi-agent
+means parallel `implementer` tracks with exclusive file ownership plus a shared
+step 0 and an Integration step — the shape the Blast Radius session used by hand.
+Verified by invocation on known ground truth (no automated check exists for
+`.claude/**`): no mode → review block only; `mode: multi-agent` on `specs/09` →
+disjoint Tracks table, step 0 shared, Integration last; `mode: single-agent` on a
+one-file request → the ledger caught that the request's premise contradicted the
+tree (`mcp/src/index.ts:27-29`: a stopped API gives per-call "not reachable", not
+CONNECTION_CLOSED — that one is a missing `mcp/node_modules`) and returned
+questions instead of a plan.
+
+### 2026-09-29 — `spec-creator` in front of the planner; specs get a template
+Specs were "human-written" in the chain above and still on the old
+Problem/Scope/Contract/Acceptance shape. Added `.claude/agents/spec-creator.md`
+(opus; Write/Edit limited by prompt text to the five spec folders; `security`
+preloaded for the *Untrusted inputs* table) and rewrote `specs/README.md` to the
+EARS template with `Status` and a dated `YYYY-MM-DD-short-name` stem as the Spec ID
+(no ticket numbers exist, and a bare counter told nobody what a spec was about);
+`implementation-planner`
+and `plan-verifier` now read `AC-n`/`EC-n` instead of `## Acceptance`. Two
+things the smoke run taught: a markdown mockup under `specs/designs/<slug>/` is
+enough for the *Design review* — the agent caught that the mockup's HIGH/MEDIUM
+labels do not exist in `Severity` (`server/src/vendor/shared/contracts/findings.ts`)
+and that the "evidence quote" maps to no contract field, and turned both into a
+blocking Open question rather than inventing a contract; and a hard write
+boundary was declined on purpose — a `PreToolUse` hook is the only real fence,
+and the README's "no hooks in frontmatter" rule stands until an agent misfires.
+Second pass, same day, after a review of the first smoke specs: the 301-line
+spec for a copy button showed the agent drifting into a plan (it cited
+`icons.tsx:20`, `fireEvent`, border longhands under NFRs), so the template,
+EARS rules, a size budget, a "spec smells" list and a self-check moved into a
+preloaded `spec-writing` skill (a repo file reaches every run fresh; the agent
+body does not, see *Tool & Library Notes*). `scripts/spec-lint.mjs` checks the
+structure and the gate's `staticRules` runs it on every changed spec
+(`.claude/hooks/pr-self-review-gate.mjs`, after the e2e-flow block) — the
+first machine check on a markdown file, verified with a malformed probe (2
+CRITICAL + 12 WARNING, then exit 0 once removed). Research goes through
+`researcher`: the agent gets `Agent` but the body handles the harness
+withholding it below the spawn-depth limit by returning a *Research needed*
+block.
+
+### 2026-09-29 — SDD workflow audit: verify script, skill loading, chain order
+Audited the eight agents against the token cost of one feature. The waste was
+not the models but verification: four agents each re-ran full suites with the
+default reporter, and the implementer re-loaded the same skills per step.
+Added `scripts/verify.mjs` (one line per command, dot reporter, per-tree cache),
+the write-time/review-time split in `routing.md`, once-per-run skill loading,
+the planner's own `Write` into `plans/`, the verifier's delta mode, the
+implementer's fix-loop input, and `test-writer ∥ architecture-reviewer` after
+the first verifier pass. Dropped two preloads (`security` on spec-creator,
+`react-testing-library` on test-writer). Fixed the stale "four lock-files /
+npm for reviewer-core/e2e" in implementer and test-writer — `mcp/` had been
+missing since 2026-09-26. `mcp/node_modules` was absent on this machine, which
+is the CONNECTION_CLOSED the devdigest MCP server showed at session start;
+`npm ci` in `mcp/` fixed it. Second half of the session: `/run-plan` (the
+build half as one resumable command with capped fix loops, test-writer and
+doc-writer opt-in), the implementer's fix-loop input generalised to Plan
+Conformance, Architecture Review and gate `report.json` findings, and the two
+reviewers moved to sonnet.
 
 
 ## Open Questions

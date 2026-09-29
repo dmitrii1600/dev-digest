@@ -12,6 +12,12 @@
       "runtimeExecutable": "pnpm",
       "runtimeArgs": ["--dir", "client", "dev"],
       "port": 3000
+    },
+    {
+      "name": "mcp-inspector",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": ["/c", "C:/Users/USER/AppData/Local/Temp/claude/D--data-AI-Course-dev-digest/b85ab2be-3844-47d2-9213-defbc7fcdf58/scratchpad/mcp-inspect.cmd"],
+      "port": 6274
     }
   ]
 }

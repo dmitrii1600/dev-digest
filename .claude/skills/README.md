@@ -19,6 +19,8 @@ Reusable AI skills that provide specialized knowledge and workflows. Canonical l
 | [mermaid-diagram](mermaid-diagram/SKILL.md) | Shared | Mermaid diagrams in markdown (flowcharts, sequence, ERD, …) |
 | [engineering-insights](engineering-insights/SKILL.md) | Shared | Read and append the module's `INSIGHTS.md` — durable engineering memory |
 | [pr-self-review](pr-self-review/SKILL.md) | Shared | Pre-PR gate: routes the diff to the skills that own each file, runs lint/typecheck/arch, and blocks `gh pr create` / `git push` on any CRITICAL finding |
+| [spec-writing](spec-writing/SKILL.md) | Shared | House rules for a feature spec: template, EARS criteria, design-review checklist, traceability, size budget, spec smells, self-check |
+| [run-plan](run-plan/SKILL.md) | Shared | `/run-plan plans/<stem>.md` — builds an approved plan through the agent chain with capped fix loops (verifier, architecture review, gate) and a per-run report folder |
 
 ## What Are Skills?
 
@@ -31,7 +33,7 @@ Skills are modular packages that extend the AI agent with specialized knowledge 
 | **Rules** (`.mdc`) | Project conventions | Always or by file pattern | Persistent guardrails |
 | **Commands** (`.md`) | User actions | On `/command` invocation | Slash commands |
 | **Skills** (`.md`) | Domain knowledge | On-demand by agent | Specialized knowledge |
-| **Agents** (`.md`) | Workflows | Via Task tool | Subagent orchestration |
+| **Agents** (`.md`) | Workflows | Via Agent tool | Subagent orchestration |
 
 ## Creating New Skills
 
