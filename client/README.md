@@ -30,6 +30,7 @@ flowchart TD
   AGENTS["/agents"] --> AGENT["/agents/:id<br/>editor (config · skills)"]
   SKILLS["/skills<br/>Skills Lab"] --> SKILL["/skills/:id<br/>editor (config · preview · versions · stats)"]
   CONV["/repos/:repoId/conventions<br/>Conventions (scan · accept/reject/edit · create skill)"]
+  CTX["/repos/:repoId/context<br/>Project Context (clone Markdown, read-only)"]
   SETTINGS["/settings/:section<br/>API keys · models"]
 
   PULLS -->|"GET /repos/:id/pulls · /repos/:id/index-state"| API
@@ -37,12 +38,36 @@ flowchart TD
   AGENTS -->|"/agents · /agents/:id · /agents/:id/skills/:skillId"| API
   SKILLS -->|"/skills · /skills/:id/(versions|restore|agents|stats) · /skills/import(/preview) · /skills/import/url(/preview)"| API
   CONV -->|"GET /repos/:id/conventions · POST …/extract · PATCH …/:candidateId · POST …/skill(/preview)"| API
+  CTX -->|"GET /repos/:id/context · /repos/:id/context/file?path="| API
+  AGENT -->|"Context tab: GET|PUT /agents/:id/context?repoId="| API
+  SKILL -->|"Context tab: GET|PUT /skills/:id/context?repoId="| API
   SETTINGS -->|"/settings · /providers"| API
 ```
 
 Cross-cutting chrome lives in `src/components/app-shell` (nav, breadcrumbs,
 `g`-then-key shortcuts). Pages are thin; feature logic sits in colocated
 `_components/<Name>/` folders, each with its own `*.test.tsx`.
+
+## Project Context
+
+Server side: `server/src/modules/project-context/README.md`.
+
+- **Page** `/repos/:repoId/context` (`ProjectContextView`) is read-only: the
+  clone's Markdown files on the left with a Refresh button, the selected document
+  rendered on the right with how many agents use it. Its nav entry is in
+  `src/vendor/ui/nav.ts`.
+- **`src/components/context-docs-picker`** is the shared attach/reorder list
+  (filter, preview modal, drag or ArrowUp/Down on the handle to reorder attached
+  rows, a token estimate derived from the listing). It holds no mutation; the
+  caller passes `attached` and `onChange`.
+- **Context tabs** wrap the picker over `useContextFiles` and the attachment
+  hooks in `src/lib/hooks/project-context.ts`: the Agent editor's tab
+  (`AgentEditor/_components/ContextTab`) and the Skill editor's tab
+  (`SkillEditor/_components/ContextTab`), which also notes that agents using the
+  skill inherit its documents. Both act on the active repo.
+- **Run trace:** the prompt block for this slot is labelled "Project context —
+  attached specs (untrusted)" (`messages/en/runs.json`, `trace.prompt.specs`),
+  and the trace's `specs_read` lists the injected paths.
 
 ## Testing
 

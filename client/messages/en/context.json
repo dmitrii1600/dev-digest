@@ -1,24 +1,45 @@
 {
   "title": "Project Context",
-  "chunks": "{count} chunks",
-  "reindex": "Re-index",
-  "indexing": "Indexing…",
-  "resync": "Resync",
-  "resyncing": "Resyncing…",
-  "indexStatus": "Index status: {status}",
-  "loadError": "Couldn’t load specs",
-  "kb": "{kb}kb",
-  "empty": {
-    "title": "No spec files yet",
-    "body": "Drop your PRDs, tech specs, and acceptance criteria under .devdigest/specs/. Every agent and the PR brief read them as grounding context."
+  "crumbWorkspace": "Workspace",
+  "refresh": "Refresh",
+  "showing": "showing {shown} of {total}",
+  "fileCount": "{count} files",
+  "usedBy": "Used by {count, plural, one {# agent} other {# agents}}",
+  "selectPrompt": "Select a document to preview it.",
+  "notCloned": {
+    "title": "This repo is not cloned yet",
+    "body": "Project context reads Markdown files from the local clone. Import or clone the repo first; attaching is unavailable until then."
   },
-  "mode": {
-    "preview": "preview",
-    "edit": "edit"
+  "noFiles": {
+    "title": "No Markdown files found",
+    "body": "Only .md files in the clone are listed. Add one under specs/ or docs/ and refresh."
   },
-  "editor": {
-    "loadError": "Couldn’t load spec",
-    "save": "Save",
-    "saving": "Saving…"
+  "listError": "Couldn’t load the project documents",
+  "saveError": "Couldn’t save the attached documents",
+  "previewError": "Couldn’t load this document",
+  "kind": {
+    "specs": "specs",
+    "docs": "docs",
+    "insights": "insights",
+    "other": "other"
+  },
+  "picker": {
+    "title": "Project context",
+    "attached": "{attached} of {total} attached",
+    "filterPlaceholder": "Filter documents…",
+    "noMatch": "No documents match",
+    "orderHint": "Attached documents are injected in this order. Drag a handle, or use ArrowUp / ArrowDown on it, to reorder.",
+    "tokens": "≈ {tokens} tokens",
+    "untrustedNote": "Documents are injected as untrusted data: they inform findings and never change the reviewer’s instructions.",
+    "preview": "Preview",
+    "previewFile": "Preview {path}",
+    "close": "Close",
+    "missing": "missing",
+    "dragHandle": "Reorder {path}",
+    "noRepo": "Select a repository to attach project documents."
+  },
+  "skillTab": {
+    "inherits": "Any agent using this skill inherits these documents.",
+    "serializesAs": "SERIALIZES AS"
   }
 }

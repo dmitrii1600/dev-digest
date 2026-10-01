@@ -23,6 +23,15 @@ export function approxTokens(text: string): number {
   return Math.ceil(text.length / 4);
 }
 
+/**
+ * js-tiktoken's BPE merge is super-linear on a single whitespace-free piece
+ * (a base64 blob, a minified line). Such text is encoded in bounded slices to keep
+ * the cost near-linear; the count differs slightly at slice seams.
+ */
+const ENCODE_SLICE_CHARS = 64;
+/** Only text with a whitespace-free run this long is sliced; ordinary prose is encoded whole. */
+const LONG_PIECE = /\S{512,}/;
+
 export class TiktokenTokenizer implements Tokenizer {
   private enc?: Tiktoken;
   private broken = false;
@@ -31,7 +40,13 @@ export class TiktokenTokenizer implements Tokenizer {
     if (this.broken) return approxTokens(text);
     try {
       this.enc ??= getEncoding('cl100k_base');
-      return this.enc.encode(text).length;
+      const enc = this.enc;
+      if (!LONG_PIECE.test(text)) return enc.encode(text).length;
+      let total = 0;
+      for (let i = 0; i < text.length; i += ENCODE_SLICE_CHARS) {
+        total += enc.encode(text.slice(i, i + ENCODE_SLICE_CHARS)).length;
+      }
+      return total;
     } catch {
       // BPE load failed once — don't retry per call; stick to the heuristic.
       this.broken = true;

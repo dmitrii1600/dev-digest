@@ -1,0 +1,41 @@
+import type { CSSProperties } from "react";
+
+/** Co-located styles for ContextDocsPicker. */
+export const s = {
+  wrap: { maxWidth: 760 } satisfies CSSProperties,
+  header: { display: "flex", alignItems: "center", gap: 12, marginBottom: 6 } satisfies CSSProperties,
+  h2: { fontSize: 18, fontWeight: 700 } satisfies CSSProperties,
+  filter: { marginLeft: "auto", width: 220 } satisfies CSSProperties,
+  hint: { fontSize: 13, color: "var(--text-muted)", margin: "0 0 16px" } satisfies CSSProperties,
+  list: { display: "flex", flexDirection: "column", gap: 8 } satisfies CSSProperties,
+  none: { fontSize: 13, color: "var(--text-muted)", padding: "12px 0" } satisfies CSSProperties,
+  row: (attached: boolean): CSSProperties => ({
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    padding: "10px 12px",
+    borderRadius: 8,
+    border: "1px solid var(--border)",
+    background: "var(--bg-elevated)",
+    opacity: attached ? 1 : 0.75,
+  }),
+  handle: (attached: boolean): CSSProperties => ({
+    background: "none",
+    border: "none",
+    cursor: attached ? "grab" : "default",
+    color: "var(--text-muted)",
+    opacity: attached ? 1 : 0.35,
+    fontSize: 16,
+    lineHeight: 1,
+    padding: "2px 4px",
+    userSelect: "none",
+  }),
+  path: { fontSize: 13, wordBreak: "break-all" } satisfies CSSProperties,
+  grow: { flex: 1 } satisfies CSSProperties,
+  kindBadge: { textTransform: "capitalize" } satisfies CSSProperties,
+  footer: { marginTop: 16, display: "flex", flexDirection: "column", gap: 8 } satisfies CSSProperties,
+  note: { fontSize: 12, color: "var(--text-muted)", margin: 0 } satisfies CSSProperties,
+  tokens: { fontSize: 13, fontWeight: 600 } satisfies CSSProperties,
+  modalBody: { padding: 24 } satisfies CSSProperties,
+  modalPath: { fontSize: 14, fontWeight: 700, margin: "0 0 12px", wordBreak: "break-all" } satisfies CSSProperties,
+} as const;

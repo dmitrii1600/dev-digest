@@ -1,0 +1,14 @@
+{
+  "name": "Project Context — sidebar entry opens the repo's context page",
+  "description": "AC-4 of specs/2026-09-29-project-context.md. From the sidebar's WORKSPACE group, Project Context opens /repos/:repoId/context for the active repo and the page renders its heading. The seeded acme/payments-api has clonePath: null (server/src/db/seed.ts), so the page is in its 'not cloned' empty state and no .md document list or preview exists to assert; the list and preview are covered by the client component tests and server/test/project-context.it.test.ts. Deliberately asserts only the sidebar label, the route and the heading, not empty-state copy. Read-only, no model call. Assumes a freshly-seeded DB (guaranteed by e2e-web.yml).",
+  "steps": [
+    { "cmd": ["open", "{BASE}/"], "label": "load the app root" },
+    { "cmd": ["wait", "--url", "/pulls"], "label": "root redirects to the seeded repo's PR list" },
+    { "cmd": ["wait", "--load", "networkidle"], "label": "repos fetch settles so the sidebar links carry the repo id" },
+    { "cmd": ["wait", "--text", "Project Context"], "label": "the sidebar WORKSPACE group lists a Project Context entry (nav.ts)" },
+    { "cmd": ["find", "text", "Project Context", "click"], "label": "open Project Context from the sidebar" },
+    { "cmd": ["wait", "--url", "/context"], "label": "context route reached" },
+    { "cmd": ["wait", "--load", "networkidle"], "label": "context fetch settles" },
+    { "cmd": ["wait", "--text", "Project Context"], "label": "page heading renders (context.json title)" }
+  ]
+}

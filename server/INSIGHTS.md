@@ -116,6 +116,14 @@ append-only. Empty sections are expected — append under the one that fits.
 
 
 
+- 2026-09-29 — Reading `GET /runs/:id/trace` the moment `waitForPrRuns` sees
+  `done` returns 404 / `prompt_assembly` undefined: `completeAgentRun`
+  (`src/modules/reviews/run-executor.ts:308`) runs before `saveRunTrace`
+  (`:354`), and per-slot token counting sits in the gap. A test that needs the
+  trace polls it (`test/project-context.it.test.ts` `runReview`, up to 10 s)
+  instead of reading once. Whether the executor should save the trace first is
+  open.
+
 ## Codebase Patterns
 
 - 2026-09-18 — An onion ring is derived from the **filename**, not a folder:
@@ -328,6 +336,15 @@ append-only. Empty sections are expected — append under the one that fits.
   read limits move to `modules/_shared/`.
 
 
+- 2026-09-29 — js-tiktoken `cl100k_base` `encode()` is super-linear on one
+  whitespace-free run: a 64 KB string of a single letter never returned, and the
+  vitest worker died after the 120 s test timeout. `TiktokenTokenizer.count` now
+  encodes any text matching `/\S{512,}/` in 64-char slices
+  (`src/adapters/tokenizer/index.ts:31-33`); prose without such a run is counted
+  exactly as before. Anything that tokenises untrusted file content (Project
+  Context tokenises every listed `.md` on `GET /repos/:id/context`) must go
+  through that adapter, never a raw `getEncoding()`.
+
 ## Recurring Errors & Fixes
 
 - 2026-09-15 — `pnpm exec vitest run --exclude '**/*.it.test.ts'` fails 6 tests
@@ -357,6 +374,15 @@ append-only. Empty sections are expected — append under the one that fits.
   and the index is still stamped `full`.
 
 
+
+- 2026-09-29 — `run-cost.it.test.ts` "a completed run persists the
+  engine-reported cost" fails with `cost_usd` null after ≈10 s on this Windows
+  host, and identically on a clean `289f8bb` worktree with no feature diff: the
+  run has not reached `done` when `waitForPrRuns`' 10 s budget
+  (`test/helpers/runs.ts:19`) expires. `reviews.it.test.ts` shows the same
+  shape intermittently (3/6 red, then 6/6). Same family as the 2026-09-24 entry
+  above: prove a baseline before reading it as a regression of a change outside
+  `modules/reviews`. The 3–5 s run-start latency itself is unexplained.
 
 ## Session Notes
 

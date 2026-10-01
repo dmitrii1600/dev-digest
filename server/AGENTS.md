@@ -91,6 +91,9 @@ per domain · `src/vendor/shared/` canonical Zod contracts.
 
 - Repo indexer, pipeline and the `repoIntel.*` facade →
   `src/modules/repo-intel/README.md` — **read before consuming repo context**
+- Attaching clone Markdown to agents/skills and injecting it into a run →
+  `src/modules/project-context/README.md` — **read before changing Project Context
+  routes, the clone reader, or the `## Project context` prompt slot**
 - What the reviewer actually sends the model →
   `README.md#review-context-non-obvious` — **read before changing prompt inputs**
 - How the PR list's per-PR aggregates are computed (and why `score`,

@@ -33,6 +33,10 @@ import type { IntentPort } from '../modules/intent/types.js';
 import { IntentService } from '../modules/intent/service.js';
 import { IntentRepository } from '../modules/intent/repository.js';
 import { readRepoFile } from '../modules/intent/repository-plans.js';
+import type { ProjectContextPort } from '../modules/project-context/types.js';
+import { ProjectContextService } from '../modules/project-context/service.js';
+import { ProjectContextRepository } from '../modules/project-context/repository.js';
+import { listMarkdown, readDoc } from '../modules/project-context/repository-files.js';
 import { resolveFeatureModel } from '../modules/_shared/feature-models.js';
 import { type DepGraph, DepCruiseGraph } from '../adapters/depgraph/index.js';
 import { type Tokenizer, TiktokenTokenizer } from '../adapters/tokenizer/index.js';
@@ -58,6 +62,8 @@ export interface ContainerOverrides {
   repoIntel?: RepoIntel;
   /** Intent Layer (L03) — tests inject a stub so a review run doesn't need a real LLM call for it. */
   intent?: IntentPort;
+  /** Project Context - tests may inject a stub. */
+  projectContext?: ProjectContextPort;
   /** repo-intel T3 adapters — only the indexer pipeline reads these. */
   depgraph?: DepGraph;
   tokenizer?: Tokenizer;
@@ -87,6 +93,7 @@ export class Container {
   private _skillsRepo?: SkillsRepository;
   private _repoIntel?: RepoIntel;
   private _intent?: IntentPort;
+  private _projectContext?: ProjectContextPort;
   private _depgraph?: DepGraph;
   private _tokenizer?: Tokenizer;
   private _urlFetcher?: UrlFetcher;
@@ -154,6 +161,21 @@ export class Container {
       fetchLinks: this.config.intentFetchLinks,
     });
     return this._intent;
+  }
+
+  /**
+   * Project Context facade. `run-executor.ts` reaches this ONLY through
+   * `Container['projectContext']` - a type-only edge, same shape as `intent`.
+   */
+  get projectContext(): ProjectContextPort {
+    if (this.overrides.projectContext) return this.overrides.projectContext;
+    this._projectContext ??= new ProjectContextService({
+      repo: new ProjectContextRepository(this.db),
+      listMarkdown,
+      readDoc,
+      countTokens: (s) => this.tokenizer.count(s),
+    });
+    return this._projectContext;
   }
 
   /** Import-graph builder (dependency-cruiser). T3 indexer pipeline only. */

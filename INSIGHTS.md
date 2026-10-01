@@ -206,6 +206,17 @@ append-only. Empty sections are expected — append under the one that fits.
   seen. After any resume, run `git status --short` and re-read every file before
   editing it; a snapshot from before the restart is not the tree.
 
+- 2026-09-29 — `pnpm exec` inside a throwaway `git worktree` whose
+  `server/node_modules` was a junction to the main tree: pnpm judged the modules
+  dir stale, ran an install **through the junction**, and re-pointed every
+  top-level symlink of the *main* `server/node_modules` at the worktree path.
+  Once the worktree was removed the links dangled and `pnpm install` itself
+  failed (`ERR_PNPM_PACKAGE_MANAGER_REMOVE_MODULES_DIR`, "Access is denied") until
+  the dead links were `rmdir`ed. For a baseline run in a worktree, call the
+  binary directly (`node node_modules/vitest/vitest.mjs run <file>`), never
+  `pnpm exec` or `pnpm run` there; the lock-file was untouched, so
+  `pnpm install --frozen-lockfile` in `server/` restored the tree.
+
 ## Codebase Patterns
 
 - 2026-09-29 — Skills are split into write-time and review-time
@@ -488,6 +499,14 @@ append-only. Empty sections are expected — append under the one that fits.
   script — get the argument types right or you will chase a phantom auth problem.
 
 ## Session Notes
+- 2026-09-29 — A scripted edit (sed / heredoc from the Bash tool on Windows)
+  that carries an em dash writes it as the single cp1252 byte `0x97`, which is
+  invalid UTF-8 that lint and typecheck never see; the same encoding error once
+  emptied `server/src/modules/reviews/run-executor.ts` mid-edit (restored from
+  git). Check a touched file with `iconv -f UTF-8 -t UTF-8 <file> >/dev/null`
+  and `grep -nP '[^\x00-\x7F]'`; use the Edit tool, not a shell script, for any
+  non-ASCII text. Companion to the 2026-09-22 `.ps1` note above.
+
 
 ### 2026-09-15 — run cost badge
 Built per-run USD cost end to end (schema → routes → three screens). The engine
@@ -803,6 +822,17 @@ reviewers moved to sonnet.
 
 
 ## Open Questions
+### 2026-09-29 — Project Context: first full `/run-plan` run
+Spec (spec-creator, 3 clarifications) → approved → plan (multi-agent, 15 steps) →
+`/run-plan`. Build was clean; the only real defect was found by the integration
+lane, not by any reviewer: js-tiktoken hanging on a 64 KB whitespace-free fixture
+(server Tool & Library Notes). The verify fix-loop cap was hit on a red test that a
+clean-HEAD worktree proved pre-existing (`run-cost.it`), so the person waived it
+and resumed with `--from arch`. Two process lessons: the orchestrator's baseline
+worktree corrupted `server/node_modules` via `pnpm exec` (What Doesn't Work), and
+an auto-mode classifier outage mid-chain blocked every mutating tool for ~20 min;
+the reports in `.devdigest/sdd/<stem>/` were enough to resume cold.
+
 
 - 2026-09-18 — The pr-self-review PreToolUse hook matches on command text, so a
   `git push` inside a heredoc or a quoted string is blocked too. Fail-closed is

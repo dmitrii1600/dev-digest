@@ -139,6 +139,9 @@ wrong thing, rather than failing.
 - Codebase indexer and the `repoIntel.*` facade →
   `server/src/modules/repo-intel/README.md` — **read before using repo context**
 - Writing reviewer prompts → `docs/agent-prompts/README.md` — **read before
+- Project Context (clone Markdown attached to agents/skills, injected into a run) →
+  `server/src/modules/project-context/README.md` — **read before changing what
+  documents reach a review**
   editing any agent system prompt**
 - Unit vs integration split → `TESTING.md` — **read before adding a test file**
 - MCP tools, env vars, `.mcp.json`, troubleshooting → `mcp/README.md` — **read

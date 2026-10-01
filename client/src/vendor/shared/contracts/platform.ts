@@ -252,13 +252,56 @@ export const PrCommentInput = z.object({
 export type PrCommentInput = z.infer<typeof PrCommentInput>;
 
 // ---- Project Context ----
+export const ContextDocKind = z.enum(['specs', 'docs', 'insights', 'other']);
+export type ContextDocKind = z.infer<typeof ContextDocKind>;
+
 export const SpecFile = z.object({
   path: z.string(),
   content: z.string().nullish(),
   size: z.number().int().nullish(),
   updated_at: z.string().nullish(),
+  kind: ContextDocKind.nullish(),
+  /** Tokens of the block as injected (capped). */
+  tokens: z.number().int().nullish(),
+  used_by: z.number().int().nullish(),
 });
 export type SpecFile = z.infer<typeof SpecFile>;
+
+/** `total` is the uncapped count; `files` holds at most 500 entries, no `content`. */
+export const ContextFileList = z.object({
+  cloned: z.boolean(),
+  total: z.number().int(),
+  files: z.array(SpecFile),
+});
+export type ContextFileList = z.infer<typeof ContextFileList>;
+
+export const ContextPath = z
+  .string()
+  .min(1)
+  .max(1024)
+  .refine((p) => p.toLowerCase().endsWith('.md'), { message: 'path must end in .md' });
+export type ContextPath = z.infer<typeof ContextPath>;
+
+export const ContextFileQuery = z.object({ path: ContextPath }).strict();
+export type ContextFileQuery = z.infer<typeof ContextFileQuery>;
+
+export const ContextRepoQuery = z.object({ repoId: z.string().uuid() }).strict();
+export type ContextRepoQuery = z.infer<typeof ContextRepoQuery>;
+
+export const ContextAttachmentsInput = z
+  .object({ paths: z.array(ContextPath).max(500) })
+  .strict()
+  .refine((v) => new Set(v.paths).size === v.paths.length, {
+    message: 'paths must be unique',
+    path: ['paths'],
+  });
+export type ContextAttachmentsInput = z.infer<typeof ContextAttachmentsInput>;
+
+export const ContextAttachments = z.object({
+  repo_id: z.string(),
+  paths: z.array(z.string()),
+});
+export type ContextAttachments = z.infer<typeof ContextAttachments>;
 
 export const IndexStatus = z.object({
   status: z.enum(['idle', 'cloning', 'parsing', 'embedding', 'done', 'error']),

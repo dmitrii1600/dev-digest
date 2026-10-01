@@ -110,3 +110,4 @@ a CI artifact by `.github/workflows/e2e-web.yml`).
 | `11-intent-card` | PR #482 Overview → Intent card: sentence, in/out of scope, confidence, per-source badges incl. unavailable ones (no Re-run — that is an LLM call) |
 | `12-smart-diff` | PR #482 Files changed → role groups + hints, files-with-findings counter, file card, Original order ↔ Smart order |
 | `13-blast-radius` | PR #482 Overview → Blast radius: stats row, tree (callers, endpoint/cron chips), Graph ↔ Tree toggle, "Prior PRs touching these files" (data from `server/src/db/seed-blast.ts`) |
+| `14-project-context` | sidebar WORKSPACE → Project Context → `/repos/:repoId/context` route and page heading (seeded repo has `clonePath: null`, so the not-cloned state; list and preview are covered by component and integration tests) |
