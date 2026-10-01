@@ -36,6 +36,7 @@ import type {
   FetchedResource,
 } from '@devdigest/shared';
 import { parseUnifiedDiff } from './git/diff-parser.js';
+import { StructuredOutputError } from '../platform/errors.js';
 
 /**
  * Deterministic MOCK adapters for tests/dev — NO real network. Each mirrors the
@@ -94,7 +95,7 @@ export class MockLLMProvider implements LLMProvider {
     const fixture = this.opts.structuredBySchema?.[req.schemaName] ?? this.opts.structured ?? {};
     const parsed = (req.schema as z.ZodType<T>).safeParse(fixture);
     if (!parsed.success) {
-      throw new Error(`MockLLMProvider fixture failed schema: ${parsed.error.message}`);
+      throw new StructuredOutputError(`MockLLMProvider fixture failed schema: ${parsed.error.message}`);
     }
     return {
       data: parsed.data,

@@ -728,7 +728,8 @@ const JUNK_PATH_PATTERNS = [
 ] as const;
 
 function isJunkPath(path: string): boolean {
-  const lower = path.toLowerCase();
+  // Leading '/' so the `/dir/` patterns also match a repo-root `test/x.ts`.
+  const lower = `/${path.toLowerCase()}`;
   return JUNK_PATH_PATTERNS.some((p) => lower.includes(p));
 }
 

@@ -10,7 +10,7 @@ import type {
 import { withRetry, withTimeout } from '../../platform/resilience.js';
 import { toJsonSchema, parseWithRepair } from '../../platform/structured.js';
 import { estimateCost } from './pricing.js';
-import { ExternalServiceError } from '../../platform/errors.js';
+import { StructuredOutputError } from '../../platform/errors.js';
 
 const DEFAULT_TIMEOUT = 60_000;
 const EMBED_MODEL = 'text-embedding-3-small';
@@ -129,7 +129,7 @@ export class OpenAIProvider implements LLMProvider {
       messages.push({ role: 'user', content: parsed.repromptMessage });
     }
 
-    throw new ExternalServiceError('OpenAI structured output failed schema validation', {
+    throw new StructuredOutputError('OpenAI structured output failed schema validation', {
       raw: lastRaw,
     });
   }

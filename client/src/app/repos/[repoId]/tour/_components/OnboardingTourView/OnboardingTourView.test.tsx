@@ -191,3 +191,125 @@ describe("OnboardingTourView", () => {
     expect(refetch).toHaveBeenCalled();
   });
 });
+
+/* Added by the test-writer pass: wiring and states the first block does not pin. */
+describe("OnboardingTourView — wiring and states", () => {
+  const errors = messages.errors;
+
+  it("AC-2: the subtitle shows the time since generation, and every visit starts with all sections expanded", () => {
+    const first = renderView();
+    expect(screen.getByText(/last refreshed 2 hours ago/)).toBeInTheDocument();
+    fireEvent.click(sectionButtons()[2]!);
+    expect(sectionButtons()[2]).toHaveAttribute("aria-expanded", "false");
+    first.unmount();
+
+    renderView();
+    expect(sectionButtons().map((b) => b.getAttribute("aria-expanded"))).toEqual(["true", "true", "true", "true", "true"]);
+  });
+
+  it("AC-4: picking a collapsed section in On this page expands THAT section and scrolls to it", () => {
+    renderView();
+    fireEvent.click(sectionButtons()[4]!); // First tasks → collapsed
+    expect(sectionButtons()[4]).toHaveAttribute("aria-expanded", "false");
+
+    const nav = screen.getByRole("navigation", { name: "On this page" });
+    fireEvent.click(Array.from(nav.querySelectorAll("button")).find((b) => b.textContent === "First tasks")!);
+
+    expect(sectionButtons()[4]).toHaveAttribute("aria-expanded", "true");
+    const scrolled = vi.mocked(Element.prototype.scrollIntoView).mock.contexts as HTMLElement[];
+    expect(scrolled.map((el) => el.id)).toEqual(["tour-first_tasks"]);
+  });
+
+  it("AC-13: every file link opens the repo's DEFAULT branch, not a hard-coded one", () => {
+    queryState = {
+      data: { ...TOUR_PAGE, repo: { ...TOUR_PAGE.repo, default_branch: "develop" } },
+      isLoading: false,
+      isError: false,
+    };
+    renderView();
+    const hrefs = screen.getAllByRole("link").map((a) => a.getAttribute("href"));
+    expect(hrefs.length).toBeGreaterThanOrEqual(3); // critical path Open, reading path, task
+    for (const href of hrefs) expect(href).toMatch(/^https:\/\/github\.com\/acme\/payments-api\/blob\/develop\//);
+  });
+
+  it("AC-15: while this tab's own generation is pending Regenerate is disabled and the stored tour stays", () => {
+    genState = { isPending: true, error: null };
+    renderView();
+    const busy = screen.getByRole("button", { name: "Generating…" });
+    expect(busy).toBeDisabled();
+    fireEvent.click(busy);
+    expect(mutate).not.toHaveBeenCalled();
+    expect(screen.getByText("Entry point")).toBeInTheDocument();
+  });
+
+  it("AC-15: no Retry is offered while a generation is running", () => {
+    queryState = { data: { ...TOUR_PAGE, generating: true }, isLoading: false, isError: false };
+    genState = { isPending: false, error: new ApiError("x", 409, "generation_running") };
+    renderView();
+    expect(screen.getByText(errors.generation_running)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Retry" })).not.toBeInTheDocument();
+  });
+
+  const failures: [string, ApiError | Error, string][] = [
+    ["EC-2 repo_not_cloned", new ApiError("x", 422, "repo_not_cloned"), errors.repo_not_cloned],
+    ["EC-3 never_indexed", new ApiError("x", 422, "repo_not_indexed", { reason: "never_indexed" }), errors.repo_not_indexed.never_indexed],
+    ["EC-3 index_failed", new ApiError("x", 422, "repo_not_indexed", { reason: "index_failed" }), errors.repo_not_indexed.index_failed],
+    ["EC-3 no_ranked_files", new ApiError("x", 422, "repo_not_indexed", { reason: "no_ranked_files" }), errors.repo_not_indexed.no_ranked_files],
+    ["EC-4 invalid_output", new ApiError("x", 502, "generation_failed", { reason: "invalid_output" }), errors.generation_failed.invalid_output],
+    ["EC-4 llm_error", new ApiError("x", 502, "generation_failed", { reason: "llm_error" }), errors.generation_failed.llm_error],
+    ["an unrecognised ApiError code", new ApiError("x", 500, "something_new"), errors.unknown],
+    ["a non-API failure", new Error("network down"), errors.unknown],
+  ];
+  it.each(failures)("%s names its own failure and offers Retry, with the stored tour still shown", (_label, error, copy) => {
+    genState = { isPending: false, error };
+    renderView();
+    expect(screen.getByText(copy)).toBeInTheDocument();
+    expect(screen.getByText("Entry point")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(mutate).toHaveBeenCalledTimes(1);
+  });
+
+  it("EC-8: with nothing found, every section stays in the list with its own one-line message", () => {
+    queryState = {
+      data: {
+        ...TOUR_PAGE,
+        tour: {
+          ...TOUR_PAGE.tour!,
+          architecture: { prose: "", diagram: null },
+          critical_paths: [],
+          run_locally: [],
+          reading_path: [],
+          first_tasks: [],
+        },
+      },
+      isLoading: false,
+      isError: false,
+    };
+    renderView();
+    expect(sectionButtons()).toHaveLength(5);
+    for (const line of Object.values(messages.sectionEmpty)) expect(screen.getByText(line)).toBeInTheDocument();
+    expect(screen.queryByTestId("diagram")).not.toBeInTheDocument();
+  });
+
+  it("EC-9: no stale notice when the tour matches the current index", () => {
+    renderView();
+    expect(screen.queryByText("This tour predates the current index")).not.toBeInTheDocument();
+  });
+
+  it("EC-10: Share link reports a failure (no success toast) when the clipboard rejects or is missing", async () => {
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText: vi.fn().mockRejectedValue(new Error("denied")) },
+      configurable: true,
+    });
+    renderView();
+    fireEvent.click(screen.getByRole("button", { name: "Share link" }));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Could not copy to the clipboard"));
+
+    toast.error.mockClear();
+    Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true });
+    fireEvent.click(screen.getByRole("button", { name: "Share link" }));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledTimes(1));
+    expect(toast.success).not.toHaveBeenCalled();
+    expect(mutate).not.toHaveBeenCalled();
+  });
+});

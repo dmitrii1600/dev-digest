@@ -11,7 +11,7 @@ import type {
 import { withRetry, withTimeout } from '../../platform/resilience.js';
 import { toJsonSchema, parseWithRepair } from '../../platform/structured.js';
 import { estimateCost } from './pricing.js';
-import { ExternalServiceError } from '../../platform/errors.js';
+import { ExternalServiceError, StructuredOutputError } from '../../platform/errors.js';
 
 const DEFAULT_TIMEOUT = 60_000;
 const DEFAULT_MAX_TOKENS = 4096;
@@ -144,7 +144,7 @@ export class AnthropicProvider implements LLMProvider {
       });
     }
 
-    throw new ExternalServiceError('Anthropic structured output failed schema validation', {
+    throw new StructuredOutputError('Anthropic structured output failed schema validation', {
       raw: lastRaw,
     });
   }

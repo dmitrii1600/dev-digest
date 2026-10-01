@@ -62,4 +62,25 @@ describe("RunCommands", () => {
     renderIt([]);
     expect(screen.getByText("No run commands could be confirmed from the repo's files.")).toBeInTheDocument();
   });
+
+  it("NFR-7: every copy action is a button whose accessible name carries its own command", () => {
+    renderIt();
+    const names = screen.getAllByRole("button").map((b) => b.getAttribute("aria-label"));
+    expect(names).toEqual(CMDS.map((c) => `Copy ${c.line}`));
+  });
+
+  it("EC-11: a command longer than its row wraps in place, the copy action stays, and the whole line is what gets copied", async () => {
+    const long = `docker compose run --rm app sh -c "${"x".repeat(280)}"`;
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    setClipboard({ writeText });
+    renderIt([{ line: long, source_path: "Makefile" }]);
+
+    const code = screen.getByText(long);
+    expect(code.style.overflowWrap).toBe("anywhere");
+    expect(code.style.whiteSpace).toBe("pre-wrap");
+    expect(code.style.userSelect).toBe("text");
+
+    fireEvent.click(screen.getByRole("button", { name: `Copy ${long}` }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(long));
+  });
 });

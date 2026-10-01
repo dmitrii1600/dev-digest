@@ -5,7 +5,7 @@ import {
   type Onboarding,
   type OnboardingPage,
 } from '@devdigest/shared';
-import { AppError, ConfigError } from '../../platform/errors.js';
+import { AppError, ConfigError, StructuredOutputError } from '../../platform/errors.js';
 import type { RepoIntel } from '../repo-intel/types.js';
 import {
   MAX_CRITICAL_PATHS,
@@ -39,10 +39,9 @@ type GenerationOutcome = 'ok' | 'timeout' | 'invalid_output' | 'llm_error';
 /** Thrown by the service's own timer — mapped to `generation_failed` / `timeout`. */
 class GenerationTimeout extends Error {}
 
-/** A provider that reports "the structured output did not match the schema". */
+/** The typed "structured output did not match the schema" signal (adapters throw `StructuredOutputError`). */
 function isSchemaFailure(err: unknown): boolean {
-  if (!(err instanceof Error)) return false;
-  return err.name === 'ZodError' || /schema validation|failed schema/i.test(err.message);
+  return err instanceof StructuredOutputError || (err instanceof Error && err.name === 'ZodError');
 }
 
 /**
