@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { errorCopyKey, githubFileUrl, timeAgo, tourUrl } from "./helpers";
+import { decorateDiagram, diagramKind, errorCopyKey, githubFileUrl, splitArchitecture, timeAgo, tourUrl } from "./helpers";
 
 describe("onboarding tour helpers", () => {
   it("builds a default-branch blob URL with each path segment encoded", () => {
@@ -28,5 +28,57 @@ describe("onboarding tour helpers", () => {
 
   it("builds the tour page URL", () => {
     expect(tourUrl("http://x", "r1")).toBe("http://x/repos/r1/tour");
+  });
+
+  it("classifies diagram nodes into store / edge / client / entry", () => {
+    expect(diagramKind("db Postgres")).toBe("store");
+    expect(diagramKind("R redis")).toBe("store");
+    expect(diagramKind("MW middleware")).toBe("edge");
+    expect(diagramKind("A auth guard")).toBe("edge");
+    expect(diagramKind("C client")).toBe("client");
+    expect(diagramKind("S server.ts")).toBe("entry");
+    expect(diagramKind("P api/public/*")).toBe("entry");
+    expect(diagramKind("X widgets")).toBeUndefined();
+  });
+
+  it("appends one class line per kind for declared and bare nodes, leaving the model's text as is", () => {
+    const src = [
+      "flowchart LR",
+      "  C[client] --> S[server.ts]",
+      "  S --> MW[middleware]",
+      "  MW -->|cache| R[(redis)]",
+      "  MW --> API[api/public/*] --> PG[(postgres)]",
+      "  S -- logs to --> X[widgets]",
+    ].join("\n");
+    const out = decorateDiagram(src);
+    expect(out.startsWith(src)).toBe(true);
+    const added = out
+      .slice(src.length)
+      .trim()
+      .split("\n")
+      .map((l) => l.trim());
+    expect(added).toContain("class C tour_client");
+    expect(added).toContain("class S,API tour_entry");
+    expect(added).toContain("class MW tour_edge");
+    expect(added).toContain("class R,PG tour_store");
+    expect(added.join(" ")).not.toMatch(/\blogs\b|\bX\b/);
+  });
+
+  it("leaves a diagram that is not a flowchart, or has nothing to classify, unchanged", () => {
+    const seq = "sequenceDiagram\n  A->>B: hi";
+    expect(decorateDiagram(seq)).toBe(seq);
+    const plain = "flowchart TD\n  X[widgets] --> Y[gadgets]";
+    expect(decorateDiagram(plain)).toBe(plain);
+  });
+
+  it("moves a ```mermaid block out of the prose, using it only when the diagram field is empty", () => {
+    const fence = "```mermaid\nflowchart LR\n  A --> B\n```";
+    const prose = `Intro.\n\n${fence}\n\nOutro.`;
+    expect(splitArchitecture(prose, "flowchart TD\n  X --> Y")).toEqual({
+      prose: "Intro.\n\nOutro.",
+      diagram: "flowchart TD\n  X --> Y",
+    });
+    expect(splitArchitecture(prose, null)).toEqual({ prose: "Intro.\n\nOutro.", diagram: "flowchart LR\n  A --> B" });
+    expect(splitArchitecture("Just prose.", null)).toEqual({ prose: "Just prose.", diagram: null });
   });
 });

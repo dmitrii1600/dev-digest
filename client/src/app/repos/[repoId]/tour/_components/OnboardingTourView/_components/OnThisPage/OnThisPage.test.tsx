@@ -11,7 +11,7 @@ describe("OnThisPage", () => {
     const onSelect = vi.fn();
     render(
       <NextIntlClientProvider locale="en" messages={{ onboarding: messages }}>
-        <OnThisPage onSelect={onSelect} />
+        <OnThisPage active="critical_paths" onSelect={onSelect} />
       </NextIntlClientProvider>,
     );
     const nav = screen.getByRole("navigation", { name: "On this page" });
@@ -24,5 +24,19 @@ describe("OnThisPage", () => {
     ]);
     fireEvent.click(screen.getByRole("button", { name: "How to run locally" }));
     expect(onSelect).toHaveBeenCalledWith("run_locally");
+  });
+
+  it("marks only the active section, with aria-current and the accent bar", () => {
+    render(
+      <NextIntlClientProvider locale="en" messages={{ onboarding: messages }}>
+        <OnThisPage active="critical_paths" onSelect={vi.fn()} />
+      </NextIntlClientProvider>,
+    );
+    const current = screen.getByRole("button", { name: "Critical paths" });
+    expect(current).toHaveAttribute("aria-current", "location");
+    expect(current.style.borderColor).toBe("var(--accent)");
+    const other = screen.getByRole("button", { name: "First tasks" });
+    expect(other).not.toHaveAttribute("aria-current");
+    expect(other.style.borderColor).toBe("transparent");
   });
 });

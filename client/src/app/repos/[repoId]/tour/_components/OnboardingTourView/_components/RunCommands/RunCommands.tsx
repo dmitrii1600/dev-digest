@@ -1,5 +1,6 @@
-/* RunCommands — numbered commands, each as selectable plain text with a copy
-   button. The command is only ever shown or copied, never run. */
+/* RunCommands — numbered commands, each on a code-surface row as selectable
+   plain text with a copy button. The command is only ever shown or copied,
+   never run. */
 import type { CSSProperties } from "react";
 import { useTranslations } from "next-intl";
 import { Icon } from "@devdigest/ui";
@@ -7,26 +8,33 @@ import type { OnboardingCommand } from "@devdigest/shared";
 import { useCopyToClipboard } from "../../hooks/useCopyToClipboard";
 
 const s = {
-  list: { listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 8 } satisfies CSSProperties,
-  row: { display: "flex", alignItems: "flex-start", gap: 10 } satisfies CSSProperties,
-  num: { flexShrink: 0, width: 22, color: "var(--text-muted)", textAlign: "right" } satisfies CSSProperties,
+  list: { listStyle: "none", margin: "4px 0 0", padding: 0, display: "flex", flexDirection: "column", gap: 8 } satisfies CSSProperties,
+  row: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    padding: "9px 12px",
+    borderRadius: 7,
+    background: "var(--code-bg)",
+    border: "1px solid var(--border)",
+  } satisfies CSSProperties,
+  num: { flexShrink: 0, width: 14, fontSize: 11, color: "var(--text-muted)" } satisfies CSSProperties,
   code: {
     flex: 1,
     minWidth: 0,
+    fontSize: 12,
+    color: "var(--text-primary)",
     whiteSpace: "pre-wrap",
     overflowWrap: "anywhere",
     userSelect: "text",
-    padding: "2px 8px",
-    borderRadius: 6,
-    background: "var(--bg-hover)",
   } satisfies CSSProperties,
   copy: {
     flexShrink: 0,
     border: "none",
     background: "transparent",
-    color: "var(--text-secondary)",
+    color: "var(--text-muted)",
     cursor: "pointer",
-    padding: 4,
+    padding: 2,
     display: "inline-flex",
   } satisfies CSSProperties,
   muted: { color: "var(--text-muted)" } satisfies CSSProperties,
@@ -40,7 +48,9 @@ export function RunCommands({ commands }: { commands: OnboardingCommand[] }) {
     <ol style={s.list}>
       {commands.map((c, i) => (
         <li key={`${i}:${c.line}`} style={s.row}>
-          <span style={s.num}>{i + 1}.</span>
+          <span className="tnum" style={s.num}>
+            {i + 1}
+          </span>
           <code className="mono" style={s.code}>
             {c.line}
           </code>
@@ -50,7 +60,7 @@ export function RunCommands({ commands }: { commands: OnboardingCommand[] }) {
             aria-label={t("copyCommand", { command: c.line })}
             onClick={() => void copy(c.line, "command")}
           >
-            <Icon.Copy size={14} aria-hidden="true" />
+            <Icon.Copy size={13} aria-hidden="true" />
           </button>
         </li>
       ))}

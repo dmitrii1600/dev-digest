@@ -163,7 +163,7 @@ describe('OnboardingService — AC-16 grounds against what the trimmed prompt ca
         { line: 'make start', source_path: 'README.md' },
         { line: 'npm run dev', source_path: 'package.json' },
       ],
-      first_tasks: [{ text: 'Read the entry', paths: ['src/a.ts'] }],
+      first_tasks: [{ text: 'Read the entry', paths: ['src/a.ts'], complexity: 'low' }],
     };
     // Over budget only while `package.json` is in the prompt. fitToBudget drops excerpts
     // first (still over), then run sources from the END of the allowlist — package.json.
@@ -183,7 +183,7 @@ describe('OnboardingService — AC-16 grounds against what the trimmed prompt ca
     expect(user).not.toContain('excerpt:src/a.ts');
     expect(tour.run_locally).toEqual([{ line: 'make start', source_path: 'README.md' }]);
     // src/a.ts is a listed (index-chosen) file: its path was in the prompt even though its excerpt was dropped.
-    expect(tour.first_tasks).toEqual([{ text: 'Read the entry', paths: ['src/a.ts'] }]);
+    expect(tour.first_tasks).toEqual([{ text: 'Read the entry', paths: ['src/a.ts'], complexity: 'low' }]);
   });
 });
 

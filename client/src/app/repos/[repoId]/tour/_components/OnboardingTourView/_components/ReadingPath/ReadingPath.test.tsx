@@ -20,7 +20,7 @@ describe("ReadingPath", () => {
       { path: "src/b.ts", reason: null },
       { path: "src/c.ts", reason: "Then this" },
     ]);
-    expect(screen.getAllByRole("listitem").map((li) => li.textContent?.slice(0, 2))).toEqual(["1.", "2.", "3."]);
+    expect(screen.getAllByRole("listitem").map((li) => li.firstElementChild?.textContent)).toEqual(["1", "2", "3"]);
     expect(screen.getByRole("link", { name: "src/a.ts" })).toHaveAttribute(
       "href",
       "https://github.com/acme/api/blob/main/src/a.ts",

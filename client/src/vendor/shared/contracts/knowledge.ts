@@ -56,9 +56,15 @@ export const OnboardingCommand = z.object({
 });
 export type OnboardingCommand = z.infer<typeof OnboardingCommand>;
 
+/** The model's estimate of a starter task's size — a hint, not grounded in the repo. */
+export const OnboardingComplexity = z.enum(['low', 'medium', 'high']);
+export type OnboardingComplexity = z.infer<typeof OnboardingComplexity>;
+
 export const OnboardingTask = z.object({
   text: z.string(),
   paths: z.array(z.string()).min(1),
+  /** Absent on tours stored before labels existed; null when the model gave no valid level. */
+  complexity: OnboardingComplexity.nullable().optional(),
 });
 export type OnboardingTask = z.infer<typeof OnboardingTask>;
 
@@ -129,6 +135,10 @@ export const OnboardingDraft = z.object({
       z.object({
         text: z.string().describe('One line describing a starter task for a new contributor.'),
         paths: z.array(z.string()).describe('Provided file paths the task touches, at least one.'),
+        complexity: z
+          .string()
+          .nullable()
+          .describe("Rough size for a new contributor: 'low', 'medium' or 'high'; null when unsure."),
       }),
     )
     .describe('Starter tasks, one line each.'),

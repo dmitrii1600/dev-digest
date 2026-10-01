@@ -5,6 +5,7 @@ import type {
   OnboardingCommand,
   OnboardingDraft,
   OnboardingFile,
+  OnboardingComplexity,
   OnboardingTask,
 } from '@devdigest/shared';
 import type { IndexState } from '../repo-intel/types.js';
@@ -211,6 +212,14 @@ function oneLine(text: string, max: number): string {
   return s.length > max ? s.slice(0, max - 1) + ELLIPSIS : s;
 }
 
+/** The model's task-size estimate, normalised to the contract's levels; anything
+ *  else (a typo, "Low-ish", an empty string) is null, never a failed generation. */
+const COMPLEXITY_LEVELS: readonly OnboardingComplexity[] = ['low', 'medium', 'high'];
+export function complexityOf(raw: string | null | undefined): OnboardingComplexity | null {
+  const v = raw?.trim().toLowerCase();
+  return COMPLEXITY_LEVELS.find((l) => l === v) ?? null;
+}
+
 /**
  * The gate. File membership and order belong to the index (AC-7): a reason is
  * matched to a listed file by exact path, and a listed file with no reason keeps
@@ -268,7 +277,7 @@ export function groundDraft(draft: OnboardingDraft, ctx: GroundingContext): Grou
       removed.first_tasks += 1;
       continue;
     }
-    tasks.push({ text, paths });
+    tasks.push({ text, paths, complexity: complexityOf(t.complexity) });
   }
 
   // Diagram and prose.

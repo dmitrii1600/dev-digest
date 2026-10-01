@@ -46,7 +46,7 @@ const DRAFT: OnboardingDraft = {
     { line: 'npm run dev', source_path: 'package.json' },
     { line: 'npm run ghost', source_path: 'src/invented.ts' },
   ],
-  first_tasks: [{ text: 'Read a', paths: ['src/a.ts'] }],
+  first_tasks: [{ text: 'Read a', paths: ['src/a.ts'], complexity: 'low' }],
 };
 
 interface Opts {

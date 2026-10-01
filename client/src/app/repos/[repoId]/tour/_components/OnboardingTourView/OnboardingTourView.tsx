@@ -16,6 +16,7 @@ import { useGenerateOnboarding, useOnboarding } from "@/lib/hooks/onboarding";
 import { useRepoNotFound } from "@/providers/repo-context";
 import { SECTIONS } from "./constants";
 import { errorCopyKey, timeAgo, tourUrl } from "./helpers";
+import { useActiveSection } from "./hooks/useActiveSection";
 import { useCopyToClipboard } from "./hooks/useCopyToClipboard";
 import { ArchitectureOverview } from "./_components/ArchitectureOverview/ArchitectureOverview";
 import { CriticalPaths } from "./_components/CriticalPaths/CriticalPaths";
@@ -27,6 +28,8 @@ import { TourSection } from "./_components/TourSection/TourSection";
 import { s } from "./styles";
 
 type Expanded = Record<OnboardingSectionId, boolean>;
+
+const SECTION_IDS: readonly OnboardingSectionId[] = SECTIONS.map(({ id }) => id);
 
 const allExpanded = (): Expanded =>
   Object.fromEntries(SECTIONS.map(({ id }) => [id, true])) as Expanded;
@@ -65,6 +68,7 @@ export function OnboardingTourView({ repoId }: { repoId: string }) {
 
   const page = query.data;
   const tour = page?.tour ?? null;
+  const [active, pick] = useActiveSection(SECTION_IDS, !!tour);
   const busy = gen.isPending || !!page?.generating;
 
   const crumb = [...(page ? [{ label: page.repo.full_name }] : []), { label: t("title") }];
@@ -80,6 +84,7 @@ export function OnboardingTourView({ repoId }: { repoId: string }) {
   const toggle = (id: OnboardingSectionId) => setExpanded((e) => ({ ...e, [id]: !e[id] }));
   const select = (id: OnboardingSectionId) => {
     setExpanded((e) => ({ ...e, [id]: true }));
+    pick(id);
     document.getElementById(`tour-${id}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
   const generate = () => gen.mutate();
@@ -145,7 +150,7 @@ export function OnboardingTourView({ repoId }: { repoId: string }) {
   return (
     <AppShell crumb={crumb}>
       <div style={s.page}>
-        <OnThisPage onSelect={select} />
+        <OnThisPage active={active} onSelect={select} />
         <div style={s.main}>
           <div style={s.header}>
             <div style={s.headText}>

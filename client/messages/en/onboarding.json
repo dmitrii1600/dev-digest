@@ -29,6 +29,11 @@
   "open": "Open",
   "openFile": "Open {path} on GitHub",
   "noReason": "No reason given",
+  "complexity": {
+    "low": "Low complexity",
+    "medium": "Medium complexity",
+    "high": "High complexity"
+  },
   "sectionEmpty": {
     "architecture": "No architecture overview was produced.",
     "critical_paths": "No critical paths were found in the index.",

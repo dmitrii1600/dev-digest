@@ -53,8 +53,8 @@ const DRAFT: OnboardingDraft = {
     { line: 'npm run ghost', source_path: 'src/invented.ts' },
   ],
   first_tasks: [
-    { text: 'Read the entry point', paths: ['src/a.ts'] },
-    { text: 'Fix the ghost', paths: ['src/invented.ts'] },
+    { text: 'Read the entry point', paths: ['src/a.ts'], complexity: 'low' },
+    { text: 'Fix the ghost', paths: ['src/invented.ts'], complexity: 'high' },
   ],
 };
 
@@ -225,7 +225,7 @@ d('Onboarding module (Testcontainers pg)', () => {
       { line: 'npm install', source_path: 'README.md' },
       { line: 'npm run dev', source_path: 'package.json' },
     ]);
-    expect(tour.first_tasks).toEqual([{ text: 'Read the entry point', paths: ['src/a.ts'] }]);
+    expect(tour.first_tasks).toEqual([{ text: 'Read the entry point', paths: ['src/a.ts'], complexity: 'low' }]);
     expect(JSON.stringify(tour)).not.toContain('invented');
     expect(tour.architecture.diagram).toBe('flowchart LR\nA-->B');
 

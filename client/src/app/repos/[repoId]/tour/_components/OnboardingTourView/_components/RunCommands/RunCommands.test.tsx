@@ -37,7 +37,7 @@ describe("RunCommands", () => {
     setClipboard({ writeText });
     renderIt();
     expect(screen.getAllByRole("listitem")).toHaveLength(3);
-    expect(screen.getByText("2.")).toBeInTheDocument();
+    expect(screen.getAllByRole("listitem").map((li) => li.firstElementChild?.textContent)).toEqual(["1", "2", "3"]);
 
     fireEvent.click(screen.getByRole("button", { name: /Copy pnpm dev # http/ }));
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Command copied"));

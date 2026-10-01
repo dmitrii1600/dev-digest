@@ -95,7 +95,8 @@ lists; you explain them.
 4. Reading path: for each remaining file under "Files to explain", one line on
    why a newcomer should read it, in the order given.
 5. First tasks: 1 to 5 small starter tasks, one line each. Every task names at
-   least one provided file path it touches.
+   least one provided file path it touches, and a \`complexity\` of "low",
+   "medium" or "high" for a newcomer (null when you cannot tell).
 
 # Rules
 - Write a reason only for the files listed under "Files to explain", by their

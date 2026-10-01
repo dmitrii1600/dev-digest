@@ -153,7 +153,11 @@ describe('AI contracts parse fixtures', () => {
       reading_path: [{ path: 'a.ts', reason: 'entry point' }],
       first_tasks: [{ text: 'Add a test', paths: ['a.ts'] }],
     };
-    expect(() => Onboarding.parse(tour)).not.toThrow();
+    expect(() => Onboarding.parse(tour)).not.toThrow(); // a tour stored before task complexity existed
+    const labelled = { ...tour, first_tasks: [{ text: 'Add a test', paths: ['a.ts'], complexity: 'low' }] };
+    expect(() => Onboarding.parse(labelled)).not.toThrow();
+    expect(() => Onboarding.parse({ ...tour, first_tasks: [{ ...tour.first_tasks[0], complexity: null }] })).not.toThrow();
+    expect(() => Onboarding.parse({ ...tour, first_tasks: [{ ...tour.first_tasks[0], complexity: 'huge' }] })).toThrow();
     expect(() =>
       Onboarding.parse({
         ...tour,

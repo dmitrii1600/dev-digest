@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import type { OnboardingDraft } from '@devdigest/shared';
 import {
   buildMessages,
+  complexityOf,
   fitToBudget,
   groundDraft,
   groundedPathSet,
@@ -223,17 +224,27 @@ describe('groundDraft', () => {
     expect(out.removed.run_locally).toBe(1);
   });
 
+  it('normalises the task complexity the model gave to low | medium | high, anything else to null', () => {
+    expect(complexityOf('low')).toBe('low');
+    expect(complexityOf(' HIGH ')).toBe('high');
+    expect(complexityOf('Medium')).toBe('medium');
+    expect(complexityOf('huge')).toBeNull();
+    expect(complexityOf('')).toBeNull();
+    expect(complexityOf(null)).toBeNull();
+    expect(complexityOf(undefined)).toBeNull();
+  });
+
   it('drops a task whose only path is invented; filters the rest of the paths to G', () => {
     const out = groundDraft(
       draft({
         first_tasks: [
-          { text: 'bad', paths: ['src/invented.ts'] },
-          { text: 'good', paths: ['src/a.ts', 'src/invented.ts'] },
+          { text: 'bad', paths: ['src/invented.ts'], complexity: 'low' },
+          { text: 'good', paths: ['src/a.ts', 'src/invented.ts'], complexity: 'Medium' },
         ],
       }),
       ctx,
     );
-    expect(out.first_tasks).toEqual([{ text: 'good', paths: ['src/a.ts'] }]);
+    expect(out.first_tasks).toEqual([{ text: 'good', paths: ['src/a.ts'], complexity: 'medium' }]);
     expect(out.removed.first_tasks).toBe(1);
   });
 
