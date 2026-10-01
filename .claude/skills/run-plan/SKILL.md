@@ -39,8 +39,12 @@ phase so their order is the run's history.
 - **Paths, not retellings.** An agent prompt carries the plan path, a report path and
   item numbers. Never a summary of the plan, never a pasted report.
 - **Save first, decide second.** Write every agent's final message to its report file
-  with `Write`, verbatim, before reading it for a verdict. Then take the verdict from the
+  with `Write`, verbatim, before reading it for a verdict. Never condense or trim it: a
+  saved report that drops rows breaks the next delta pass. Then take the verdict from the
   file's header lines (`grep -n "^\*\*Verdict\|^\*\*Status"`), not from memory.
+  **Exception: `plan-verifier` writes its own report.** Its prompt carries `report to:
+  .devdigest/sdd/<stem>/<file>.md`. Check that the file exists and starts with
+  `# Plan Conformance`; only when it is missing do you save the final message yourself.
 - **Caps are hard.** Two fix iterations per loop (verify, arch), one for the gate. When a
   cap is hit, stop, write the summary, and hand the open items to the person. Never
   "one more try".
@@ -89,7 +93,8 @@ turn it into ledger rows — but is listed in the summary.
 
 ### 2. verify (pass 1)
 
-`plan-verifier`: `Plan: plans/<stem>.md · branch: <current>` → save `20-verify-1.md`.
+`plan-verifier`: `Plan: plans/<stem>.md · branch: <current> · report to:
+.devdigest/sdd/<stem>/20-verify-1.md`. The verifier writes the file itself.
 
 - `CONFORMS` or `PARTIAL` → phase 3. `PARTIAL` rows that are NOT VERIFIABLE go to the
   summary for the person; the *Test plan* rows are expected there (no tests yet).
@@ -100,7 +105,8 @@ turn it into ledger rows — but is listed in the summary.
   2. `implementer`: `Plan: plans/<stem>.md · Plan ID: <id> · fix loop · report:
      .devdigest/sdd/<stem>/<latest verify>.md · items: <numbers>` → save `21-fix-<i>.md`.
   3. `plan-verifier`, delta: `Plan: plans/<stem>.md · branch: <current> · previous
-     report: .devdigest/sdd/<stem>/<latest verify>.md` → save `22-verify-<i+1>.md`.
+     report: .devdigest/sdd/<stem>/<latest verify>.md · report to:
+     .devdigest/sdd/<stem>/22-verify-<i+1>.md`.
   4. `DIVERGES` again and `i < 2` → next iteration; `i = 2` → stop, summary.
 
 ### 2b. tests — only with `--with-tests`
@@ -131,9 +137,10 @@ additive; the rest of the chain does not depend on them).
 ### 4. delta — only when something changed after `20-verify-1.md`
 
 Skip when no `21-*`, `25-*` or `31-*` report exists. Otherwise `plan-verifier`, delta:
-`Plan: plans/<stem>.md · branch: <current> · previous report: <latest 2x-verify>.md` →
-save `40-verify-delta.md`. `DIVERGES` → one `implementer` fix (`41-fix.md`) and one more
-delta (`42-verify-delta-2.md`); still `DIVERGES` → stop, summary.
+`Plan: plans/<stem>.md · branch: <current> · previous report: <latest 2x-verify>.md ·
+report to: .devdigest/sdd/<stem>/40-verify-delta.md`. `DIVERGES` → one `implementer` fix
+(`41-fix.md`) and one more delta (`report to: …/42-verify-delta-2.md`); still `DIVERGES`
+→ stop, summary.
 
 ### 5. docs — only with `--docs`
 

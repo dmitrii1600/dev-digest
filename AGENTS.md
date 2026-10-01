@@ -38,6 +38,17 @@ cd <pkg> && <pm> run typecheck   # tsc --noEmit
 cd <pkg> && <pm> test            # vitest (e2e: agent-browser)
 ```
 
+`scripts/verify.mjs` flags. Read them here; you do not need to open the script:
+
+| Flag | Runs |
+|---|---|
+| *(none)* | lint · typecheck · arch (server) · the hermetic vitest lane |
+| `--checks` | lint · typecheck · arch only, no tests |
+| `--tests` | the hermetic vitest lane only |
+| `--file <p>` | vitest on that file only. It is repeatable and implies `--tests`, and it is the narrowest per-step verify |
+| `--it` | adds the server `*.it.test.ts` lane (needs Docker) |
+| `--no-cache` · `--tail N` | re-run despite a cached green result for this exact tree · lines kept on failure (default 40) |
+
 `<pm>` is `pnpm` for `server`/`client` and `npm` for `reviewer-core`/`e2e`/`mcp` —
 match the lockfile in the folder. Lint is deliberately narrow: `typecheck`
 already owns correctness, so the rules cover what the compiler cannot see —

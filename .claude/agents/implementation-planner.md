@@ -212,6 +212,22 @@ Each step is something the implementer can finish and check without asking you a
   last step. The script picks `pnpm` or `npm` from the folder, prints one line per
   command, and caches green results per tree, which is what keeps four agents from
   paying for the same suite four times.
+- **Boundary inputs** for every criterion that filters, excludes, caps or matches
+  (paths, sizes, counts, name patterns). The step's *Done when* or a *Test plan* row
+  names at least one boundary case and the test that pins it:
+  - a root-level path;
+  - a case variant;
+  - a near-miss that must **not** match;
+  - a value exactly at the cap and one past it.
+
+  A happy-path test proves the feature runs, not that the predicate is right. On
+  2026-10-01, root-level `test/` leaked into the onboarding reading path past the
+  implementer, the verifier and the arch review; only test-writer's boundary inputs
+  caught it.
+- **Literal copy, quoted.** When an AC fixes user-visible text (a section title, a
+  button label, an error line), the step that writes that copy quotes every string
+  verbatim. "Use the exact AC-n titles" is not enough. On 2026-10-01 that phrasing
+  produced one wrong title, three NOT MET rows and a fix loop.
 
 Order steps so the tree compiles between them where possible: contract first, then the
 server, then the client that consumes it.
@@ -273,6 +289,18 @@ into the **Constraints** section:
   `Schema.parse(req.body)` inside a handler.
 - **No `fetch` in a client component** — a hook in `src/lib/hooks/*` over
   `src/lib/api.ts`.
+- **A spec bound must hold down the stack.** Check every number the spec fixes
+  (timeout, cap, size, retry count) against each layer under it:
+  - SDK client defaults;
+  - provider wrappers;
+  - HTTP and server timeouts;
+  - DB column limits.
+
+  A lower layer that overrides or pre-empts the number is either fixed in a step or
+  raised as a **Blocking** open question, never a Follow-up. For example, the
+  OpenRouter client's own 90 s timeout and 2 silent transport retries
+  (`reviewer-core/src/llm/openrouter.ts:54-55`) made a 120 s service timeout
+  unreachable. The person found it at runtime.
 
 ## Output — the plan file, then the Plan Report
 

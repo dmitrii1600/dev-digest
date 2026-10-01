@@ -349,6 +349,64 @@ selected.sort((a, b) => a.mtime - b.mtime);
 
 // ---------------------------------------------------------------- analysis
 
+/**
+ * The hand-back text a subagent sent through its own `SubagentHandback` call (last one
+ * wins). A background agent's `Agent` result is only `async_launched` and carries no
+ * `handbackReport`, so this is the only place its report lives.
+ */
+function lastHandbackFromTranscript(lines) {
+  let text = '';
+  for (const l of lines) {
+    if (l.type !== 'assistant') continue;
+    for (const b of contentBlocks(l)) {
+      if (b.type === 'tool_use' && b.name === 'SubagentHandback' && typeof b.input?.message === 'string') {
+        text = b.input.message;
+      }
+    }
+  }
+  return text;
+}
+
+/** Context size of a transcript's last API call — what the harness reports as totalTokens. */
+function lastCallContext(lines) {
+  const last = [...lines].reverse().find((l) => l.type === 'assistant' && l.message?.usage);
+  if (!last) return null;
+  const u = last.message.usage;
+  return (
+    (u.input_tokens ?? 0) +
+    (u.cache_read_input_tokens ?? 0) +
+    (u.cache_creation_input_tokens ?? 0) +
+    (u.output_tokens ?? 0)
+  );
+}
+
+/**
+ * Marker counts for a hand-back. A plan-verifier report states its own row counts in the
+ * `**Items:**` header; those win over counting `| NOT MET |` cells, which also match a
+ * delta table's "Was" column and overcount (a 0-NOT-MET delta once showed NOT MET ×3).
+ */
+function countMarkers(handback) {
+  const markers = {};
+  for (const [name, re] of HANDBACK_MARKERS) {
+    const c = (handback.match(re) ?? []).length;
+    if (c) markers[name] = c;
+  }
+  const items = handback.match(/^\*\*Items:\*\*([^\n]*)/m)?.[1];
+  if (items) {
+    for (const [name, re] of [
+      ['NOT MET', /(\d+)\s+not met/i],
+      ['PARTIAL', /(\d+)\s+partial/i],
+      ['NOT VERIFIABLE', /(\d+)\s+not verifiable/i],
+    ]) {
+      const n = Number(items.match(re)?.[1] ?? NaN);
+      if (Number.isNaN(n)) continue;
+      if (n > 0) markers[name] = n;
+      else delete markers[name];
+    }
+  }
+  return markers;
+}
+
 function findNestedResult(subs, toolUseId) {
   for (const sub of subs) {
     for (const l of sub.lines) {
@@ -414,12 +472,9 @@ function analyzeSession(s) {
     .map((sub) => {
       const owner = spawnOwner.get(sub.toolUseId);
       const r = results.get(sub.toolUseId) ?? findNestedResult(subs, sub.toolUseId);
-      const handback = r?.handbackReport?.text ?? '';
-      const markers = {};
-      for (const [name, re] of HANDBACK_MARKERS) {
-        const c = (handback.match(re) ?? []).length;
-        if (c) markers[name] = c;
-      }
+      const handback = r?.handbackReport?.text || lastHandbackFromTranscript(sub.lines);
+      const markers = countMarkers(handback);
+      const launchedOnly = r?.status === 'async_launched';
       return {
         agentId: sub.agentId,
         agentType: sub.agentType,
@@ -432,8 +487,8 @@ function analyzeSession(s) {
         start: owner?.spawn.ts ?? sub.start,
         end: r?.ts ?? sub.end,
         durationMs: r?.totalDurationMs ?? (sub.start && sub.end ? new Date(sub.end) - new Date(sub.start) : null),
-        status: r?.status ?? '(no result in this session)',
-        finalCtx: r?.totalTokens ?? null,
+        status: launchedOnly && handback ? 'completed (bg)' : r?.status ?? '(no result in this session)',
+        finalCtx: r?.totalTokens ?? lastCallContext(sub.lines),
         usage: sub.usage,
         tools: sub.profile.tools,
         toolStats: r?.toolStats ?? null,

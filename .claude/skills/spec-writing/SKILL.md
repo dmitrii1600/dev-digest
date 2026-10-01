@@ -263,6 +263,21 @@ Run every line; a failed line is fixed in the file, not noted in the report.
 ## Lifecycle
 
 `Status` is set by a person: `draft` → `approved` (after reading) → `implemented` (after
-`plan-verifier` reports `CONFORMS`). An approved spec is never edited; a changed decision
-is a new spec, dated the day it is written, with `Supersedes` pointing back. The planner
-plans against the newest spec in a `Supersedes` chain.
+`plan-verifier` reports `CONFORMS`). Once building has started, an approved spec is never
+edited; a changed decision is a new spec, dated the day it is written, with `Supersedes`
+pointing back. The planner plans against the newest spec in a `Supersedes` chain.
+
+**Before building starts, amend in place.** A decision that changes an approved spec before
+any code is built against it is an in-place amendment, not a new spec. The typical case is
+a contradiction the planner finds in its Requirements review. Three conditions apply:
+
+- the person asked for the change;
+- `.devdigest/sdd/<stem>/` holds no `1x-build*` report;
+- no commit after the plan's own touches code.
+
+The amendment leaves the `Status` line untouched. It adds one dated line to *Resolved
+decisions*, saying what changed and who decided it, plus an `answers` row in *Inputs and
+provenance*. Stem and Spec ID stay, so the plan's path still points at it. Why: on
+2026-10-01 a superseding spec written eight minutes after approval cost an extra file and an
+extra round with the person, who chose the in-place amendment anyway
+(`docs/retro/ledger/2026-10-01-onboarding-generator.md`, proposal 4).

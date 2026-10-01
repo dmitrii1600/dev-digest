@@ -22,7 +22,7 @@ file is stale.
 | [`implementation-planner`](implementation-planner.md) | opus | Read, Write (→ `plans/<stem>.md` only), Grep, Glob, Bash, Skill | — | a spec path and/or request text + `mode: single-agent \| multi-agent` | `plans/<stem>.md` (written by the agent) + **Plan Report** — or a **Requirements review** block (ledger, questions, recommendations, mode question) when the mode or an answer is missing | writes anything but the plan file, writes specs, implements, reviews |
 | [`implementer`](implementer.md) | sonnet | Read, Write, Edit, Grep, Glob, Bash, Skill | — | path to a plan file + Plan ID; multi-agent: + the track; fix loop: + a Plan Conformance report path and item numbers | **Implementation Report** | pushes, opens PRs, commits, reviews architecture or security, widens scope, loads review-time skills |
 | [`test-writer`](test-writer.md) | sonnet | Read, Write, Edit, Grep, Glob, Bash, Skill | — | a surface to cover + the behaviour to pin | tests + **Test Report** | edits production code, reviews, opens PRs, adds a dependency |
-| [`plan-verifier`](plan-verifier.md) | sonnet | Read, Grep, Glob, Bash, Skill | — | path to a plan or spec + the branch; delta mode: + the previous Plan Conformance report | **Plan Conformance Report** — a per-item ledger | edits anything, implements the gaps, gives general review advice |
+| [`plan-verifier`](plan-verifier.md) | sonnet | Read, Grep, Glob, Bash, Skill, Write (own report only) | — | path to a plan or spec + the branch; delta mode: + the previous Plan Conformance report | **Plan Conformance Report** — a per-item ledger | edits anything, implements the gaps, gives general review advice |
 | [`architecture-reviewer`](architecture-reviewer.md) | sonnet | Read, Grep, Glob, Bash, Skill | `onion-architecture`, `frontend-ui-architecture` | a scope — branch, `base…HEAD`, or a file list | **Architecture Review**, advisory verdict | edits anything, fixes, reviews security, gates the PR |
 | [`doc-writer`](doc-writer.md) | sonnet | Read, Write, Edit, Grep, Glob, Bash, Skill | `mermaid-diagram` | a shipped feature + the plan or report behind it | docs + **Documentation Report** | edits code, writes specs, appends to `INSIGHTS.md` |
 
@@ -150,11 +150,15 @@ that is its own piece of work.
 
 A subagent's only gate is its `tools:` list. It is an allowlist that **replaces**
 inheritance — a tool left out is not in the session at all, with no prompt and no error.
-That is how `researcher`, `architecture-reviewer` and `plan-verifier` are read-only: they
-simply have no `Write` and no `Edit`. `implementation-planner` has `Write` and no `Edit`,
-limited by prompt text to `plans/<stem>.md`; it gave up structural read-only for the
-guarantee that the plan reaches the implementer unsummarised, the same trade
-`spec-creator` already makes for the spec folders.
+That is how `researcher` and `architecture-reviewer` are read-only: they simply have no
+`Write` and no `Edit`. `implementation-planner` has `Write` and no `Edit`, limited by
+prompt text to `plans/<stem>.md`; it gave up structural read-only for the guarantee that
+the plan reaches the implementer unsummarised, the same trade `spec-creator` already makes
+for the spec folders. `plan-verifier` made the same trade on 2026-10-01: it has `Write`,
+limited by prompt text to the one `report to:` file under `.devdigest/sdd/<stem>/`. The
+cause was an orchestrator that condensed a 194-row ledger while saving it, so the next
+delta pass could not carry MET rows by number
+(`docs/retro/ledger/2026-10-01-onboarding-generator.md`, proposal 2).
 
 What does **not** work, and why it is absent here:
 
@@ -171,10 +175,10 @@ the grant costs nothing when it is stripped.
 
 `Bash` is granted to all eight agents, and what it is allowed to do differs:
 
-| | read-only — `researcher`, `implementation-planner`, `architecture-reviewer`, `plan-verifier` | `implementer` | write-limited — `spec-creator`, `test-writer`, `doc-writer` |
+| | read-only on the tree — `researcher`, `implementation-planner`, `architecture-reviewer`, `plan-verifier` | `implementer` | write-limited — `spec-creator`, `test-writer`, `doc-writer` |
 |---|---|---|---|
 | What for | `git log -S`, `git blame`, `git show`, `git diff --name-only`, `rg`, `cat`, `sed -n` — plus, for `architecture-reviewer` only, `node scripts/verify.mjs server --checks`, and for `plan-verifier` only, the `verify` commands its plan lists, through the same script | `node scripts/verify.mjs <pkg> …` — never `pnpm test`, `vitest`, `eslint` or `tsc` directly | `test-writer`: `node scripts/verify.mjs <pkg> [--file …] [--it]`. `spec-creator`: read-only inspection plus `node scripts/spec-lint.mjs <spec>` on the file it wrote. `doc-writer`: read-only inspection only — no build, no server, no test run |
-| Limited by | prompt text only — no redirects, no mutating git, no install/build/migrate/seed/server, no `--fix`; `implementation-planner` additionally writes `plans/<stem>.md` and nothing else | prompt text only — no pushing, no `gh pr` anything, no commits, no `--no-verify`, no `docker compose down -v` | prompt text only — `spec-creator` may touch `*.md` under the five spec folders only (`specs/`, `server/specs/`, `client/specs/`, `reviewer-core/specs/`, `mcp/specs/`), never a `README.md` there, never `specs/designs/**`, never a `Status` line; `test-writer` may touch test files and `server/test/helpers/` only; `doc-writer` may touch `*.md` outside `.claude/`, never a `CLAUDE.md` or an `INSIGHTS.md` |
+| Limited by | prompt text only — no redirects, no mutating git, no install/build/migrate/seed/server, no `--fix`; `implementation-planner` additionally writes `plans/<stem>.md` and nothing else; `plan-verifier` writes only its `report to:` file under `.devdigest/sdd/<stem>/` | prompt text only — no pushing, no `gh pr` anything, no commits, no `--no-verify`, no `docker compose down -v` | prompt text only — `spec-creator` may touch `*.md` under the five spec folders only (`specs/`, `server/specs/`, `client/specs/`, `reviewer-core/specs/`, `mcp/specs/`), never a `README.md` there, never `specs/designs/**`, never a `Status` line; `test-writer` may touch test files and `server/test/helpers/` only; `doc-writer` may touch `*.md` outside `.claude/`, never a `CLAUDE.md` or an `INSIGHTS.md` |
 | Hard enforcement | none | none, **except** `.claude/hooks/pr-self-review-gate.mjs` — a `PreToolUse` hook on `Bash` that blocks PR creation, PR merge and pushing until `/pr-self-review` passes | none, except the same hook |
 
 So one layer is technical (push and PR creation) and the absence of `Write`/`Edit` is

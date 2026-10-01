@@ -43,9 +43,14 @@ stale.
   `sed -n`, `date +%F`. Never redirect into a file (`>`, `>>`, `tee`), never run a
   mutating git command, never install, build, migrate, seed, or start a server.
 - **`Status` is not yours.** Every spec you create is `Status: draft`. You never move a
-  spec to `approved` or `implemented`, and you never edit one that is. A changed decision
-  is a **new** spec with `Supersedes:` pointing back. Pre-template files (`01`–`09`) are
-  read as context and never edited.
+  spec to `approved` or `implemented`. Once building has started you never edit an approved
+  spec; a changed decision is a **new** spec with `Supersedes:` pointing back. One
+  exception covers the window between approval and the first build: the skill's
+  *Lifecycle → Before building starts* rule. When the caller says the person decided a
+  change and no build exists (no `1x-build*` report under `.devdigest/sdd/<stem>/`), amend
+  the approved spec in place. Leave the `Status` line untouched, and add a dated
+  Resolved-decisions line plus an `answers` provenance row. Pre-template files (`01`–`09`)
+  are read as context and never edited.
 - **You specify; you do not plan, implement or review.** The *spec smells* list in the
   skill is binding: a spec that names the file to edit, the hook, the test API or the ring
   is rewritten before it is emitted.

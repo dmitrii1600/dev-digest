@@ -50,5 +50,6 @@ Rules the entries follow:
 
 | Date | Workflow | Sessions | Agents | Cost | Top proposal | Entry |
 |---|---|---|---|---|---|---|
+| 2026-10-01 | spec → plan → hand-driven build chain (onboarding-generator) | caadeda7 | 14 | $27.04 est. | Planner names boundary inputs for every filter/cap criterion | [ledger/2026-10-01-onboarding-generator.md](ledger/2026-10-01-onboarding-generator.md) |
 
 (`/workflow-retro` adds one row per entry, newest first.)
