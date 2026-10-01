@@ -57,6 +57,33 @@ flowchart LR
 - Modules are registered statically in `src/modules/index.ts` (one import + one
   `app.register` each); the engine reaps orphaned `running` runs on boot.
 
+### Structured-output failures are typed
+
+A provider that answered, but whose answer never matched the requested schema,
+throws `StructuredOutputError` (`src/platform/errors.ts:41`) — a subclass of
+`ExternalServiceError`, so it keeps `code: external_service_error` and status
+`502`. Callers branch with `instanceof`, never on message text; the onboarding
+service is the first (`modules/onboarding/service.ts:43`).
+
+- **Thrown directly by** the OpenAI adapter (`adapters/llm/openai.ts:132`), the
+  Anthropic adapter (`adapters/llm/anthropic.ts:147`) and `MockLLMProvider` when
+  its fixture fails the schema (`adapters/mocks.ts:98`).
+- **`SchemaFailureTagger` covers OpenRouter.** `OpenRouterProvider` lives in
+  `reviewer-core` (ring 0), which cannot import server errors and throws a bare
+  `Error`. `container.llm('openrouter')` therefore wraps it in
+  `adapters/llm/schema-failure.ts` (`platform/container.ts:254`). The decorator
+  hands the provider a derived copy of the request schema whose `safeParse`
+  records its last outcome; a throw that follows a failed `safeParse` is rethrown
+  as `StructuredOutputError`, anything else passes through untouched. Every other
+  method delegates unchanged.
+- **Limits.** The decorator needs the failure to reach `safeParse`: OpenRouter
+  output that is not JSON fails earlier, in `parseWithRepair`, and stays a plain
+  error (see the limitation in
+  [`modules/onboarding/README.md`](src/modules/onboarding/README.md#known-limitations)).
+  It also relies on zod v3 binding `safeParse` as an own property of the schema
+  instance (`schema-failure.ts:43-45`), so recheck it when zod is upgraded; the
+  tests are `test/schema-failure.test.ts`.
+
 ## API map (starter)
 
 Each module owns its routes (`modules/<name>/routes.ts`). Grouped by domain:
@@ -83,6 +110,7 @@ flowchart TB
     repoIntel["repo-intel<br/>/repos/:id/index-state · /resync"]
     projectContext["project-context<br/>/repos/:id/context(/file) · /agents/:id/context · /skills/:id/context"]
     blast["blast<br/>/pulls/:id/blast-radius · /pulls/:id/history"]
+    onboarding["onboarding<br/>/repos/:id/onboarding · /repos/:id/onboarding/generate"]
   end
   subgraph Platform["Platform"]
     settings["settings<br/>/settings · /providers"]

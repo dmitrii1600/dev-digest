@@ -94,6 +94,12 @@ per domain · `src/vendor/shared/` canonical Zod contracts.
 - Attaching clone Markdown to agents/skills and injecting it into a run →
   `src/modules/project-context/README.md` — **read before changing Project Context
   routes, the clone reader, or the `## Project context` prompt slot**
+- The Onboarding Tour (routes, `generation_failed` reasons, in-memory lock, 120 s
+  timer, grounding) → `src/modules/onboarding/README.md` — **read before changing
+  how a tour is generated or which files it cites**
+- How a schema-mismatch from a provider is signalled (`StructuredOutputError`,
+  `SchemaFailureTagger`) → `README.md#structured-output-failures-are-typed` —
+  **read before branching on an LLM adapter error**
 - What the reviewer actually sends the model →
   `README.md#review-context-non-obvious` — **read before changing prompt inputs**
 - How the PR list's per-PR aggregates are computed (and why `score`,

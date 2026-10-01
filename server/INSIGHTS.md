@@ -123,6 +123,19 @@ append-only. Empty sections are expected — append under the one that fits.
   trace polls it (`test/project-context.it.test.ts` `runReview`, up to 10 s)
   instead of reading once. Whether the executor should save the trace first is
   open.
+- 2026-10-01 — A directory pattern with a leading slash, matched with
+  `includes`, misses the same directory at the repo root: `'/test/'`,
+  `'/tests/'`, `'/migrations/'` and `'/__fixtures__/'` in `JUNK_PATH_PATTERNS`
+  let `test/x.ts` and `migrations/0001.ts` through into `getTopFilesByRank`.
+  `isJunkPath` now matches against `'/' + path`
+  (`src/modules/repo-intel/service.ts:732`). The non-directory patterns
+  (`jest.`, `eslint` …) are still bare substrings.
+- 2026-10-01 — Do not ground LLM-cited paths on "the file is in the index":
+  the indexer walks only `.ts/.tsx/.js/.jsx/.mjs/.cjs`
+  (`src/modules/repo-intel/pipeline/walk.ts:7`), so `package.json`, READMEs
+  and `.env.example` are never there, and every run command sourced from them
+  is dropped. Onboarding grounds on "the prompt carried this file" instead
+  (`groundedPathSet`, `src/modules/onboarding/helpers.ts`).
 
 ## Codebase Patterns
 
@@ -273,6 +286,20 @@ append-only. Empty sections are expected — append under the one that fits.
   `src/db/seed-blast.ts` does exactly that through `RepoIntelRepository`; rank
   rows are deliberately absent for the changed files so the review prompt's
   "top 5%" note stays byte-identical. Proof: `test/seed-blast.it.test.ts`.
+- 2026-10-01 — Tell a schema failure from other LLM errors by type, never by
+  message text: adapters throw `StructuredOutputError`
+  (`src/platform/errors.ts`), and the OpenRouter provider from reviewer-core is
+  wrapped in `SchemaFailureTagger` at the composition root
+  (`src/platform/container.ts:254`). Why: three adapters wrote the
+  "failed schema validation" prose independently, so a regex on it misfiled
+  `invalid_output` as `llm_error` on any reword. The tagger shadows zod v3's
+  own-property `safeParse` (`src/adapters/llm/schema-failure.ts:43`), so
+  re-check it on a zod v4 upgrade. OpenRouter output that is not JSON never
+  reaches `safeParse` and stays untyped.
+- 2026-10-01 — A repo with no `repo_index_state` row reports `never_indexed`,
+  not `no_ranked_files`: the facade synthesises a `no_data` degraded state
+  (`src/modules/onboarding/helpers.ts:63`). A test for `no_ranked_files` needs a
+  state row with zero rank rows.
 
 
 
@@ -380,7 +407,9 @@ append-only. Empty sections are expected — append under the one that fits.
   host, and identically on a clean `289f8bb` worktree with no feature diff: the
   run has not reached `done` when `waitForPrRuns`' 10 s budget
   (`test/helpers/runs.ts:19`) expires. `reviews.it.test.ts` shows the same
-  shape intermittently (3/6 red, then 6/6). Same family as the 2026-09-24 entry
+  shape intermittently (3/6 red, then 6/6; on 2026-10-01 a clean `146cc40`
+  worktree failed it 2 of 3 runs, a different test each time, and
+  `conventions.it` "skill preview" showed it once too). Same family as the 2026-09-24 entry
   above: prove a baseline before reading it as a regression of a change outside
   `modules/reviews`. The 3–5 s run-start latency itself is unexplained.
 

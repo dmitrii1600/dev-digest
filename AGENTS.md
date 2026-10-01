@@ -139,10 +139,10 @@ wrong thing, rather than failing.
 - API and DI map → `server/README.md` — **read before adding a route or adapter**
 - Codebase indexer and the `repoIntel.*` facade →
   `server/src/modules/repo-intel/README.md` — **read before using repo context**
-- Writing reviewer prompts → `docs/agent-prompts/README.md` — **read before
 - Project Context (clone Markdown attached to agents/skills, injected into a run) →
   `server/src/modules/project-context/README.md` — **read before changing what
   documents reach a review**
+- Writing reviewer prompts → `docs/agent-prompts/README.md` — **read before
   editing any agent system prompt**
 - Unit vs integration split → `TESTING.md` — **read before adding a test file**
 - MCP tools, env vars, `.mcp.json`, troubleshooting → `mcp/README.md` — **read

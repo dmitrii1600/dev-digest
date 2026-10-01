@@ -423,7 +423,7 @@ Each track is one `implementer` invocation. Tracks A and B are in different pack
     7. Read `runSources`, the excerpts for `readingPath ∪ criticalPaths` sorted by rank, and `repoMap = index.getRepoMap(repoId)`. Then apply `fitToBudget(…, countTokens, 60_000)`.
     8. Make one call: `llm.completeStructured({ model, schema: OnboardingDraft, schemaName: 'OnboardingDraft', messages, temperature: 0, maxRetries: 0, timeoutMs })`, raced against a `timeoutMs` timer (D4). Failures map to `AppError('generation_failed', …, 502, { reason })` (EC-4):
        - timer wins → `{ reason: 'timeout' }`;
-       - schema/parse error → `{ reason: 'invalid_output' }`;
+       - schema mismatch (a typed `StructuredOutputError`) → `{ reason: 'invalid_output' }`. *Amended 2026-10-01, decided by the user:* output from OpenRouter that is not JSON fails in reviewer-core's `parseWithRepair` before any schema check, so it maps to `llm_error`. This gap is accepted; tagging it would need a `reviewer-core` change, which this plan does not touch;
        - any other throw → `{ reason: 'llm_error' }`.
     9. Build the tour from `groundDraft` (AC-16 as amended): `generated_at = new Date(now()).toISOString()`, `index_sha = state.lastIndexedSha`, `files_indexed = state.filesIndexed`, plus `provider` and `model` (AC-5, AC-17).
     10. If `Buffer.byteLength(JSON.stringify(tour)) > MAX_STORED_BYTES` → `invalid_output`. Otherwise `saveTour` and return `page()`. On any failure nothing is saved, so the previous row survives (EC-4).

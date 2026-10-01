@@ -499,7 +499,6 @@ append-only. Empty sections are expected — append under the one that fits.
   precisely because the documented Windows workaround is to import both from a
   script — get the argument types right or you will chase a phantom auth problem.
 
-## Session Notes
 - 2026-09-29 — A scripted edit (sed / heredoc from the Bash tool on Windows)
   that carries an em dash writes it as the single cp1252 byte `0x97`, which is
   invalid UTF-8 that lint and typecheck never see; the same encoding error once
@@ -508,6 +507,7 @@ append-only. Empty sections are expected — append under the one that fits.
   and `grep -nP '[^\x00-\x7F]'`; use the Edit tool, not a shell script, for any
   non-ASCII text. Companion to the 2026-09-22 `.ps1` note above.
 
+## Session Notes
 
 ### 2026-09-15 — run cost badge
 Built per-run USD cost end to end (schema → routes → three screens). The engine
@@ -822,7 +822,6 @@ Conformance, Architecture Review and gate `report.json` findings, and the two
 reviewers moved to sonnet.
 
 
-## Open Questions
 ### 2026-09-29 — Project Context: first full `/run-plan` run
 Spec (spec-creator, 3 clarifications) → approved → plan (multi-agent, 15 steps) →
 `/run-plan`. Build was clean; the only real defect was found by the integration
@@ -834,6 +833,23 @@ worktree corrupted `server/node_modules` via `pnpm exec` (What Doesn't Work), an
 an auto-mode classifier outage mid-chain blocked every mutating tool for ~20 min;
 the reports in `.devdigest/sdd/<stem>/` were enough to resume cold.
 
+### 2026-10-01 — Onboarding Generator: the chain run by hand, one commit per stage
+The person drove every stage separately: spec-creator, then 15 questions put
+to the person, then approval, then implementation-planner (4 decisions), then
+the implementer in waves, then plan-verifier, then arch ∥ test-writer, then a
+delta verify. Each stage was committed, using `--allow-empty` when only
+git-ignored reports changed, so `git log` reads as the chain. Neither the
+implementer nor either reviewer caught a real AC-6 bug that test-writer found (root-level `test/`
+leaking into the reading path; see server What Doesn't Work). Running
+`test-writer ∥ architecture-reviewer` after the first verify paid off.
+A decision that changed an *approved* spec made spec-creator write a
+superseding spec rather than edit it. Because the spec was unbuilt, the person
+chose an in-place amendment instead, keeping the stem the plan already used.
+The orchestrator repeated the known `pnpm exec`-in-a-worktree mistake (What
+Doesn't Work, 2026-09-29) because it skipped reading root INSIGHTS first. This
+time the install failed before touching anything.
+
+## Open Questions
 
 - 2026-09-18 — The pr-self-review PreToolUse hook matches on command text, so a
   `git push` inside a heredoc or a quoted string is blocked too. Fail-closed is
