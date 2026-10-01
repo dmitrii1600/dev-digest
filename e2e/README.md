@@ -111,3 +111,4 @@ a CI artifact by `.github/workflows/e2e-web.yml`).
 | `12-smart-diff` | PR #482 Files changed → role groups + hints, files-with-findings counter, file card, Original order ↔ Smart order |
 | `13-blast-radius` | PR #482 Overview → Blast radius: stats row, tree (callers, endpoint/cron chips), Graph ↔ Tree toggle, "Prior PRs touching these files" (data from `server/src/db/seed-blast.ts`) |
 | `14-project-context` | sidebar WORKSPACE → Project Context → `/repos/:repoId/context` route and page heading (seeded repo has `clonePath: null`, so the not-cloned state; list and preview are covered by component and integration tests) |
+| `15-onboarding-tour` | sidebar WORKSPACE → Onboarding Tour → `/repos/:repoId/tour` route and crumb title (no stored tour in the seed, so the empty state; no Generate click, so no model call) |

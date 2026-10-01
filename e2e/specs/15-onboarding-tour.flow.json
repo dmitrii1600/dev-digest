@@ -1,0 +1,14 @@
+{
+  "name": "Onboarding Tour — sidebar entry opens the repo's tour page",
+  "description": "AC-1 of specs/2026-10-01-onboarding-generator.md. From the sidebar's WORKSPACE group, Onboarding Tour opens /repos/:repoId/tour for the active repo and the page renders its crumb title. The seeded repo has no stored tour, so the page is in its empty state (EC-1); the flow deliberately never clicks Generate, so no model call is made. Rendering, copy and error states are covered by the client component tests and server/test/onboarding.it.test.ts. The Add repository screen at /onboarding stays covered by 06-onboarding.flow.json (NFR-10). Read-only. Assumes a freshly-seeded DB (guaranteed by e2e-web.yml).",
+  "steps": [
+    { "cmd": ["open", "{BASE}/"], "label": "load the app root" },
+    { "cmd": ["wait", "--url", "/pulls"], "label": "root redirects to the seeded repo's PR list" },
+    { "cmd": ["wait", "--load", "networkidle"], "label": "repos fetch settles so the sidebar links carry the repo id" },
+    { "cmd": ["wait", "--text", "Onboarding Tour"], "label": "the sidebar WORKSPACE group lists an Onboarding Tour entry (nav.ts)" },
+    { "cmd": ["find", "text", "Onboarding Tour", "click"], "label": "open Onboarding Tour from the sidebar" },
+    { "cmd": ["wait", "--url", "/tour"], "label": "tour route reached" },
+    { "cmd": ["wait", "--load", "networkidle"], "label": "tour fetch settles" },
+    { "cmd": ["wait", "--text", "Onboarding Tour"], "label": "page crumb title renders (onboarding.json title)" }
+  ]
+}
