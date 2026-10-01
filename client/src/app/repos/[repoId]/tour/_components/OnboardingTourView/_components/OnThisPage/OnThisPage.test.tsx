@@ -19,7 +19,7 @@ describe("OnThisPage", () => {
       "Architecture overview",
       "Critical paths",
       "How to run locally",
-      "Suggested reading path",
+      "Guided reading path",
       "First tasks",
     ]);
     fireEvent.click(screen.getByRole("button", { name: "How to run locally" }));

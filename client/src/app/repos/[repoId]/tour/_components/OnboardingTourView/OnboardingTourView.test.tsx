@@ -48,7 +48,7 @@ const TITLES = [
   "Architecture overview",
   "Critical paths",
   "How to run locally",
-  "Suggested reading path",
+  "Guided reading path",
   "First tasks",
 ];
 
