@@ -484,6 +484,7 @@ append-only. Empty sections are expected — append under the one that fits.
   Keep the load-bearing convention in a repo file the agent is told to read,
   not only in the agent body, and expect an edited agent to run stale for a few
   minutes.
+- 2026-09-29 — Per-agent token spend lives only in the subagent transcript (`~/.claude/projects/<slug>/<session>/subagents/agent-<id>.jsonl` + `.meta.json`), summed once per `message.id` — a streamed reply is several lines that repeat the same `usage`. The `totalTokens` in an `Agent` tool result is the agent's **final context size**, not its spend, and the session's `cost-state` line has been seen to undercount subagent output by ~40 % (`scripts/retro-usage.mjs` prints a ⚠ when the sums disagree). cost-state is a snapshot at write time — in one session its opus figures equalled the first agent exactly and knew nothing of the four that ran later. Reconstruct spend from the transcript at list price instead (input/output/cache read per model, cache writes 1.25× for the 5-minute TTL and 2× for the 1-hour TTL — that formula reproduces the harness figure to the cent).
 
 ## Recurring Errors & Fixes
 

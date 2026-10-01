@@ -27,6 +27,7 @@ node scripts/spec-lint.mjs <spec.md>   # structure check for a feature spec; the
 node scripts/verify.mjs <pkg> [--checks | --tests | --file <p>] [--it]   # lint+typecheck(+arch)+hermetic tests, one line per command, cached per tree — what agents run
 /run-plan plans/<stem>.md [--with-tests] [--docs]   # build an approved plan: implementer → plan-verifier ↺ → architecture-reviewer ↺ → delta → insights → gate
 /pr-self-review                  # before every PR — the gate blocks gh pr create / git push otherwise
+/workflow-retro [--deep] [--stem <stem>]   # MANUAL ONLY, after a workflow run: retro → docs/retro/ledger/; numbers via node scripts/retro-usage.mjs [--list]
 ```
 
 Checks, per package — **every package has all three**:

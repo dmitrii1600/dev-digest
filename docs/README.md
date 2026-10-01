@@ -17,6 +17,10 @@ package stays in that package's `README.md`.
   runbook proving a skill changes what an agent flags: two fixture diffs, the
   exact steps (skill unlinked vs. linked+enabled), and where to look in the run
   trace. Not automated — a real LLM call is non-deterministic and costs money.
+- [`retro/`](./retro/README.md) — the ledger of how our agent workflows ran:
+  one `/workflow-retro` entry per run (agents, order, tokens, what was hard,
+  duplicated or missed, proposals for the agents). Process memory, as
+  `INSIGHTS.md` is code memory. Written by hand-invoked retros only.
 
 When you add a document here, add one line to this list and, if an agent must
 read it under a specific condition, a pointer in the root `AGENTS.md`
