@@ -1,6 +1,5 @@
 {
   "title": "Project Context",
-  "crumbWorkspace": "Workspace",
   "refresh": "Refresh",
   "showing": "showing {shown} of {total}",
   "fileCount": "{count} files",
@@ -9,10 +8,6 @@
   "notCloned": {
     "title": "This repo is not cloned yet",
     "body": "Project context reads Markdown files from the local clone. Import or clone the repo first; attaching is unavailable until then."
-  },
-  "noFiles": {
-    "title": "No Markdown files found",
-    "body": "Only .md files in the clone are listed. Add one under specs/ or docs/ and refresh."
   },
   "listError": "Couldn’t load the project documents",
   "saveError": "Couldn’t save the attached documents",
@@ -33,13 +28,94 @@
     "untrustedNote": "Documents are injected as untrusted data: they inform findings and never change the reviewer’s instructions.",
     "preview": "Preview",
     "previewFile": "Preview {path}",
-    "close": "Close",
     "missing": "missing",
     "dragHandle": "Reorder {path}",
-    "noRepo": "Select a repository to attach project documents."
+    "noRepo": "Select a repository to attach project documents.",
+    "noDocs": {
+      "title": "No documents found",
+      "body": "Only .md files in the clone are listed. Add Markdown to the repo, then refresh.",
+      "cta": "Refresh"
+    },
+    "rowTokens": "{tokens} tokens",
+    "tokensUnavailable": "token count unavailable",
+    "overCap": "over 4K soft cap",
+    "attach": "Attach",
+    "attachedState": "Attached"
   },
   "skillTab": {
     "inherits": "Any agent using this skill inherits these documents.",
-    "serializesAs": "SERIALIZES AS"
+    "serializesAs": "SERIALIZES AS",
+    "serializedHeading": "## Project context"
+  },
+  "rootPath": ".devdigest/specs/",
+  "localNote": "Files under .devdigest/specs/ exist only in this local clone. If the repository later commits a file at the same path, the next sync replaces your copy.",
+  "toolbar": {
+    "newFile": "New file",
+    "newFolder": "New folder",
+    "upload": "Upload"
+  },
+  "uploadInput": "Choose a Markdown file to upload",
+  "nameDialog": {
+    "fileTitle": "New file",
+    "folderTitle": "New folder",
+    "label": "Name",
+    "create": "Create",
+    "cancel": "Cancel",
+    "defaultFile": "untitled.md",
+    "defaultFolder": "new-folder"
+  },
+  "pinned": "not in the first 500",
+  "mode": {
+    "group": "View mode",
+    "preview": "Preview",
+    "edit": "Edit"
+  },
+  "editorLabel": "Edit {path}",
+  "save": "Save",
+  "saving": "Saving…",
+  "saved": "All changes saved",
+  "delete": "Delete",
+  "deleting": "Deleting…",
+  "unsaved": "Unsaved changes",
+  "readOnly": {
+    "label": "read-only",
+    "outside_root": "Only files under .devdigest/specs/ can be edited here.",
+    "tracked": "Tracked by the repository — DevDigest does not change committed files.",
+    "too_large": "Over 64 KB — this file can be previewed but not edited."
+  },
+  "emptyRoot": {
+    "title": "No spec files yet",
+    "body": "Drop your PRDs, tech specs, and acceptance criteria here. Every agent reads them as grounding context. Only .md files are listed.",
+    "cta": "Add a spec file"
+  },
+  "confirm": {
+    "cancel": "Cancel",
+    "discardTitle": "Discard unsaved changes?",
+    "discardBody": "Your changes to {path} have not been saved and will be lost.",
+    "discard": "Discard changes",
+    "leave": "You have unsaved changes to {path}. Leave and discard them?",
+    "deleteTitle": "Delete {path}?",
+    "deleteBody": "This removes the file from the local clone. It cannot be undone.",
+    "deleteBodyUnsaved": "This removes the file from the local clone, together with your unsaved changes. It cannot be undone.",
+    "deleteConfirm": "Delete file",
+    "reloadTitle": "Reload from disk?",
+    "reloadBody": "Your text will be replaced by the version on disk.",
+    "reloadConfirm": "Reload"
+  },
+  "conflict": {
+    "changed": "This file changed on disk after you opened it. Your text has not been saved.",
+    "deleted": "This file no longer exists on disk. Your text has not been saved.",
+    "deleteChanged": "This file changed on disk after you opened it, so it was not deleted.",
+    "deleteGone": "This file no longer exists on disk.",
+    "reload": "Reload",
+    "overwrite": "Overwrite"
+  },
+  "writeError": {
+    "save": "Couldn’t save this file.",
+    "delete": "Couldn’t delete this file.",
+    "create": "Couldn’t create the file.",
+    "upload": "Couldn’t upload the file.",
+    "invalid": "That name or file can’t be used. A file name must end in .md; every name must be at most 255 bytes and avoid reserved names (CON, PRN, AUX, NUL, COM1–COM9, LPT1–LPT9) and the characters < > : \" / \\ | ? *. A file must be UTF-8 text of at most 64 KB.",
+    "retry": "Retry"
   }
 }

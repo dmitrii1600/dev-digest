@@ -7,6 +7,7 @@ import { useTranslations } from "next-intl";
 import { ContextDocsPicker } from "@/components/context-docs-picker";
 import { useContextFiles, useSetSkillContext, useSkillContext } from "@/lib/hooks/project-context";
 import { useActiveRepo } from "@/providers/repo-context";
+import { serializeAs, serializedText } from "./helpers";
 import { s } from "./styles";
 
 export function ContextTab({ skillId }: { skillId: string }) {
@@ -30,6 +31,7 @@ export function ContextTab({ skillId }: { skillId: string }) {
             void list.refetch();
             void attached.refetch();
           },
+          onRefresh: () => void list.refetch(),
         }}
         attached={paths}
         onChange={(next) => set.mutate({ paths: next })}
@@ -38,7 +40,11 @@ export function ContextTab({ skillId }: { skillId: string }) {
         <div style={s.box}>
           <div style={s.boxLabel}>{t("skillTab.serializesAs")}</div>
           <div data-testid="serializes-as" className="mono" style={s.boxBody}>
-            {paths.join("\n")}
+            {serializedText(
+              t("skillTab.serializedHeading"),
+              serializeAs(paths, list.data?.files ?? []),
+              (kind) => t(`kind.${kind}`),
+            )}
           </div>
         </div>
       )}

@@ -49,14 +49,19 @@ sequenceDiagram
 
 ## Routes
 
-All six go through `getContext` for the workspace and declare Zod
+All ten go through `getContext` for the workspace and declare Zod
 `params`/`querystring`/`body`/`response`, so invalid input is a 422 before the
-handler (`routes.ts`).
+handler (`routes.ts`). The four writes are described under
+[Authoring under `.devdigest/specs/`](#authoring-under-devdigestspecs).
 
 | Route | Query / body | Returns | Notes |
 |---|---|---|---|
 | `GET /repos/:id/context` | — | `ContextFileList` `{ cloned, total, files[] }` | `files` is capped at 500, sorted by path, no `content`; `total` is the uncapped count. Each file carries `kind`, `size`, `updated_at`, `tokens`, `used_by`. Not cloned → `{ cloned: false, total: 0, files: [] }`. |
 | `GET /repos/:id/context/file` | `?path=` | `SpecFile` with `content` | The path must be in the listing, else 422 (`service.ts:224`); unreadable → 404. |
+| `POST /repos/:id/context/files` | body `{ kind: 'file' | 'folder', name }` | 201 `SpecFile` | Creates `.devdigest/specs/<name>` or `<name>/spec.md`; a taken name gets `-2`, `-3`. |
+| `POST /repos/:id/context/upload` | body `{ name, content_base64 }` | 201 `SpecFile` | Writes the decoded bytes unchanged, in the root only. |
+| `PUT /repos/:id/context/file` | body `{ path, content, version | null }` | `SpecFile` | Save. `version: null` means "expect the file to be absent". |
+| `DELETE /repos/:id/context/file` | `?path=&version=` | 204 | Removes the file and any folder left empty. |
 | `GET /agents/:id/context` | `?repoId=` (uuid) | `ContextAttachments` `{ repo_id, paths }` | Paths in attach order. |
 | `PUT /agents/:id/context` | `?repoId=`, body `{ paths }` | `ContextAttachments` | Replaces the whole ordered list. |
 | `GET /skills/:id/context` | `?repoId=` | `ContextAttachments` | |
@@ -78,6 +83,54 @@ Contracts live in `@devdigest/shared` (`vendor/shared/contracts/platform.ts:254`
   `null` when the file cannot be read. `used_by` counts distinct agents, through
   a direct attachment or through an enabled skill link (`repository.ts` `usedByPairs`,
   `helpers.ts` `countUsedBy`).
+
+## Authoring under `.devdigest/specs/`
+
+The Project Context page can create, upload, edit and delete Markdown under
+`<clone>/.devdigest/specs/`. These files exist **only in the local clone's working
+tree**: nothing is stored in Postgres, committed or pushed, and they never enter a
+PR diff (diffs are commit to commit) or the repo-intel index. A run reads them
+through the same `readDoc` as any other clone Markdown, so the next run injects the
+saved text, or skips a deleted file; a run already in progress keeps what it read.
+
+**Version token.** `SpecFile.version` is the SHA-256 hex of the file's **full** bytes
+on disk (`readDoc` hashes before truncation). Save and delete send the version they
+loaded; a mismatch is **409** with `error.code === 'version_conflict'` and
+`error.details = { reason: 'changed' | 'deleted', current_version }`
+(`current_version` is `null` after a delete). Overwrite is a client-side retry with
+`current_version`; `null` recreates a deleted file. A clone-less repo gets **409**
+`repo_not_cloned` on every write, and nothing is touched.
+
+| Guard | Rule | Where |
+|---|---|---|
+| Root | A write path must start with exactly `.devdigest/specs/` (anchored, case-sensitive) and end in `.md`; absolute, `..` and empty segments are 422 naming `path` | `helpers.ts` `isUnderSpecsRoot`, `specsPathRule` |
+| Names | 1–255 UTF-8 bytes; no `< > : " /  | ? *` or U+0000–U+001F; no trailing dot or space; no reserved device name (`CON`, `PRN`, `AUX`, `NUL`, `COM1`–`COM9`, `LPT1`–`LPT9`, compared on the part before the first `.`); a file name ends in `.md` | `helpers.ts` `entryNameRule` |
+| Layout | `.devdigest`, `.devdigest/specs` and every folder below must be real directories (`lstat`, no symlink or junction); the clone root itself may be reached through a junction (both sides are `realpath`ed once) | `repository-writes.ts` `checkLayout` |
+| Tracked | A file tracked at `HEAD` (`GitClient.listTracked`, `git ls-tree`) is read-only. **Fails closed**: if git throws, every root file is treated as tracked and creates are refused | `service.ts` |
+| Size / encoding | At most **65,536** bytes, valid UTF-8, no NUL. Save is measured **after** CRLF→LF and written with LF; an upload is written unchanged | `helpers.ts` `contentRule`, `uploadBytesRule` |
+| Atomic write | Temp file `.<base>.<random>.tmp` then `rename`; creates use `wx`/non-recursive `mkdir` so a name is never overwritten | `repository-writes.ts` |
+| Lock | One in-process lock per repo serialises writes; two simultaneous creates yield two distinct files | `service.ts` |
+| Pruning | Delete `rmdir`s every now-empty parent, never `.devdigest/specs` itself | `repository-writes.ts` `removeAndPrune` |
+
+A listing row also carries `version`, `editable` and `read_only_reason`
+(`outside_root` > `tracked` > `too_large`). A rule failure is 422 with
+`details = { field, rule }`.
+
+**Root exception to the listing check.** `GET /repos/:id/context/file` and the attach
+`PUT`s accept a path under `.devdigest/specs/` that exists on disk even when it is
+not among the 500 listed rows; every other path must still be in the current listing.
+The picker has no matching exception: an attached root file past the cap shows as
+"missing" there and is left out of its token total, yet a run injects it. It is rare
+because `.devdigest/` sorts near the top.
+
+**Write log.** Each write request logs exactly one
+`project-context write` line with `repoId`, `path`, `bytes` and `outcome`
+(`created`, `uploaded`, `saved`, `deleted`, `conflict` for a version conflict, otherwise
+`rejected`); the content is never logged.
+
+**Known limitation.** If the upstream repository later commits a file at an authored
+path, the next resync (`reset --hard`) replaces the local copy. This is not detected;
+the page says so in a note.
 
 ## Data model
 
@@ -163,13 +216,14 @@ adapter falls back to `ceil(chars / 4)` for the rest of the process.
 
 | File | Role |
 |---|---|
-| `routes.ts` | the six routes |
-| `service.ts` | `ProjectContextService` — listing, validation, `resolveForRun` |
+| `routes.ts` | the ten routes and the write log hook |
+| `service.ts` | `ProjectContextService` — listing, validation, writes, `resolveForRun` |
 | `types.ts` | `ProjectContextPort` (what the container exposes), `ProjectContextStore`, `ProjectContextDeps` |
 | `repository.ts` | Drizzle persistence, workspace-scoped lookups, `usedByPairs` |
-| `repository-files.ts` | the clone reader and its guards |
-| `helpers.ts` | `kindForPath`, `orderForInjection`, `countUsedBy`, `newPaths` — pure |
-| `constants.ts` | `MAX_CONTEXT_FILES`, `MAX_DOC_BYTES`, excluded dirs, truncation marker |
+| `repository-files.ts` | the clone reader and its guards; `readDoc` also returns the version |
+| `repository-writes.ts` | ring-3 writer: layout check, exclusive create, atomic replace, remove and prune |
+| `helpers.ts` | `kindForPath`, `orderForInjection`, `countUsedBy`, `newPaths`, and the pure write rules (root predicate, name and content rules, `nextFreeName`, `readOnlyReason`) |
+| `constants.ts` | `MAX_CONTEXT_FILES`, `MAX_DOC_BYTES`, excluded dirs, truncation marker, `SPECS_ROOT`, name limit and file templates |
 
 The client side — the Project Context page and the Context tabs — is described in
 `client/README.md`.

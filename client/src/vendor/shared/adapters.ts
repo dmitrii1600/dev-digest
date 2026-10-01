@@ -240,6 +240,14 @@ export interface GitClient {
   log(repo: RepoRef, path?: string): Promise<GitCommit[]>;
   readFile(repo: RepoRef, path: string): Promise<string>;
   clonePathFor(repo: RepoRef): string;
+  /**
+   * Repo-relative POSIX paths tracked at HEAD under `underDir`
+   * (`git ls-tree -r -z --name-only HEAD -- <underDir>`). Takes the absolute
+   * clone path from the DB, not a `RepoRef` (`clonePathFor` can differ from
+   * `repos.clone_path`). Throws when `clonePath` has no `.git` entry of its own
+   * or git fails, so a caller can fail closed.
+   */
+  listTracked(clonePath: string, underDir: string): Promise<string[]>;
 }
 
 // ---------- CodeIndex (ripgrep + tree-sitter) ----------

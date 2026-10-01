@@ -56,6 +56,10 @@ append-only. Empty sections are expected — append under the one that fits.
   a failure is never cached (`scripts/verify.mjs:218`). Measured on
   `reviewer-core` + `mcp`: 6 commands, second run 6 cached, output 8 lines
   instead of the full vitest listing.
+- 2026-10-01 — When a `/run-plan` agent call is interrupted and its outcome is unknown, list what moved
+  before you relaunch: `find <pkg dirs> -newer .devdigest/sdd/<stem>/<last report>`. The interrupted
+  test-writer had already edited two test files. Relaunching it with "read these first, keep the sound
+  additions, finish what is half-written" gave no duplicate cases and lost no work.
 
 ## What Doesn't Work
 
@@ -216,6 +220,15 @@ append-only. Empty sections are expected — append under the one that fits.
   binary directly (`node node_modules/vitest/vitest.mjs run <file>`), never
   `pnpm exec` or `pnpm run` there; the lock-file was untouched, so
   `pnpm install --frozen-lockfile` in `server/` restored the tree.
+- 2026-10-01 — Do not check "this change did not touch X" with `git diff --stat main -- X`. On a branch
+  that already carries earlier feature commits, it lists their files: 5 `reviewer-core` files from
+  `67bb193`/`fb83008` turned the project-context-authoring NFR-5 row PARTIAL. For uncommitted work,
+  diff against `HEAD`; otherwise diff against the plan's recorded base commit.
+- 2026-10-01 — A raw `diff` is the wrong check for "the vendored `@devdigest/shared` copies are
+  byte-identical". With `core.autocrlf=true` the working-tree EOL differs per file: server
+  `platform.ts` is `w/crlf`, client `w/lf`, both `i/lf`. A raw `diff` printed 776 lines on identical
+  content, and two verify passes held the rows PARTIAL. Use `diff --strip-trailing-cr` or compare
+  `git ls-files --eol`.
 
 ## Codebase Patterns
 

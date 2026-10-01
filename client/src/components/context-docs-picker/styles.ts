@@ -35,7 +35,15 @@ export const s = {
   kindBadge: { textTransform: "capitalize" } satisfies CSSProperties,
   footer: { marginTop: 16, display: "flex", flexDirection: "column", gap: 8 } satisfies CSSProperties,
   note: { fontSize: 12, color: "var(--text-muted)", margin: 0 } satisfies CSSProperties,
-  tokens: { fontSize: 13, fontWeight: 600 } satisfies CSSProperties,
-  modalBody: { padding: 24 } satisfies CSSProperties,
-  modalPath: { fontSize: 14, fontWeight: 700, margin: "0 0 12px", wordBreak: "break-all" } satisfies CSSProperties,
+  tokens: (over: boolean): CSSProperties => ({
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    fontSize: 13,
+    fontWeight: 600,
+    ...(over ? { color: "var(--crit)" } : {}),
+  }),
+  rowTokens: { fontSize: 12, color: "var(--text-muted)", whiteSpace: "nowrap" } satisfies CSSProperties,
+  drawerPath: { fontSize: 14, fontWeight: 700, wordBreak: "break-all" } satisfies CSSProperties,
+  drawerMeta: { display: "inline-flex", alignItems: "center", gap: 12 } satisfies CSSProperties,
 } as const;

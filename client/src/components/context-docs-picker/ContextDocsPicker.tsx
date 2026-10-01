@@ -9,8 +9,8 @@ import React from "react";
 import { useTranslations } from "next-intl";
 import { Badge, Button, Checkbox, EmptyState, ErrorState, Skeleton, TextInput } from "@devdigest/ui";
 import type { ContextFileList } from "@devdigest/shared";
-import { DocPreviewModal } from "./DocPreviewModal";
-import { estimateTokens, filterDocs, mergeDocRows, moveRow } from "./helpers";
+import { DocPreviewDrawer, TokenCount } from "./DocPreviewDrawer";
+import { estimateTokens, filterDocs, isOverSoftCap, mergeDocRows, moveRow } from "./helpers";
 import { s } from "./styles";
 
 const DRAG_HANDLE_GLYPH = "≡";
@@ -19,6 +19,8 @@ export interface ContextListState {
   isLoading: boolean;
   isError: boolean;
   onRetry: () => void;
+  /** Refetch the listing; the empty state's Refresh action calls it. */
+  onRefresh: () => void;
 }
 
 export function ContextDocsPicker({
@@ -38,6 +40,7 @@ export function ContextDocsPicker({
   const [filter, setFilter] = React.useState("");
   const [previewPath, setPreviewPath] = React.useState<string | null>(null);
   const dragIndex = React.useRef<number | null>(null);
+  const wrapRef = React.useRef<HTMLDivElement>(null);
 
   if (!repoId) {
     return <EmptyState icon="Folder" title={t("picker.title")} body={t("picker.noRepo")} />;
@@ -59,12 +62,22 @@ export function ContextDocsPicker({
     return <EmptyState icon="Folder" title={t("notCloned.title")} body={t("notCloned.body")} />;
   }
   if (list.files.length === 0) {
-    return <EmptyState icon="FileText" title={t("noFiles.title")} body={t("noFiles.body")} />;
+    return (
+      <EmptyState
+        icon="FileText"
+        title={t("picker.noDocs.title")}
+        body={t("picker.noDocs.body")}
+        cta={t("picker.noDocs.cta")}
+        onCta={listState.onRefresh}
+      />
+    );
   }
 
   const rows = mergeDocRows(list.files, attached);
   const visible = filterDocs(rows, filter);
   const tokens = estimateTokens(rows);
+  const overCap = isOverSoftCap(tokens);
+  const previewRow = previewPath ? rows.find((r) => r.path === previewPath) : undefined;
 
   // Attached rows lead `rows`, so a row's index there is its index in `attached`.
   const reorder = (from: number, to: number) => {
@@ -74,8 +87,18 @@ export function ContextDocsPicker({
   const toggle = (path: string, next: boolean) =>
     onChange(next ? [...attached.filter((p) => p !== path), path] : attached.filter((p) => p !== path));
 
+  // The drawer unmounts on close; the Preview button that opened it is still in
+  // the list, so focus goes back there.
+  const closePreview = () => {
+    const path = previewPath;
+    setPreviewPath(null);
+    if (path) {
+      wrapRef.current?.querySelector<HTMLElement>(`[data-preview-path="${CSS.escape(path)}"]`)?.focus();
+    }
+  };
+
   return (
-    <div style={s.wrap}>
+    <div style={s.wrap} ref={wrapRef}>
       <div style={s.header}>
         <h2 style={s.h2}>{t("picker.title")}</h2>
         <Badge color="var(--text-secondary)">
@@ -141,10 +164,12 @@ export function ContextDocsPicker({
               <Badge color="var(--text-secondary)" style={s.kindBadge}>
                 {t(`kind.${row.kind}`)}
               </Badge>
+              {!row.missing && <TokenCount tokens={row.tokens} />}
               {!row.missing && (
                 <Button
                   kind="secondary"
                   size="sm"
+                  data-preview-path={row.path}
                   aria-label={t("picker.previewFile", { path: row.path })}
                   onClick={() => setPreviewPath(row.path)}
                 >
@@ -156,10 +181,15 @@ export function ContextDocsPicker({
         })}
       </div>
       <div style={s.footer}>
-        {attached.length > 0 && <div style={s.tokens}>{t("picker.tokens", { tokens })}</div>}
+        {attached.length > 0 && (
+          <div style={s.tokens(overCap)}>
+            <span>{t("picker.tokens", { tokens })}</span>
+            {overCap && <Badge color="var(--crit)">{t("picker.overCap")}</Badge>}
+          </div>
+        )}
         <p style={s.note}>{t("picker.untrustedNote")}</p>
       </div>
-      {previewPath && <DocPreviewModal repoId={repoId} path={previewPath} onClose={() => setPreviewPath(null)} />}
+      {previewRow && <DocPreviewDrawer repoId={repoId} row={previewRow} onToggle={toggle} onClose={closePreview} />}
     </div>
   );
 }

@@ -108,7 +108,7 @@ flowchart TB
   end
   subgraph Intel["Repo intelligence"]
     repoIntel["repo-intel<br/>/repos/:id/index-state · /resync"]
-    projectContext["project-context<br/>/repos/:id/context(/file) · /agents/:id/context · /skills/:id/context"]
+    projectContext["project-context<br/>/repos/:id/context(/file) · POST /repos/:id/context/files · /context/upload · PUT·DELETE /repos/:id/context/file · /agents/:id/context · /skills/:id/context"]
     blast["blast<br/>/pulls/:id/blast-radius · /pulls/:id/history"]
     onboarding["onboarding<br/>/repos/:id/onboarding · /repos/:id/onboarding/generate"]
   end

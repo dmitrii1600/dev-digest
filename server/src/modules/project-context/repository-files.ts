@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { readdir, readFile, realpath, stat } from 'node:fs/promises';
 import { join, relative, resolve, sep } from 'node:path';
 import type { Dirent } from 'node:fs';
@@ -26,6 +27,8 @@ export interface MarkdownListing {
 export interface ReadDoc {
   text: string;
   truncated: boolean;
+  /** SHA-256 hex of the FULL on-disk bytes (before truncation); runs ignore it. */
+  version: string;
 }
 
 const EXCLUDED = new Set<string>(CONTEXT_EXCLUDED_DIRS);
@@ -90,13 +93,14 @@ export async function readDoc(clonePath: string, relPath: string): Promise<ReadD
     const st = await stat(realFull);
     if (!st.isFile()) return null;
     const buf = await readFile(realFull);
+    const version = createHash('sha256').update(buf).digest('hex');
     if (buf.subarray(0, 1024).includes(0)) return null;
 
-    if (buf.length <= MAX_DOC_BYTES) return { text: buf.toString('utf8'), truncated: false };
+    if (buf.length <= MAX_DOC_BYTES) return { text: buf.toString('utf8'), truncated: false, version };
     let text = buf.subarray(0, MAX_DOC_BYTES).toString('utf8');
     // A split multi-byte sequence decodes to U+FFFD at the tail — trim it.
     while (text.endsWith('�')) text = text.slice(0, -1);
-    return { text: text + TRUNCATION_MARKER, truncated: true };
+    return { text: text + TRUNCATION_MARKER, truncated: true, version };
   } catch {
     return null;
   }

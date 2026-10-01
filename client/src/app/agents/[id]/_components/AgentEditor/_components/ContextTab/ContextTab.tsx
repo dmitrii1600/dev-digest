@@ -24,6 +24,7 @@ export function ContextTab({ agentId }: { agentId: string }) {
           void list.refetch();
           void attached.refetch();
         },
+        onRefresh: () => void list.refetch(),
       }}
       attached={attached.data?.paths ?? []}
       onChange={(paths) => set.mutate({ paths })}

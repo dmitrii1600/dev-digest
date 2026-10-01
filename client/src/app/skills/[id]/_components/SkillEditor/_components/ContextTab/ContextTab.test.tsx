@@ -6,6 +6,7 @@ import messages from "../../../../../../../../messages/en/context.json";
 const mutate = vi.fn();
 let repoId: string | null = "r1";
 let attachedError = false;
+let attachedPaths = ["specs/a.md", "INSIGHTS.md"];
 vi.mock("@/providers/repo-context", () => ({ useActiveRepo: () => ({ repoId }) }));
 vi.mock("@/lib/hooks/project-context", () => ({
   useContextFiles: () => ({
@@ -22,7 +23,7 @@ vi.mock("@/lib/hooks/project-context", () => ({
     isError: false,
     refetch: vi.fn(),
   }),
-  useSkillContext: () => ({ data: { repo_id: "r1", paths: ["specs/a.md", "INSIGHTS.md"] }, isLoading: false, isError: attachedError, refetch: vi.fn() }),
+  useSkillContext: () => ({ data: { repo_id: "r1", paths: attachedPaths }, isLoading: false, isError: attachedError, refetch: vi.fn() }),
   useSetSkillContext: () => ({ mutate }),
   useContextFile: () => ({ data: undefined, isLoading: true, isError: false, refetch: vi.fn() }),
 }));
@@ -34,6 +35,7 @@ afterEach(() => {
   mutate.mockClear();
   repoId = "r1";
   attachedError = false;
+  attachedPaths = ["specs/a.md", "INSIGHTS.md"];
 });
 
 describe("Skill ContextTab", () => {
@@ -45,9 +47,22 @@ describe("Skill ContextTab", () => {
     );
     expect(screen.getByText("Any agent using this skill inherits these documents.")).toBeInTheDocument();
     expect(screen.getByText("SERIALIZES AS")).toBeInTheDocument();
-    expect(screen.getByTestId("serializes-as").textContent).toBe("specs/a.md\nINSIGHTS.md");
+    expect(screen.getByTestId("serializes-as").textContent).toBe(
+      "## Project context\n- [specs] specs/a.md\n- [insights] INSIGHTS.md",
+    );
     fireEvent.click(screen.getByRole("checkbox", { name: /docs\/b\.md/ }));
     expect(mutate).toHaveBeenCalledWith({ paths: ["specs/a.md", "INSIGHTS.md", "docs/b.md"] });
+  });
+
+  it("leaves an unlisted attached path out of SERIALIZES AS while the picker still shows it as missing", () => {
+    attachedPaths = ["gone.md", "specs/a.md"];
+    render(
+      <NextIntlClientProvider locale="en" messages={{ context: messages }}>
+        <ContextTab skillId="s1" />
+      </NextIntlClientProvider>,
+    );
+    expect(screen.getByTestId("serializes-as").textContent).toBe("## Project context\n- [specs] specs/a.md");
+    expect(screen.getByText("missing")).toBeInTheDocument();
   });
 
   it("renders the no-repo empty state when no repository is active", () => {

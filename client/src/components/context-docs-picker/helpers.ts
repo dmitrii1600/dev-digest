@@ -1,10 +1,14 @@
 import type { ContextDocKind, SpecFile } from "@devdigest/shared";
+import { SOFT_CAP_TOKENS } from "./constants";
 
 /** One row in the picker: a listed file, or an attached path the clone lost. */
 export interface DocRow {
   path: string;
   kind: ContextDocKind;
-  tokens: number;
+  /** `null` when the listing carries no count; rendered "—", never 0. */
+  tokens: number | null;
+  /** Agents using this document, from the listing. */
+  usedBy: number;
   attached: boolean;
   missing: boolean;
 }
@@ -16,7 +20,14 @@ export function mergeDocRows(files: readonly SpecFile[], attached: readonly stri
   const attachedSet = new Set(attached);
   const head = attached.map((path): DocRow => {
     const f = byPath.get(path);
-    return { path, kind: f?.kind ?? "other", tokens: f?.tokens ?? 0, attached: true, missing: !f };
+    return {
+      path,
+      kind: f?.kind ?? "other",
+      tokens: f?.tokens ?? null,
+      usedBy: f?.used_by ?? 0,
+      attached: true,
+      missing: !f,
+    };
   });
   const tail = files
     .filter((f) => !attachedSet.has(f.path))
@@ -26,7 +37,8 @@ export function mergeDocRows(files: readonly SpecFile[], attached: readonly stri
       (f): DocRow => ({
         path: f.path,
         kind: f.kind ?? "other",
-        tokens: f.tokens ?? 0,
+        tokens: f.tokens ?? null,
+        usedBy: f.used_by ?? 0,
         attached: false,
         missing: false,
       }),
@@ -50,7 +62,13 @@ export function moveRow<T>(rows: readonly T[], from: number, to: number): T[] {
   return next;
 }
 
-/** Sum of tokens over attached rows that still exist in the clone. */
+/** Sum of tokens over attached rows that still exist in the clone. A row with
+    an unknown (`null`) count is left out of the total. */
 export function estimateTokens(rows: readonly DocRow[]): number {
-  return rows.reduce((sum, r) => (r.attached && !r.missing ? sum + r.tokens : sum), 0);
+  return rows.reduce((sum, r) => (r.attached && !r.missing && r.tokens !== null ? sum + r.tokens : sum), 0);
+}
+
+/** True when the attached total passes the 4K soft cap. Exactly 4,000 does not. */
+export function isOverSoftCap(total: number): boolean {
+  return total > SOFT_CAP_TOKENS;
 }

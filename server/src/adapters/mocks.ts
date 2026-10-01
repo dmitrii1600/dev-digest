@@ -275,6 +275,8 @@ export interface MockGitOptions {
   head?: string;
   /** Head `currentHead()` returns AFTER `sync()` runs — simulates fetch+reset advancing HEAD. */
   syncedHead?: string;
+  /** Paths `listTracked` reports as tracked; `'fail'` makes it throw (fail-closed tests). */
+  tracked?: string[] | 'fail';
 }
 
 export class MockGitClient implements GitClient {
@@ -318,6 +320,11 @@ export class MockGitClient implements GitClient {
   }
   async readFile(_repo: RepoRef, path: string): Promise<string> {
     return this.opts.files?.[path] ?? '';
+  }
+  async listTracked(_clonePath: string, underDir: string): Promise<string[]> {
+    if (this.opts.tracked === 'fail') throw new Error('mock git: listTracked failed');
+    const prefix = underDir.endsWith('/') ? underDir : `${underDir}/`;
+    return (this.opts.tracked ?? []).filter((p) => p.startsWith(prefix));
   }
 }
 

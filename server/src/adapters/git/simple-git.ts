@@ -129,6 +129,27 @@ export class SimpleGitClient implements GitClient {
   async readFile(repo: RepoRef, path: string): Promise<string> {
     return readFile(join(this.clonePathFor(repo), path), 'utf8');
   }
+
+  /**
+   * Paths tracked at HEAD under `underDir`. Read-only (`ls-tree`). Asserts the
+   * clone has its OWN `.git` first: otherwise git would walk up into an
+   * enclosing repo and return nothing, silently failing open.
+   */
+  async listTracked(clonePath: string, underDir: string): Promise<string[]> {
+    if (!(await this.exists(join(clonePath, '.git')))) {
+      throw new Error(`not a git clone: ${clonePath}`);
+    }
+    const raw = await simpleGit(clonePath).raw([
+      'ls-tree',
+      '-r',
+      '-z',
+      '--name-only',
+      'HEAD',
+      '--',
+      underDir,
+    ]);
+    return raw.split('\0').filter((s) => s.length > 0);
+  }
 }
 
 function parseBlamePorcelain(raw: string): BlameLine[] {

@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { mkdtemp, mkdir, rm, writeFile, unlink } from 'node:fs/promises';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
+import { mkdtemp, mkdir, rm, writeFile, unlink, readFile, readdir, stat, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { eq } from 'drizzle-orm';
@@ -17,7 +17,10 @@ import type { Review } from '@devdigest/shared';
 /**
  * Project Context — routes and run-time injection end to end against real
  * Postgres, a temp clone on disk, and a mocked model (never called by the
- * list / file / PUT routes).
+ * list / file / PUT routes). The "authoring" block at the end drives the write
+ * routes (create / upload / save / delete) over HTTP: name suffixing, layout
+ * refusal, byte rules, version conflicts, the NFR-9 log line and the NFR-2
+ * "only paths in Postgres" pin for both agent and skill attachments.
  */
 
 const hasDocker = await dockerAvailable();
@@ -439,6 +442,383 @@ d('Project Context module (Testcontainers pg)', () => {
     const trace = await runReview(app, pr.id, agent.id);
     expect(calls).toBe(1);
     expect(trace.specs_read).toEqual(['docs/a.md']);
+    await app.close();
+  });
+
+  // ------------------------------------------------------------ authoring
+  const SPECS = '.devdigest/specs';
+  type TestApp = Awaited<ReturnType<typeof makeApp>>['app'];
+
+  const create = (app: TestApp, repoId: string, payload: unknown) =>
+    app.inject({ method: 'POST', url: `/repos/${repoId}/context/files`, payload: payload as object });
+  const upload = (app: TestApp, repoId: string, payload: unknown) =>
+    app.inject({ method: 'POST', url: `/repos/${repoId}/context/upload`, payload: payload as object });
+  const save = (app: TestApp, repoId: string, payload: unknown) =>
+    app.inject({ method: 'PUT', url: `/repos/${repoId}/context/file`, payload: payload as object });
+  const del = (app: TestApp, repoId: string, path: string, version: string) =>
+    app.inject({
+      method: 'DELETE',
+      url: `/repos/${repoId}/context/file?path=${encodeURIComponent(path)}&version=${version}`,
+    });
+  const onDisk = (clone: string, rel: string) => readFile(join(clone, ...rel.split('/')), 'utf8');
+  const fileExists = (clone: string, rel: string) =>
+    stat(join(clone, ...rel.split('/'))).then(
+      () => true,
+      () => false,
+    );
+
+  it('EC-1: every write to a repo without a clone is 409 repo_not_cloned; unknown or foreign repo is 404', async () => {
+    const repo = await newRepo(null);
+    const { app } = await makeApp();
+    const bodies = [
+      await create(app, repo.id, { kind: 'file', name: 'a.md' }),
+      await upload(app, repo.id, { name: 'a.md', content_base64: '' }),
+      await save(app, repo.id, { path: `${SPECS}/a.md`, content: 'x', version: null }),
+      await del(app, repo.id, `${SPECS}/a.md`, 'a'.repeat(64)),
+    ];
+    for (const res of bodies) {
+      expect(res.statusCode).toBe(409);
+      expect(res.json().error.code).toBe('repo_not_cloned');
+    }
+
+    expect((await create(app, GHOST, { kind: 'file', name: 'a.md' })).statusCode).toBe(404);
+    const [otherWs] = await pg.handle.db.insert(t.workspaces).values({ name: 'other' }).returning();
+    const [foreign] = await pg.handle.db
+      .insert(t.repos)
+      .values({
+        workspaceId: otherWs!.id,
+        owner: 'x',
+        name: `pc-foreign-${seq++}`,
+        fullName: `x/pc-foreign-${seq}`,
+        clonePath: await makeClone({}),
+      })
+      .returning();
+    expect((await create(app, foreign!.id, { kind: 'file', name: 'a.md' })).statusCode).toBe(404);
+    await app.close();
+  });
+
+  it('untrusted shapes: an extra key, a malformed version and bad base64 are 422', async () => {
+    const clone = await makeClone({});
+    const repo = await newRepo(clone);
+    const { app } = await makeApp();
+    expect((await create(app, repo.id, { kind: 'file', name: 'a.md', extra: 1 })).statusCode).toBe(422);
+    expect((await create(app, repo.id, { kind: 'symlink', name: 'a.md' })).statusCode).toBe(422);
+    expect(
+      (await save(app, repo.id, { path: `${SPECS}/a.md`, content: 'x', version: 'not-a-hash' })).statusCode,
+    ).toBe(422);
+    expect((await upload(app, repo.id, { name: 'a.md', content_base64: 'ab!d' })).statusCode).toBe(422);
+    expect((await del(app, repo.id, `${SPECS}/a.md`, 'nope')).statusCode).toBe(422);
+    expect(await fileExists(clone, '.devdigest')).toBe(false);
+    await app.close();
+  });
+
+  it('AC-2 / AC-3: create file, create folder and upload land on disk with the exact bytes', async () => {
+    const clone = await makeClone({});
+    const repo = await newRepo(clone);
+    const { app } = await makeApp();
+
+    const f = await create(app, repo.id, { kind: 'file', name: 'untitled.md' });
+    expect(f.statusCode).toBe(201);
+    expect(f.json().path).toBe(`${SPECS}/untitled.md`);
+    expect(await onDisk(clone, `${SPECS}/untitled.md`)).toBe('# Untitled spec\n\n## Goals\n- ');
+
+    const d = await create(app, repo.id, { kind: 'folder', name: 'new-folder' });
+    expect(d.statusCode).toBe(201);
+    expect(d.json().path).toBe(`${SPECS}/new-folder/spec.md`);
+    expect(await onDisk(clone, `${SPECS}/new-folder/spec.md`)).toBe('# New folder spec\n');
+
+    const bytes = Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from('# T\r\nbody\r\n')]);
+    const u = await upload(app, repo.id, { name: 'prd.md', content_base64: bytes.toString('base64') });
+    expect(u.statusCode).toBe(201);
+    const raw = await readFile(join(clone, '.devdigest', 'specs', 'prd.md'));
+    expect(raw.equals(bytes)).toBe(true);
+    await app.close();
+  });
+
+  it('AC-8: save changes size and tokens in the listing; EC-6: a stale PUT is 409 changed', async () => {
+    const clone = await makeClone({});
+    const repo = await newRepo(clone);
+    const { app } = await makeApp();
+    const made = (await create(app, repo.id, { kind: 'file', name: 'a.md' })).json();
+    const before = (await app.inject({ method: 'GET', url: `/repos/${repo.id}/context` })).json();
+    const rowBefore = before.files.find((f: { path: string }) => f.path === made.path);
+
+    const body = 'line one\r\nline two with a good many more words in it\r\n';
+    const ok = await save(app, repo.id, { path: made.path, content: body, version: made.version });
+    expect(ok.statusCode).toBe(200);
+    expect(await onDisk(clone, made.path)).toBe(body.replaceAll('\r\n', '\n'));
+
+    const after = (await app.inject({ method: 'GET', url: `/repos/${repo.id}/context` })).json();
+    const rowAfter = after.files.find((f: { path: string }) => f.path === made.path);
+    expect(rowAfter.size).toBe(Buffer.byteLength(body.replaceAll('\r\n', '\n')));
+    expect(rowAfter.tokens).not.toBe(rowBefore.tokens);
+    expect(rowAfter.version).toBe(ok.json().version);
+    expect(rowAfter).toMatchObject({ editable: true, read_only_reason: null });
+
+    const stale = await save(app, repo.id, { path: made.path, content: 'other', version: made.version });
+    expect(stale.statusCode).toBe(409);
+    expect(stale.json().error.code).toBe('version_conflict');
+    expect(stale.json().error.details.reason).toBe('changed');
+    expect(stale.json().error.details.current_version).toBe(ok.json().version);
+    await app.close();
+  });
+
+  it('AC-10: delete is 204, prunes empty folders and drops the row', async () => {
+    const clone = await makeClone({});
+    const repo = await newRepo(clone);
+    const { app } = await makeApp();
+    const made = (await create(app, repo.id, { kind: 'folder', name: 'sub' })).json();
+    const res = await del(app, repo.id, made.path, made.version);
+    expect(res.statusCode).toBe(204);
+    expect(res.body).toBe('');
+    expect(await fileExists(clone, `${SPECS}/sub`)).toBe(false);
+    expect(await fileExists(clone, SPECS)).toBe(true);
+    const list = (await app.inject({ method: 'GET', url: `/repos/${repo.id}/context` })).json();
+    expect(list.files.map((f: { path: string }) => f.path)).not.toContain(made.path);
+    await app.close();
+  });
+
+  it('EC-10: a tracked root file is read-only in the listing and PUT is 422', async () => {
+    const clone = await makeClone({ [`${SPECS}/t.md`]: 'tracked text', [`${SPECS}/free.md`]: 'free' });
+    const repo = await newRepo(clone);
+    const { app } = await makeApp({
+      git: new MockGitClient({ diff: diffFor(['src/a.ts']), tracked: [`${SPECS}/t.md`] }),
+    });
+    const list = (await app.inject({ method: 'GET', url: `/repos/${repo.id}/context` })).json();
+    const row = list.files.find((f: { path: string }) => f.path === `${SPECS}/t.md`);
+    expect(row).toMatchObject({ editable: false, read_only_reason: 'tracked' });
+    expect(list.files.find((f: { path: string }) => f.path === `${SPECS}/free.md`).editable).toBe(true);
+
+    const res = await save(app, repo.id, { path: `${SPECS}/t.md`, content: 'x', version: row.version });
+    expect(res.statusCode).toBe(422);
+    expect(await onDisk(clone, `${SPECS}/t.md`)).toBe('tracked text');
+    await app.close();
+  });
+
+  it('EC-11: a root file past the 500-row cap is readable, savable and attachable', async () => {
+    const files: Record<string, string> = {};
+    for (let i = 0; i < 500; i++) files[`!f-${String(i).padStart(3, '0')}.md`] = 'x';
+    const clone = await makeClone(files);
+    const repo = await newRepo(clone);
+    const agent = await newAgent();
+    const { app } = await makeApp();
+
+    const made = (await create(app, repo.id, { kind: 'file', name: 'untitled.md' })).json();
+    const list = (await app.inject({ method: 'GET', url: `/repos/${repo.id}/context` })).json();
+    expect(list.files).toHaveLength(500);
+    expect(list.total).toBe(501);
+    expect(list.files.map((f: { path: string }) => f.path)).not.toContain(made.path);
+
+    const one = await app.inject({
+      method: 'GET',
+      url: `/repos/${repo.id}/context/file?path=${encodeURIComponent(made.path)}`,
+    });
+    expect(one.statusCode).toBe(200);
+    expect(one.json().editable).toBe(true);
+
+    const saved = await save(app, repo.id, { path: made.path, content: '# kept', version: one.json().version });
+    expect(saved.statusCode).toBe(200);
+    expect((await put(app, 'agents', agent.id, repo.id, [made.path])).statusCode).toBe(200);
+    await app.close();
+  });
+
+  it('EC-12: the next run injects the saved text, then skips a deleted document', async () => {
+    const clone = await makeClone({});
+    const repo = await newRepo(clone);
+    const agent = await newAgent();
+    const { app } = await makeApp();
+    const made = (await create(app, repo.id, { kind: 'file', name: 'spec.md' })).json();
+    expect((await put(app, 'agents', agent.id, repo.id, [made.path])).statusCode).toBe(200);
+    const saved = await save(app, repo.id, {
+      path: made.path,
+      content: '# Fresh text from the author',
+      version: made.version,
+    });
+    expect(saved.statusCode).toBe(200);
+
+    const trace1 = await runReview(app, (await newPr(repo.id, ['src/a.ts'])).id, agent.id);
+    expect(trace1.specs_read).toEqual([made.path]);
+    expect(trace1.prompt_assembly.specs).toContain('# Fresh text from the author');
+
+    expect((await del(app, repo.id, made.path, saved.json().version)).statusCode).toBe(204);
+    const trace2 = await runReview(app, (await newPr(repo.id, ['src/a.ts'])).id, agent.id);
+    expect(trace2.specs_read).toEqual([]);
+    expect(JSON.stringify(trace2.log)).toContain(made.path);
+    await app.close();
+  });
+
+  it('NFR-2 / NFR-8 / NFR-9: no model call, only paths persisted, one log line per write, never the content', async () => {
+    const clone = await makeClone({});
+    const repo = await newRepo(clone);
+    const agent = await newAgent();
+    const skill = await newSkill();
+    const { app, llm } = await makeApp();
+    const infoSpy = vi.spyOn(app.log, 'info');
+    const writeLines = () =>
+      infoSpy.mock.calls
+        .filter((c) => c[1] === 'project-context write')
+        .map((c) => c[0] as { repoId: string; path: string; bytes: number; outcome: string });
+
+    const SECRET = 'SECRET-BODY-TEXT-12345';
+    const made = (await create(app, repo.id, { kind: 'file', name: 'a.md' })).json();
+    expect(writeLines().map((l) => l.outcome)).toEqual(['created']);
+    await put(app, 'agents', agent.id, repo.id, [made.path]);
+    expect((await put(app, 'skills', skill.id, repo.id, [made.path])).statusCode).toBe(200);
+
+    const ok = await save(app, repo.id, { path: made.path, content: SECRET, version: made.version });
+    expect(ok.statusCode).toBe(200);
+    expect(
+      (await save(app, repo.id, { path: made.path, content: SECRET, version: made.version })).statusCode,
+    ).toBe(409);
+    expect(
+      (await save(app, repo.id, { path: 'docs/a.md', content: SECRET, version: null })).statusCode,
+    ).toBe(422);
+    expect(
+      (await save(app, repo.id, { path: made.path, content: SECRET, version: 'bad' })).statusCode,
+    ).toBe(422);
+    expect((await del(app, repo.id, made.path, ok.json().version)).statusCode).toBe(204);
+
+    const lines = writeLines();
+    expect(lines.map((l) => l.outcome)).toEqual([
+      'created',
+      'saved',
+      'conflict',
+      'rejected',
+      'rejected',
+      'deleted',
+    ]);
+    expect(lines.every((l) => l.repoId === repo.id)).toBe(true);
+    expect(lines[1]).toMatchObject({ path: made.path, bytes: Buffer.byteLength(SECRET) });
+    // Fastify's own request log hands pino the raw request; the assertion is about OUR lines.
+    expect(JSON.stringify(lines)).not.toContain(SECRET);
+
+    const rows = await pg.handle.db
+      .select()
+      .from(t.agentContextDocs)
+      .where(eq(t.agentContextDocs.agentId, agent.id));
+    for (const r of rows) expect(Object.keys(r)).not.toContain('content');
+    expect(JSON.stringify(rows)).not.toContain(SECRET);
+
+    // Same pin for the skill side (20-verify-1 row 76): the table holds the path, never the text.
+    const skillRows = await pg.handle.db
+      .select()
+      .from(t.skillContextDocs)
+      .where(eq(t.skillContextDocs.skillId, skill.id));
+    expect(skillRows).toHaveLength(1);
+    expect(skillRows[0]).toMatchObject({ path: made.path, repoId: repo.id });
+    expect(Object.keys(skillRows[0]!).sort()).toEqual(['createdAt', 'order', 'path', 'repoId', 'skillId']);
+    expect(JSON.stringify(skillRows)).not.toContain(SECRET);
+    expect(llm.calls).toHaveLength(0);
+    await app.close();
+  });
+
+  it('EC-2 / NFR-9: a taken name gets -2, -3 over HTTP and never overwrites; an upload logs "uploaded"', async () => {
+    const clone = await makeClone({ [`${SPECS}/untitled.md`]: 'mine', [`${SPECS}/prd.md`]: 'my prd' });
+    const repo = await newRepo(clone);
+    const { app } = await makeApp();
+    const infoSpy = vi.spyOn(app.log, 'info');
+
+    // Case-insensitive: Untitled.md collides with untitled.md.
+    const a = await create(app, repo.id, { kind: 'file', name: 'Untitled.md' });
+    expect(a.json().path).toBe(`${SPECS}/Untitled-2.md`); // the entered casing is kept
+    const b = await create(app, repo.id, { kind: 'file', name: 'untitled.md' });
+    expect(b.json().path).toBe(`${SPECS}/untitled-3.md`);
+    expect(await onDisk(clone, `${SPECS}/untitled.md`)).toBe('mine');
+
+    const f1 = await create(app, repo.id, { kind: 'folder', name: 'new-folder' });
+    const f2 = await create(app, repo.id, { kind: 'folder', name: 'new-folder' });
+    expect(f1.json().path).toBe(`${SPECS}/new-folder/spec.md`);
+    expect(f2.json().path).toBe(`${SPECS}/new-folder-2/spec.md`);
+
+    const u = await upload(app, repo.id, { name: 'PRD.md', content_base64: Buffer.from('# new').toString('base64') });
+    expect(u.statusCode).toBe(201);
+    expect(u.json().path).toBe(`${SPECS}/PRD-2.md`);
+    expect(await onDisk(clone, `${SPECS}/prd.md`)).toBe('my prd');
+
+    const lines = infoSpy.mock.calls
+      .filter((c) => c[1] === 'project-context write')
+      .map((c) => (c[0] as { outcome: string }).outcome);
+    expect(lines).toEqual(['created', 'created', 'created', 'created', 'uploaded']);
+    await app.close();
+  });
+
+  it('EC-4: a linked .devdigest/specs is refused with 422 over HTTP and the link target is untouched', async () => {
+    const clone = await makeClone({});
+    const outside = await makeClone({ 'keep.md': 'keep' });
+    await mkdir(join(clone, '.devdigest'));
+    await symlink(outside, join(clone, '.devdigest', 'specs'), process.platform === 'win32' ? 'junction' : 'dir');
+    const repo = await newRepo(clone);
+    const { app } = await makeApp();
+
+    const results = [
+      await create(app, repo.id, { kind: 'file', name: 'a.md' }),
+      await create(app, repo.id, { kind: 'folder', name: 'sub' }),
+      await upload(app, repo.id, { name: 'a.md', content_base64: Buffer.from('x').toString('base64') }),
+      await save(app, repo.id, { path: `${SPECS}/a.md`, content: 'x', version: null }),
+    ];
+    for (const res of results) {
+      expect(res.statusCode).toBe(422);
+      expect(res.json().error.code).toBe('validation_error');
+    }
+    expect(await readdir(outside)).toEqual(['keep.md']);
+    expect(await onDisk(outside, 'keep.md')).toBe('keep');
+    await app.close();
+  });
+
+  it('EC-3 / EC-5: a bad name, over-cap bytes, a NUL and invalid UTF-8 are 422 naming the field and write nothing', async () => {
+    const clone = await makeClone({ [`${SPECS}/a.md`]: 'original' });
+    const repo = await newRepo(clone);
+    const { app } = await makeApp();
+    const version = (
+      await app.inject({ method: 'GET', url: `/repos/${repo.id}/context/file?path=${encodeURIComponent(`${SPECS}/a.md`)}` })
+    ).json().version as string;
+    const b64 = (b: Buffer) => b.toString('base64');
+    const field = (res: { json: () => { error: { details: { field: string } } } }) => res.json().error.details.field;
+
+    // 21,846 euro signs: under the contract's 65,536-character cap, over the 65,536-byte cap.
+    const wide = await save(app, repo.id, { path: `${SPECS}/wide.md`, content: '€'.repeat(21_846), version: null });
+    expect(wide.statusCode).toBe(422);
+    expect(field(wide)).toBe('content');
+    const nul = await save(app, repo.id, { path: `${SPECS}/a.md`, content: 'a\u0000b', version });
+    expect(nul.statusCode).toBe(422);
+    expect(field(nul)).toBe('content');
+
+    const big = await upload(app, repo.id, { name: 'big.md', content_base64: b64(Buffer.alloc(65_537, 0x61)) });
+    const badUtf8 = await upload(app, repo.id, { name: 'bad.md', content_base64: b64(Buffer.from([0xc3, 0x28])) });
+    const nulUp = await upload(app, repo.id, { name: 'zero.md', content_base64: b64(Buffer.from('a\u0000b')) });
+    for (const res of [big, badUtf8, nulUp]) {
+      expect(res.statusCode).toBe(422);
+      expect(field(res)).toBe('content');
+    }
+    const reserved = await upload(app, repo.id, { name: 'CON.md', content_base64: b64(Buffer.from('x')) });
+    expect(reserved.statusCode).toBe(422);
+    expect(field(reserved)).toBe('name');
+    expect((await create(app, repo.id, { kind: 'file', name: 'a|b.md' })).statusCode).toBe(422);
+    expect((await save(app, repo.id, { path: `${SPECS}/../x.md`, content: 'x', version: null })).statusCode).toBe(422);
+
+    expect(await readdir(join(clone, '.devdigest', 'specs'))).toEqual(['a.md']);
+    expect(await onDisk(clone, `${SPECS}/a.md`)).toBe('original');
+    await app.close();
+  });
+
+  it('EC-6: a stale DELETE is 409 changed and keeps the file; a SAVE over a file deleted on disk is 409 deleted', async () => {
+    const clone = await makeClone({});
+    const repo = await newRepo(clone);
+    const { app } = await makeApp();
+    const made = (await create(app, repo.id, { kind: 'file', name: 'a.md' })).json();
+    const saved = await save(app, repo.id, { path: made.path, content: 'v2', version: made.version });
+    expect(saved.statusCode).toBe(200);
+
+    const stale = await del(app, repo.id, made.path, made.version);
+    expect(stale.statusCode).toBe(409);
+    expect(stale.json().error.details).toEqual({ reason: 'changed', current_version: saved.json().version });
+    expect(await onDisk(clone, made.path)).toBe('v2');
+
+    await unlink(join(clone, ...made.path.split('/')));
+    const gone = await save(app, repo.id, { path: made.path, content: 'v3', version: saved.json().version });
+    expect(gone.statusCode).toBe(409);
+    expect(gone.json().error.details).toEqual({ reason: 'deleted', current_version: null });
+    expect(await fileExists(clone, made.path)).toBe(false);
     await app.close();
   });
 });

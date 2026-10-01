@@ -6,6 +6,7 @@ import { useTranslations } from "next-intl";
 import { NAV, SETTINGS_ITEM, resolveHref, type Command } from "@devdigest/ui";
 import { useActiveRepo } from "@/providers/repo-context";
 import { useTheme } from "@/providers/theme";
+import { useNavigationGuard } from "@/providers/navigation-guard";
 
 /**
  * Builds the command-palette command set: one "Go to …" command per nav item,
@@ -15,6 +16,7 @@ export function useShellCommands(): Command[] {
   const t = useTranslations("shell");
   const router = useRouter();
   const { repoId } = useActiveRepo();
+  const { confirmLeave } = useNavigationGuard();
   const { theme, toggle } = useTheme();
 
   return React.useMemo<Command[]>(() => {
@@ -24,7 +26,9 @@ export function useShellCommands(): Command[] {
         label: t("commandPalette.goTo", { label: t(`nav.${it.key}`) }),
         group: g.section,
         icon: it.icon,
-        run: () => router.push(resolveHref(it.href, repoId)),
+        run: () => {
+          if (confirmLeave()) router.push(resolveHref(it.href, repoId));
+        },
       }))
     );
     navCmds.push({
@@ -32,7 +36,9 @@ export function useShellCommands(): Command[] {
       label: t("commandPalette.goToSettings"),
       group: t("commandPalette.globalGroup"),
       icon: SETTINGS_ITEM.icon,
-      run: () => router.push(SETTINGS_ITEM.href),
+      run: () => {
+        if (confirmLeave()) router.push(SETTINGS_ITEM.href);
+      },
     });
     navCmds.push({
       id: "toggle-theme",
@@ -44,5 +50,5 @@ export function useShellCommands(): Command[] {
       run: toggle,
     });
     return navCmds;
-  }, [t, router, repoId, theme, toggle]);
+  }, [t, router, repoId, confirmLeave, theme, toggle]);
 }

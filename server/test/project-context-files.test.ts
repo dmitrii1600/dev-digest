@@ -2,8 +2,11 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { mkdtemp, mkdir, writeFile, rm, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { createHash } from 'node:crypto';
 import { listMarkdown, readDoc } from '../src/modules/project-context/repository-files.js';
 import { MAX_DOC_BYTES, TRUNCATION_MARKER } from '../src/modules/project-context/constants.js';
+
+const sha256 = (s: string) => createHash('sha256').update(s).digest('hex');
 
 let root: string;
 let outside: string;
@@ -75,7 +78,11 @@ describe('listMarkdown', () => {
 
 describe('readDoc', () => {
   it('reads a file', async () => {
-    expect(await readDoc(root, 'docs/a.md')).toEqual({ text: 'alpha', truncated: false });
+    expect(await readDoc(root, 'docs/a.md')).toEqual({
+      text: 'alpha',
+      truncated: false,
+      version: sha256('alpha'),
+    });
   });
   it('rejects traversal and absolute paths', async () => {
     expect(await readDoc(root, '../x.md')).toBeNull();
@@ -87,6 +94,10 @@ describe('readDoc', () => {
     expect(r?.truncated).toBe(true);
     expect(r?.text.endsWith(TRUNCATION_MARKER)).toBe(true);
     expect(r?.text.length).toBe(MAX_DOC_BYTES + TRUNCATION_MARKER.length);
+  });
+  it('version is the SHA-256 of the full bytes, not of the truncated text', async () => {
+    const r = await readDoc(root, 'big.md');
+    expect(r?.version).toBe(sha256('a'.repeat(MAX_DOC_BYTES + 100)));
   });
   it('missing file -> null', async () => {
     expect(await readDoc(root, 'nope.md')).toBeNull();

@@ -38,6 +38,7 @@ import type { ProjectContextPort } from '../modules/project-context/types.js';
 import { ProjectContextService } from '../modules/project-context/service.js';
 import { ProjectContextRepository } from '../modules/project-context/repository.js';
 import { listMarkdown, readDoc } from '../modules/project-context/repository-files.js';
+import * as projectContextWrites from '../modules/project-context/repository-writes.js';
 import { resolveFeatureModel } from '../modules/_shared/feature-models.js';
 import { type DepGraph, DepCruiseGraph } from '../adapters/depgraph/index.js';
 import { type Tokenizer, TiktokenTokenizer } from '../adapters/tokenizer/index.js';
@@ -175,6 +176,8 @@ export class Container {
       listMarkdown,
       readDoc,
       countTokens: (s) => this.tokenizer.count(s),
+      writes: projectContextWrites,
+      listTracked: (clonePath, underDir) => this.git.listTracked(clonePath, underDir),
     });
     return this._projectContext;
   }

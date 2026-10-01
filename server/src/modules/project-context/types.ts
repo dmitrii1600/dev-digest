@@ -1,4 +1,12 @@
-import type { ContextAttachments, ContextFileList, SpecFile } from '@devdigest/shared';
+import type {
+  ContextAttachments,
+  ContextFileCreate,
+  ContextFileDeleteQuery,
+  ContextFileList,
+  ContextFileSave,
+  ContextFileUpload,
+  SpecFile,
+} from '@devdigest/shared';
 
 /**
  * The Project Context port — the `IntentPort` precedent. `run-executor.ts`
@@ -20,6 +28,15 @@ export interface ResolvedProjectContext {
 export interface ProjectContextPort {
   list(workspaceId: string, repoId: string): Promise<ContextFileList>;
   file(workspaceId: string, repoId: string, path: string): Promise<SpecFile>;
+  create(workspaceId: string, repoId: string, input: ContextFileCreate): Promise<SpecFile>;
+  upload(workspaceId: string, repoId: string, input: ContextFileUpload): Promise<SpecFile>;
+  save(workspaceId: string, repoId: string, input: ContextFileSave): Promise<SpecFile>;
+  /** Resolves with the removed file's path and size (for the route's log line). */
+  remove(
+    workspaceId: string,
+    repoId: string,
+    input: ContextFileDeleteQuery,
+  ): Promise<{ path: string; bytes: number }>;
   getAgent(workspaceId: string, agentId: string, repoId: string): Promise<ContextAttachments>;
   putAgent(
     workspaceId: string,
@@ -65,6 +82,32 @@ export interface ProjectContextDeps {
     total: number;
     files: { path: string; size: number; mtime: string }[];
   }>;
-  readDoc: (clonePath: string, relPath: string) => Promise<{ text: string; truncated: boolean } | null>;
+  readDoc: (
+    clonePath: string,
+    relPath: string,
+  ) => Promise<{ text: string; truncated: boolean; version: string } | null>;
   countTokens: (text: string) => number;
+  /** The clone writer (`repository-writes.ts`), typed structurally so the service never imports ring 3. */
+  writes: ProjectContextWrites;
+  /** Repo-relative POSIX paths tracked at HEAD under `underDir`; throws when git cannot say. */
+  listTracked: (clonePath: string, underDir: string) => Promise<string[]>;
+}
+
+export type LayoutResult =
+  | { ok: true; abs: string; exists: boolean }
+  | { ok: false; rule: 'layout' };
+
+export interface ProjectContextWrites {
+  resolveRealRoot(clonePath: string): Promise<string | null>;
+  checkDir(realRoot: string, relDir: string, opts: { createDirs: boolean }): Promise<LayoutResult>;
+  checkLayout(realRoot: string, relPath: string, opts: { createDirs: boolean }): Promise<LayoutResult>;
+  readCurrent(
+    abs: string,
+  ): Promise<{ bytes: Uint8Array; version: string; size: number; mtime: string } | null>;
+  listNames(absDir: string): Promise<string[]>;
+  createExclusive(abs: string, bytes: Uint8Array): Promise<void>;
+  mkdirExclusive(abs: string): Promise<void>;
+  replaceAtomic(abs: string, bytes: Uint8Array): Promise<void>;
+  removeAndPrune(realRoot: string, abs: string): Promise<void>;
+  versionOf(bytes: Uint8Array): string;
 }

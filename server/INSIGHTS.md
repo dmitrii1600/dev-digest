@@ -371,6 +371,13 @@ append-only. Empty sections are expected — append under the one that fits.
   exactly as before. Anything that tokenises untrusted file content (Project
   Context tokenises every listed `.md` on `GET /repos/:id/context`) must go
   through that adapter, never a raw `getEncoding()`.
+- 2026-10-01 — `String.prototype.isWellFormed()` is ES2024, and the server's `"lib": ["ES2022"]` (`server/tsconfig.json:20`)
+  rejects it with TS2550. To reject invalid UTF-16 text (lone surrogates), use the `LONE_SURROGATE` regex
+  (`src/modules/project-context/helpers.ts:122`) rather than raising `lib` for one call.
+- 2026-10-01 — On Windows, renaming a temp file over a file another process holds open fails with `EPERM`/`EBUSY`/`EACCES`.
+  An atomic temp-then-rename save needs a short bounded retry (`src/modules/project-context/repository-writes.ts:150-165`),
+  and a test whose reader loops without pause still sees `EPERM` on win32. It must count the successful replaces,
+  not expect every one to succeed.
 
 ## Recurring Errors & Fixes
 
@@ -416,3 +423,9 @@ append-only. Empty sections are expected — append under the one that fits.
 ## Session Notes
 
 ## Open Questions
+
+- 2026-10-01 — Should repo-intel skip `.devdigest/`? Its `EXCLUDED_DIRS` (`src/modules/repo-intel/constants.ts:18-25`)
+  does not list it, so `walkClone` would index a `.ts` file placed under `.devdigest/specs/`. That is pinned in
+  `test/project-context-isolation.test.ts`. Today Project Context authoring writes only `.md`, so NFR-3 of
+  SPEC-2026-10-01-project-context-authoring holds. Excluding `.devdigest/` would also need a decision about
+  dot-folders in general.

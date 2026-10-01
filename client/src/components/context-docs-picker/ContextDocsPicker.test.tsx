@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { render, screen, fireEvent, cleanup } from "@testing-library/react";
+import { render, screen, fireEvent, cleanup, within } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
 import type { ContextFileList } from "@devdigest/shared";
 import messages from "../../../messages/en/context.json";
@@ -22,16 +22,18 @@ const LIST: ContextFileList = {
   total: 3,
   files: [
     { path: "docs/b.md", kind: "docs", tokens: 20 },
-    { path: "specs/a.md", kind: "specs", tokens: 10 },
+    { path: "specs/a.md", kind: "specs", tokens: 10, used_by: 2 },
     { path: "INSIGHTS.md", kind: "insights", tokens: 5 },
   ],
 };
-const OK = { isLoading: false, isError: false, onRetry: vi.fn() };
+const onRefresh = vi.fn();
+const OK = { isLoading: false, isError: false, onRetry: vi.fn(), onRefresh };
 
 afterEach(() => {
   cleanup();
   previewError = false;
   refetch.mockClear();
+  onRefresh.mockClear();
 });
 
 function renderPicker(over: Partial<React.ComponentProps<typeof ContextDocsPicker>> = {}) {
@@ -93,15 +95,97 @@ describe("ContextDocsPicker", () => {
     expect(screen.queryAllByRole("checkbox")).toHaveLength(0);
     cleanup();
     renderPicker({ list: { cloned: true, total: 0, files: [] } });
+    expect(screen.getByText("No documents found")).toBeInTheDocument();
     expect(screen.getByText(/Only \.md files/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    expect(onRefresh).toHaveBeenCalledTimes(1);
   });
 
-  it("previews a document as rendered Markdown, and offers retry when it fails", () => {
-    renderPicker();
+  it("shows each row's token count, and an accessible dash when it is unknown", () => {
+    const list: ContextFileList = {
+      cloned: true,
+      total: 5,
+      files: [
+        { path: "a.md", kind: "docs", tokens: 1234 },
+        { path: "b.md", kind: "docs", tokens: 999 },
+        { path: "c.md", kind: "docs", tokens: 1000 },
+        { path: "d.md", kind: "docs", tokens: null },
+        { path: "e.md", kind: "docs" },
+      ],
+    };
+    renderPicker({ list, attached: ["a.md", "d.md"] });
+    expect(screen.getByText("1.2K tokens")).toBeInTheDocument();
+    expect(screen.getByText("999 tokens")).toBeInTheDocument();
+    expect(screen.getByText("1K tokens")).toBeInTheDocument();
+    expect(screen.getAllByLabelText("token count unavailable")).toHaveLength(2);
+    expect(screen.getAllByLabelText("token count unavailable")[0]).toHaveTextContent("—");
+    // d.md (null) is attached but adds nothing to the total.
+    expect(screen.getByText("≈ 1234 tokens")).toBeInTheDocument();
+  });
+
+  it("flags totals over the 4K soft cap with a text badge and never disables attaching", () => {
+    const list = (tokens: number): ContextFileList => ({
+      cloned: true,
+      total: 2,
+      files: [
+        { path: "a.md", kind: "docs", tokens },
+        { path: "b.md", kind: "docs", tokens: 1 },
+      ],
+    });
+    const { rerender } = renderPicker({ list: list(4000), attached: ["a.md"] });
+    expect(screen.queryByText("over 4K soft cap")).not.toBeInTheDocument();
+    expect(screen.getByText("≈ 4000 tokens").parentElement?.style.color).toBe("");
+    rerender(
+      <NextIntlClientProvider locale="en" messages={{ context: messages }}>
+        <ContextDocsPicker repoId="r1" list={list(4001)} listState={OK} attached={["a.md"]} onChange={vi.fn()} />
+      </NextIntlClientProvider>,
+    );
+    expect(screen.getByText("over 4K soft cap")).toBeInTheDocument();
+    // AC-14: the total itself turns critical-coloured; the text badge is what carries it for non-colour users.
+    expect(screen.getByText("≈ 4001 tokens").parentElement?.style.color).toBe("var(--crit)");
+    for (const box of screen.getAllByRole("checkbox")) expect(box).toBeEnabled();
+  });
+
+  it("previews in a drawer with row metadata, attaches like the checkbox, and closes on Escape with focus back", () => {
+    const { onChange, rerender } = renderPicker();
     fireEvent.click(screen.getByRole("button", { name: "Preview specs/a.md" }));
-    expect(screen.getByRole("dialog")).toBeInTheDocument();
-    expect(screen.getByText("rendered body")).toBeInTheDocument();
-    cleanup();
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByText("specs/a.md")).toBeInTheDocument();
+    expect(within(dialog).getByText("specs")).toBeInTheDocument();
+    expect(within(dialog).getByText("Used by 2 agents")).toBeInTheDocument();
+    expect(within(dialog).getByText("10 tokens")).toBeInTheDocument();
+    expect(within(dialog).getByText("rendered body")).toBeInTheDocument();
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Attach" }));
+    expect(onChange).toHaveBeenCalledWith(["specs/a.md"]);
+
+    rerender(
+      <NextIntlClientProvider locale="en" messages={{ context: messages }}>
+        <ContextDocsPicker repoId="r1" list={LIST} listState={OK} attached={["specs/a.md"]} onChange={onChange} />
+      </NextIntlClientProvider>,
+    );
+    expect(within(screen.getByRole("dialog")).getByRole("button", { name: "Attached" })).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: /specs\/a\.md/ })).toBeChecked();
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Preview specs/a.md" })).toHaveFocus();
+  });
+
+  it("detaches from the drawer's Attached button exactly as unchecking the row does (AC-12)", () => {
+    const { onChange } = renderPicker({ attached: ["specs/a.md", "docs/b.md"] });
+    fireEvent.click(screen.getByRole("checkbox", { name: /specs\/a\.md/ }));
+    const viaCheckbox = onChange.mock.calls.at(-1);
+    onChange.mockClear();
+
+    fireEvent.click(screen.getByRole("button", { name: "Preview specs/a.md" }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Attached" }));
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange.mock.calls[0]).toEqual(viaCheckbox);
+    expect(onChange).toHaveBeenCalledWith(["docs/b.md"]);
+  });
+
+  it("offers retry when the preview fails", () => {
     previewError = true;
     renderPicker();
     fireEvent.click(screen.getByRole("button", { name: "Preview specs/a.md" }));
