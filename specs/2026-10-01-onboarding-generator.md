@@ -1,6 +1,6 @@
 # Spec: Onboarding Generator — a five-part tour of an unfamiliar repository
 Spec ID: SPEC-2026-10-01-onboarding-generator
-Status: draft
+Status: approved
 Supersedes: none
 Packages: server, client
 
@@ -25,7 +25,10 @@ nothing calls yet, `getTopFilesByRank` and `getCriticalPaths` (`server/src/modul
 (`server/src/modules/index.ts:30-45`), no tour page, and no sidebar entry (`client/src/vendor/ui/nav.ts:21-28`).
 `/onboarding` is the **Add repository** screen, not the tour (`client/src/app/onboarding/page.tsx:1-8`,
 `e2e/README.md:105`). The scaffolded prompt and empty-state copy describe a different section set
-from the designs (DR-4).
+from the designs (DR-4). The index covers only `.ts/.tsx/.js/.jsx/.mjs/.cjs` files
+(`server/src/modules/repo-intel/pipeline/walk.ts:7`), so `package.json`, READMEs and
+`.env.example` are never in it; paths and commands are therefore grounded on the prompt, not the index
+(AC-16, decision A1).
 
 ## Goals / Non-goals
 **Goals**
@@ -43,7 +46,8 @@ from the designs (DR-4).
 - An MCP tool for the tour (Q-14, resolved).
 - Tours in languages other than English (Q-12, resolved).
 - Regenerating a tour automatically, for example when it goes stale (Q-15, resolved).
-- Changing repo-intel's ranking or indexing pipeline. The index is consumed as it is.
+- Changing repo-intel's ranking or indexing pipeline, including the file types it indexes. The
+  index is consumed as it is.
 - The mockup host's chrome ("Content is user-generated and unverified", "Start chat", "Share"
   in the top bar) and the other sidebar items (Memory, Eval Dashboard, CI Runs, …).
 
@@ -70,7 +74,7 @@ from the designs (DR-4).
 - **AC-13** WHEN the user activates Open on a file row, the system shall open that file on GitHub, at the repo's default branch, in a new tab. · traces: US-5 · verify: component
 - **AC-14** WHEN the user activates Share link, the system shall copy the Onboarding Tour page's studio URL to the clipboard and show a confirmation. · traces: US-5 · verify: component
 - **AC-15** WHILE a generation is running for the repo, the page shall disable Regenerate, show that generation is in progress, and keep showing the previously stored tour. · traces: US-4, DR-10 · verify: component
-- **AC-16** The system shall remove, before storing the tour, every file path, link or command whose source path is not a file that was given to the model or is not present in the repo's index at generation time. · traces: US-1, US-3 · verify: unit
+- **AC-16** The system shall remove, before storing the tour, every file path, link or command whose source path is not a file whose path or content was given to the model in that generation's prompt (the index-chosen files and the files read from the clone). · traces: US-1, US-3 · verify: unit
 - **AC-17** WHEN the page shows a stored tour, the subtitle shall show "AI-generated · <provider>/<model>". The provider and model shall be the ones recorded with that tour at generation time, and shall not change when the Settings choice changes later. · traces: US-1, DR-19 · verify: integration
 
 ## Edge cases
@@ -130,7 +134,7 @@ sequenceDiagram
   Note over S: files and order fixed here (rank, then path)
   S->>L: one call: listed files + clone excerpts (untrusted)
   L-->>S: prose, reasons, commands, tasks, diagram
-  Note over S: drop ungrounded paths and commands, then store
+  Note over S: drop paths and commands not sourced from the prompt, then store
   S-->>W: Onboarding
 ```
 ### UX improvements
@@ -213,11 +217,13 @@ sequenceDiagram
 | answers | user via coordinator, 2026-10-01: "Q-13: ADOPT DR-19, an 'AI-generated · <model>' line in the subtitle" | AC-17, AC-5 (model recorded with the tour) |
 | answers | user via coordinator, 2026-10-01: "Q-14: no MCP tool, out of scope (keep it as a non-goal)" | Non-goal |
 | answers | user via coordinator, 2026-10-01: "Q-15: a stale notice only, never an automatic regeneration" | EC-9, NFR-1 |
+| answers | user via coordinator, 2026-10-01, decision A1: "a path, link or command is kept only if its source path is a file whose content or path was given to the model in the prompt — the index-chosen files plus the files read from the clone; presence in the index is no longer required" | AC-16, Untrusted inputs (paths, commands); raised by implementation-planner |
 | design | specs/designs/onboarding-tour/01-architecture-expanded.png | Header, subtitle, Regenerate and Share link, "On this page" list, sidebar position, prose with inline code, node-and-edge diagram, all sections open |
 | design | specs/designs/onboarding-tour/02-all-collapsed.png, 03-architecture-only-open.png | Accordion with independent sections; section order and icons |
 | design | specs/designs/onboarding-tour/04-critical-paths.png | Flat rows: path, one-line reason, Open |
 | design | specs/designs/onboarding-tour/05-run-locally.png | Numbered commands with inline `#` comments and a copy action each |
 | design | specs/designs/onboarding-tour/06-reading-path.png | Numbered paths, one "why read this" line each |
+| repo | server/src/modules/repo-intel/pipeline/walk.ts:7 | The index holds only `.ts/.tsx/.js/.jsx/.mjs/.cjs`; an index-presence check would drop every manifest-, README- or `.env.example`-sourced command → AC-16 |
 | repo | server/src/db/schema/context.ts:120-126 | One stored tour per repo (repo id, JSON, generated at) already exists; deleted with the repo |
 | repo | server/src/vendor/shared/contracts/knowledge.ts:28-47 | Loose existing contract → DR-3 |
 | repo | server/src/vendor/shared/contracts/platform.ts:45-51; server/src/modules/_shared/feature-models.ts:56-62 | Model choice already selectable in Settings → AC-5 |
@@ -237,8 +243,8 @@ sequenceDiagram
 |---|---|---|---|
 | File contents and names given to the model (README, manifests, compose files, top-ranked file excerpts) | `server/clones/<repo>/**` | Text that reaches a prompt: wrapped as untrusted; secret `.env` files never read; 60,000-token cap | An instruction inside is data and is never followed; lowest-ranked excerpts are dropped to fit; secret files are skipped |
 | Prose, reasons and tasks | LLM output | Text that is rendered: only through the existing Markdown renderer; reason and task at most 200 characters | Raw HTML is shown as text; over-long text is truncated with an ellipsis |
-| File paths and links | LLM output | Paths: must be a file given to the model and present in the index at generation time | The item is removed before storing (AC-16) and counted in the log line |
-| Run commands | LLM output | Shape and bounds: one line, at most 300 characters, citing its source file; rendered as plain text; DevDigest never executes it | The command is removed before storing |
+| File paths and links | LLM output | Paths: must be a file whose path or content was in that generation's prompt (index-chosen files or files read from the clone); index presence not required | The item is removed before storing (AC-16) and counted in the log line |
+| Run commands | LLM output | Shape and bounds: one line, at most 300 characters, citing a source file that was in the prompt; rendered as plain text; DevDigest never executes it | The command is removed before storing (AC-16) |
 | Diagram | LLM output | Parsed with strict security before rendering; at most 4,000 characters | The diagram is omitted (EC-7) |
 | Repo `:id` | HTTP params | Identity: resolves to a repo in the caller's workspace | 404, the same as "does not exist" |
 | Generate request body | HTTP `POST` | Shape and bounds: strict, empty object | 422 naming the field |
@@ -260,5 +266,6 @@ sequenceDiagram
 - Q-13, resolved: DR-19 is adopted as AC-17.
 - Q-14, resolved: no MCP tool (non-goal).
 - Q-15, resolved: a stale notice only, never an automatic regeneration (EC-9, NFR-1).
+- A1, resolved: grounding is "the source file was in the prompt", not "the file is in the index". Reading-path and critical-path membership still comes from the index alone (AC-6, AC-7, AC-8, AC-16).
 
 - None outstanding for the stated scope.
