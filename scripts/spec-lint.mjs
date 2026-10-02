@@ -51,20 +51,29 @@ function f(rule, severity, line, summary, evidence, fix) {
   return { rule, severity, line, summary, evidence, fix };
 }
 
-/** Collect `- **XX-n** …` items; an item runs until the next item, a heading or a blank line. */
+/**
+ * Collect `- **XX-n** …` items; an item runs until the next item, a heading or a blank line.
+ * The bold label may carry a tag before its closing `**` — the template writes open
+ * questions as `- **Q-n (non-blocking):** …` — and the tag is kept at the front of `text`.
+ * Open questions also come as `- Q-n, resolved: …` once the person has answered them
+ * (spec-writing skill, *Resolved decisions*); those carry `resolved: true`.
+ */
 function items(lines, prefix) {
   const out = [];
-  const re = new RegExp(`^- \\*\\*${prefix}-(\\d+)\\*\\*\\s*(.*)$`);
+  const re = new RegExp(`^- \\*\\*${prefix}-(\\d+)((?:\\s*\\([^)]*\\))?:?)\\*\\*:?\\s*(.*)$`);
+  const resolvedRe = prefix === 'Q' ? /^- Q-(\d+),\s*resolved:\s*(.*)$/ : null;
   for (let i = 0; i < lines.length; i++) {
     const m = lines[i].match(re);
-    if (!m) continue;
-    let text = m[2];
+    const r = m ? null : resolvedRe && lines[i].match(resolvedRe);
+    if (!m && !r) continue;
+    let text = m ? `${m[2].trim()} ${m[3]}`.trim() : r[2];
     let j = i + 1;
-    while (j < lines.length && lines[j].trim() !== '' && !/^(- \*\*|#)/.test(lines[j])) {
+    while (j < lines.length && lines[j].trim() !== '' && !/^(- |#)/.test(lines[j])) {
       text += ' ' + lines[j].trim();
       j++;
     }
-    out.push({ id: `${prefix}-${m[1]}`, n: Number(m[1]), line: i + 1, text });
+    const n = m ? m[1] : r[1];
+    out.push({ id: `${prefix}-${n}`, n: Number(n), line: i + 1, text, resolved: !m });
   }
   return out;
 }
@@ -207,8 +216,8 @@ export function lintSpec(text, relPath) {
     out.push(f('spec-open-questions', 'WARNING', 0, 'Open questions is empty', '(no bullet)', 'Write `- None outstanding for the stated scope.` when there truly are none.'));
   }
   for (const it of q) {
-    if (!/\((blocking|non-blocking)\)/.test(it.text)) {
-      out.push(f('spec-open-questions', 'WARNING', it.line, `${it.id} does not say blocking or non-blocking`, it.text.slice(0, 80), 'Format: `- **Q-n (blocking|non-blocking):** question — who decides / default`.'));
+    if (!it.resolved && !/\((blocking|non-blocking)\)/.test(it.text)) {
+      out.push(f('spec-open-questions', 'WARNING', it.line, `${it.id} does not say blocking or non-blocking`, it.text.slice(0, 80), 'Format: `- **Q-n (blocking|non-blocking):** question — who decides / default`, or `- Q-n, resolved: decision` once answered.'));
     }
   }
 

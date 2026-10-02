@@ -99,6 +99,7 @@ at least one row, or is listed under Open questions as unowned>
 ## Open questions
 - **Q-1 (blocking):** <question the planner cannot proceed past> — <who decides>
 - **Q-2 (non-blocking):** <question settled later> — <default taken in this draft>
+<Once answered: a dated **Resolved decisions** line, then "- Q-n, resolved: <decision> (<affected ids>)"; the IDs are kept so references stay valid.>
 <If none: "- None outstanding for the stated scope.">
 ```
 
