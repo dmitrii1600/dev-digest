@@ -95,7 +95,9 @@ jobs:
           # tsx directly (not `pnpm start`): the committed package.json's start
           # is `node dist/server.js`, which would need a build first. tsx runs
           # the TS entrypoint as dev does. (server/package.json is skip-worktree.)
-          nohup pnpm exec tsx src/server.ts > "$RUNNER_TEMP/api.log" 2>&1 &
+          # RATE_LIMIT_MAX: 16 browser flows from one IP exceed the default
+          # 120 req/min, and a 429 on GET /repos shows "No repositories yet".
+          RATE_LIMIT_MAX=10000 nohup pnpm exec tsx src/server.ts > "$RUNNER_TEMP/api.log" 2>&1 &
           echo "waiting for API /health…"
           for i in $(seq 1 30); do
             curl -fsS http://localhost:3001/health >/dev/null 2>&1 && { echo "api up"; break; }
@@ -136,4 +138,6 @@ jobs:
           name: e2e-failure
           path: |
             e2e/test-results/**
+            ${{ runner.temp }}/api.log
+            ${{ runner.temp }}/web.log
           if-no-files-found: ignore

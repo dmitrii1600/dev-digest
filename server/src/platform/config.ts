@@ -32,6 +32,11 @@ const EnvSchema = z.object({
   // than a surprise — tiers A-C (inline plan, in-repo file, GitHub issue)
   // keep working.
   INTENT_FETCH_LINKS: z.string().optional(),
+  // Global per-IP request cap per minute (@fastify/rate-limit; off under
+  // NODE_ENV=test). The hermetic e2e stacks raise it: 16 browser flows in a row
+  // from one IP exceed 120/min, and a 429 on GET /repos reads as "No
+  // repositories yet" in whichever flow hits it.
+  RATE_LIMIT_MAX: z.coerce.number().int().positive().default(120),
   API_PORT: z.coerce.number().int().default(3001),
   WEB_PORT: z.coerce.number().int().default(3000),
   DEVDIGEST_CLONE_DIR: z.string().optional(),
@@ -68,6 +73,8 @@ export type AppConfig = {
   /** Intent Layer tier D kill switch — default true. `false` degrades an
    *  external plan/spec link to `unavailable · external fetching disabled`. */
   intentFetchLinks: boolean;
+  /** Global per-IP requests per minute (RATE_LIMIT_MAX, default 120). */
+  rateLimitMax: number;
 };
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -87,5 +94,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     embeddingsEnabled: parsed.EMBEDDINGS_ENABLED === 'true',
     repoIntelEnabled: parsed.REPO_INTEL_ENABLED !== 'false',
     intentFetchLinks: parsed.INTENT_FETCH_LINKS !== 'false',
+    rateLimitMax: parsed.RATE_LIMIT_MAX,
   };
 }
