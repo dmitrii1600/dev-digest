@@ -252,13 +252,114 @@ export const PrCommentInput = z.object({
 export type PrCommentInput = z.infer<typeof PrCommentInput>;
 
 // ---- Project Context ----
+export const ContextDocKind = z.enum(['specs', 'docs', 'insights', 'other']);
+export type ContextDocKind = z.infer<typeof ContextDocKind>;
+
+/** Why a listed document cannot be edited from the Project Context page. */
+export const ContextReadOnlyReason = z.enum(['outside_root', 'tracked', 'too_large']);
+export type ContextReadOnlyReason = z.infer<typeof ContextReadOnlyReason>;
+
+/** Optimistic-concurrency token: SHA-256 hex of the file's bytes on disk. */
+export const ContextFileVersion = z.string().regex(/^[0-9a-f]{64}$/);
+export type ContextFileVersion = z.infer<typeof ContextFileVersion>;
+
 export const SpecFile = z.object({
   path: z.string(),
   content: z.string().nullish(),
   size: z.number().int().nullish(),
   updated_at: z.string().nullish(),
+  kind: ContextDocKind.nullish(),
+  /** Tokens of the block as injected (capped). */
+  tokens: z.number().int().nullish(),
+  used_by: z.number().int().nullish(),
+  /** SHA-256 hex of the on-disk bytes; the token a save or delete sends back. */
+  version: ContextFileVersion.nullish(),
+  /** True only for an untracked, <= 64 KB file under `.devdigest/specs/`. */
+  editable: z.boolean().nullish(),
+  read_only_reason: ContextReadOnlyReason.nullish(),
 });
 export type SpecFile = z.infer<typeof SpecFile>;
+
+/** `total` is the uncapped count; `files` holds at most 500 entries, no `content`. */
+export const ContextFileList = z.object({
+  cloned: z.boolean(),
+  total: z.number().int(),
+  files: z.array(SpecFile),
+});
+export type ContextFileList = z.infer<typeof ContextFileList>;
+
+export const ContextPath = z
+  .string()
+  .min(1)
+  .max(1024)
+  .refine((p) => p.toLowerCase().endsWith('.md'), { message: 'path must end in .md' });
+export type ContextPath = z.infer<typeof ContextPath>;
+
+export const ContextFileQuery = z.object({ path: ContextPath }).strict();
+export type ContextFileQuery = z.infer<typeof ContextFileQuery>;
+
+export const ContextRepoQuery = z.object({ repoId: z.string().uuid() }).strict();
+export type ContextRepoQuery = z.infer<typeof ContextRepoQuery>;
+
+export const ContextAttachmentsInput = z
+  .object({ paths: z.array(ContextPath).max(500) })
+  .strict()
+  .refine((v) => new Set(v.paths).size === v.paths.length, {
+    message: 'paths must be unique',
+    path: ['paths'],
+  });
+export type ContextAttachmentsInput = z.infer<typeof ContextAttachmentsInput>;
+
+/**
+ * Body for PUT /repos/:id/context/file. `max` counts UTF-16 units, a safe
+ * pre-filter; the exact byte rule runs in the service after CRLF to LF.
+ * `version: null` means "expect the file to be absent".
+ */
+export const ContextFileSave = z
+  .object({
+    path: ContextPath,
+    content: z.string().max(65_536),
+    version: ContextFileVersion.nullable(),
+  })
+  .strict();
+export type ContextFileSave = z.infer<typeof ContextFileSave>;
+
+/** Query for DELETE /repos/:id/context/file. */
+export const ContextFileDeleteQuery = z
+  .object({ path: ContextPath, version: ContextFileVersion })
+  .strict();
+export type ContextFileDeleteQuery = z.infer<typeof ContextFileDeleteQuery>;
+
+/** Body for POST /repos/:id/context/files (new file or new folder). */
+export const ContextFileCreate = z
+  .object({ kind: z.enum(['file', 'folder']), name: z.string().min(1).max(255) })
+  .strict();
+export type ContextFileCreate = z.infer<typeof ContextFileCreate>;
+
+/** Body for POST /repos/:id/context/upload. 87,384 = 4 * ceil(65,536 / 3) base64 chars. */
+export const ContextFileUpload = z
+  .object({
+    name: z.string().min(1).max(255),
+    content_base64: z
+      .string()
+      .max(87_384)
+      .regex(/^[A-Za-z0-9+/]*={0,2}$/),
+  })
+  .strict();
+export type ContextFileUpload = z.infer<typeof ContextFileUpload>;
+
+/** `details` of a 409 whose `error.code` is `version_conflict`. */
+export const ContextConflictDetails = z.object({
+  reason: z.enum(['changed', 'deleted']),
+  current_version: ContextFileVersion.nullable(),
+});
+export type ContextConflictDetails = z.infer<typeof ContextConflictDetails>;
+
+export const ContextAttachments = z.object({
+  repo_id: z.string(),
+  paths: z.array(z.string()),
+});
+export type ContextAttachments = z.infer<typeof ContextAttachments>;
 
 export const IndexStatus = z.object({
   status: z.enum(['idle', 'cloning', 'parsing', 'embedding', 'done', 'error']),

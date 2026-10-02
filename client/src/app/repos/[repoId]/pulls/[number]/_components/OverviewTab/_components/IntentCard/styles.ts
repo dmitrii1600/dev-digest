@@ -99,4 +99,11 @@ export const s = {
     gap: 6,
     marginTop: 4,
   } satisfies CSSProperties,
+  /** Badge is `nowrap`; an unavailable source's detail can carry a full URL,
+      which pushed Overview into horizontal scroll below 768 px. */
+  sourceBadge: {
+    whiteSpace: "normal",
+    overflowWrap: "anywhere",
+    maxWidth: "100%",
+  } satisfies CSSProperties,
 } as const;

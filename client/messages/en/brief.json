@@ -2,14 +2,73 @@
   "block": {
     "intent": "Intent",
     "blast": "Blast radius",
-    "risks": "Risks",
+    "risks": "Risk areas",
     "history": "PR history"
+  },
+  "sectionTitle": "PR Brief",
+  "empty": {
+    "title": "No brief yet",
+    "body": "Generate a Why+Risk brief for this PR."
+  },
+  "generate": "Generate brief",
+  "refresh": "Re-run the brief for this PR",
+  "tooltip": "Verdict, findings and score come from the latest agent review; what / why / risks / review-focus come from the brief.",
+  "stale": "Stale — generated for {generated}, PR now at {current}",
+  "reviewFocus": {
+    "title": "Review focus — read these first",
+    "open": "Open {target} in Files changed"
+  },
+  "severity": {
+    "high": "high",
+    "medium": "medium",
+    "low": "low"
+  },
+  "risk": {
+    "why": "Why this is a risk"
+  },
+  "notInDiff": "File not in this PR's diff",
+  "error": {
+    "title": "Couldn't generate the brief",
+    "timeout": "The model did not answer within 120 seconds.",
+    "invalid_output": "The model's answer did not match the brief format.",
+    "llm_error": "The model call failed.",
+    "brief_running": "A brief is already being generated for this PR.",
+    "no_changed_files": "This PR has no changed files recorded — reload the PR and try again.",
+    "provider_key_missing": "No API key is configured for {provider}.",
+    "openSettings": "Open Settings → API Keys",
+    "brief_input_too_large": "This PR's facts do not fit the 8,000-token budget, even after trimming."
+  },
+  "missingFacts": {
+    "title": "Missing or trimmed inputs",
+    "intent_absent": "Intent: none stored for this PR.",
+    "intent_stale": "Intent: derived for an older commit.",
+    "blast_degraded": "Blast radius: degraded — {reason}.",
+    "blast_unavailable": "Blast radius: unavailable.",
+    "linked_issue_absent": "Linked issue: none referenced in the description.",
+    "linked_issue_missing_token": "Linked issue #{detail}: not retrieved — no GitHub token configured.",
+    "linked_issue_fetch_failed": "Linked issue #{detail}: not retrieved — the GitHub request failed.",
+    "linked_issue_cut": "Linked issue #{detail}: body cut to fit the token budget.",
+    "project_context_absent": "Project Context: no documents attached to enabled agents.",
+    "project_context_skipped": "Project Context: {detail} skipped (missing or unreadable).",
+    "project_context_truncated": "Project Context: {detail} truncated at 64 KB.",
+    "project_context_dropped": "Project Context: {detail} dropped to fit the token budget.",
+    "description_absent": "Description: empty.",
+    "description_truncated": "Description: truncated to fit the token budget.",
+    "callers_dropped": "Callers: list dropped to fit the token budget.",
+    "file_stats_folded": "File statistics: {detail} lowest-churn files folded into one line.",
+    "blastReason": {
+      "flag_off": "repo intelligence is off",
+      "index_failed": "the last index run failed",
+      "index_partial": "the index is partial",
+      "index_stale": "the index is stale",
+      "repo_too_large": "the repo is too large to index",
+      "no_data": "the repo is not indexed"
+    }
   },
   "noRisks": "No notable risks flagged.",
   "noHistory": "No prior PRs overlap these files.",
   "overlap": "{count} overlap",
   "unavailable": "Brief not available yet.",
-  "unavailableHint": "Run a review or open the PR to compute it.",
   "why": {
     "title": "git-why",
     "blame": "blame",

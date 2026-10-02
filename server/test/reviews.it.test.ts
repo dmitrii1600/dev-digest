@@ -8,6 +8,18 @@ import { MockLLMProvider, MockEmbedder, MockGitClient } from '../src/adapters/mo
 import * as t from '../src/db/schema.js';
 import { eq } from 'drizzle-orm';
 import type { Review } from '@devdigest/shared';
+import type { IntentPort } from '../src/modules/intent/types.js';
+
+// Every review run calls `container.intent.ensure`. Without this stub that is a
+// real, paid OpenRouter call (the `review_intent` default) inside the 10 s
+// `waitForPrRuns` budget, which made this file flaky (server/INSIGHTS.md, 2026-09-24).
+const intentStub: IntentPort = {
+  get: async () => null,
+  ensure: async () => null,
+  derive: async () => {
+    throw new Error('not used');
+  },
+};
 
 const hasDocker = await dockerAvailable();
 const d = hasDocker ? describe : describe.skip;
@@ -116,6 +128,7 @@ d('A2 reviews + agents (Testcontainers pg)', () => {
       db: pg.handle.db,
       overrides: {
         embedder: new MockEmbedder(),
+        intent: intentStub,
         git: new MockGitClient({ diff: DIFF }),
         llm: {
           [provider]: new MockLLMProvider(provider, { structured }),

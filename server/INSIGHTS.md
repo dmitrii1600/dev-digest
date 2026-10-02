@@ -116,6 +116,35 @@ append-only. Empty sections are expected — append under the one that fits.
 
 
 
+- 2026-09-29 — Reading `GET /runs/:id/trace` the moment `waitForPrRuns` sees
+  `done` returns 404 / `prompt_assembly` undefined: `completeAgentRun`
+  (`src/modules/reviews/run-executor.ts:308`) runs before `saveRunTrace`
+  (`:354`), and per-slot token counting sits in the gap. A test that needs the
+  trace polls it (`test/project-context.it.test.ts` `runReview`, up to 10 s)
+  instead of reading once. Whether the executor should save the trace first is
+  open.
+- 2026-10-01 — A directory pattern with a leading slash, matched with
+  `includes`, misses the same directory at the repo root: `'/test/'`,
+  `'/tests/'`, `'/migrations/'` and `'/__fixtures__/'` in `JUNK_PATH_PATTERNS`
+  let `test/x.ts` and `migrations/0001.ts` through into `getTopFilesByRank`.
+  `isJunkPath` now matches against `'/' + path`
+  (`src/modules/repo-intel/service.ts:732`). The non-directory patterns
+  (`jest.`, `eslint` …) are still bare substrings.
+- 2026-10-01 — Do not ground LLM-cited paths on "the file is in the index":
+  the indexer walks only `.ts/.tsx/.js/.jsx/.mjs/.cjs`
+  (`src/modules/repo-intel/pipeline/walk.ts:7`), so `package.json`, READMEs
+  and `.env.example` are never there, and every run command sourced from them
+  is dropped. Onboarding grounds on "the prompt carried this file" instead
+  (`groundedPathSet`, `src/modules/onboarding/helpers.ts`).
+- 2026-10-02 — `pnpm typecheck` never sees `server/test/**`: `tsconfig.json:28` includes only
+  `src/**/*.ts`, and vitest strips types. A test fake typed as a port (`makeStore` in
+  `test/project-context-service.test.ts`) stays green after the port gains a method. When you widen a
+  port, grep `test/` for its fakes by hand.
+- 2026-10-02 — A green `node scripts/verify.mjs server --it` proves nothing when Docker is down: every
+  `*.it.test.ts` gates on `dockerAvailable()` (`test/helpers/pg.ts:23`) and self-skips, and the lane
+  still reports green. Track A of PR Brief shipped 3 unexecuted `.it` files this way. Run `docker info`
+  first, or check the vitest output for skipped tests.
+
 ## Codebase Patterns
 
 - 2026-09-18 — An onion ring is derived from the **filename**, not a folder:
@@ -256,6 +285,10 @@ append-only. Empty sections are expected — append under the one that fits.
   cache miss (`modules/blast/constants.ts`), so it is cached per PR head sha in
   `pr_brief.json.history` (`blast/repository.ts`). A missing token or a rate
   limit degrades to `{ history: [] }` with a warn log, never a 500.
+- 2026-10-02 — `pr_brief.json` has two writers, and each owns one top-level key: blast owns `history`
+  and brief owns `brief`. Each write is ONE upsert, `set: { json: sql\`${t.prBrief.json} || excluded.json\` }`
+  (`blast/repository.ts:130`, `brief/repository.ts:77`). Why: the old read-merge-write in `upsertHistory`
+  lost one write when both ran at once. A third writer gets its own key and the same statement.
 
 - 2026-09-27 — A hand-seeded repo-intel index is only "live" for blast if it has
   ALL of: `file_edges` caller→decl (so `resolveReferences` sets `decl_file`),
@@ -265,6 +298,20 @@ append-only. Empty sections are expected — append under the one that fits.
   `src/db/seed-blast.ts` does exactly that through `RepoIntelRepository`; rank
   rows are deliberately absent for the changed files so the review prompt's
   "top 5%" note stays byte-identical. Proof: `test/seed-blast.it.test.ts`.
+- 2026-10-01 — Tell a schema failure from other LLM errors by type, never by
+  message text: adapters throw `StructuredOutputError`
+  (`src/platform/errors.ts`), and the OpenRouter provider from reviewer-core is
+  wrapped in `SchemaFailureTagger` at the composition root
+  (`src/platform/container.ts:254`). Why: three adapters wrote the
+  "failed schema validation" prose independently, so a regex on it misfiled
+  `invalid_output` as `llm_error` on any reword. The tagger shadows zod v3's
+  own-property `safeParse` (`src/adapters/llm/schema-failure.ts:43`), so
+  re-check it on a zod v4 upgrade. OpenRouter output that is not JSON never
+  reaches `safeParse` and stays untyped.
+- 2026-10-01 — A repo with no `repo_index_state` row reports `never_indexed`,
+  not `no_ranked_files`: the facade synthesises a `no_data` degraded state
+  (`src/modules/onboarding/helpers.ts:63`). A test for `no_ranked_files` needs a
+  state row with zero rank rows.
 
 
 
@@ -328,6 +375,27 @@ append-only. Empty sections are expected — append under the one that fits.
   read limits move to `modules/_shared/`.
 
 
+- 2026-09-29 — js-tiktoken `cl100k_base` `encode()` is super-linear on one
+  whitespace-free run: a 64 KB string of a single letter never returned, and the
+  vitest worker died after the 120 s test timeout. `TiktokenTokenizer.count` now
+  encodes any text matching `/\S{512,}/` in 64-char slices
+  (`src/adapters/tokenizer/index.ts:31-33`); prose without such a run is counted
+  exactly as before. Anything that tokenises untrusted file content (Project
+  Context tokenises every listed `.md` on `GET /repos/:id/context`) must go
+  through that adapter, never a raw `getEncoding()`.
+- 2026-10-01 — `String.prototype.isWellFormed()` is ES2024, and the server's `"lib": ["ES2022"]` (`server/tsconfig.json:20`)
+  rejects it with TS2550. To reject invalid UTF-16 text (lone surrogates), use the `LONE_SURROGATE` regex
+  (`src/modules/project-context/helpers.ts:122`) rather than raising `lib` for one call.
+- 2026-10-01 — On Windows, renaming a temp file over a file another process holds open fails with `EPERM`/`EBUSY`/`EACCES`.
+  An atomic temp-then-rename save needs a short bounded retry (`src/modules/project-context/repository-writes.ts:150-165`),
+  and a test whose reader loops without pause still sees `EPERM` on win32. It must count the successful replaces,
+  not expect every one to succeed.
+
+- 2026-10-02 — `completeStructured({ maxRetries: 0 })` stops only the schema re-ask. The transport still
+  retries: `withRetry` 3 times on 429/5xx, plus the SDK's own default retries. When a spec says "exactly
+  one model call", use `container.llm(id, { singleShot: { timeoutMs } })` (`platform/container.ts:306`,
+  cached as `${id}:single`), which sets SDK `maxRetries: 0` and `withRetry` `retries: 0`.
+
 ## Recurring Errors & Fixes
 
 - 2026-09-15 — `pnpm exec vitest run --exclude '**/*.it.test.ts'` fails 6 tests
@@ -358,6 +426,23 @@ append-only. Empty sections are expected — append under the one that fits.
 
 
 
+- 2026-09-29 — `run-cost.it.test.ts` "a completed run persists the
+  engine-reported cost" fails with `cost_usd` null after ≈10 s on this Windows
+  host, and identically on a clean `289f8bb` worktree with no feature diff: the
+  run has not reached `done` when `waitForPrRuns`' 10 s budget
+  (`test/helpers/runs.ts:19`) expires. `reviews.it.test.ts` shows the same
+  shape intermittently (3/6 red, then 6/6; on 2026-10-01 a clean `146cc40`
+  worktree failed it 2 of 3 runs, a different test each time, and
+  `conventions.it` "skill preview" showed it once too). Same family as the 2026-09-24 entry
+  above: prove a baseline before reading it as a regression of a change outside
+  `modules/reviews`. The 3–5 s run-start latency itself is unexplained.
+
 ## Session Notes
 
 ## Open Questions
+
+- 2026-10-01 — Should repo-intel skip `.devdigest/`? Its `EXCLUDED_DIRS` (`src/modules/repo-intel/constants.ts:18-25`)
+  does not list it, so `walkClone` would index a `.ts` file placed under `.devdigest/specs/`. That is pinned in
+  `test/project-context-isolation.test.ts`. Today Project Context authoring writes only `.md`, so NFR-3 of
+  SPEC-2026-10-01-project-context-authoring holds. Excluding `.devdigest/` would also need a decision about
+  dot-folders in general.

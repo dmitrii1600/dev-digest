@@ -2,6 +2,7 @@ import type { SmartDiff } from '@devdigest/shared';
 import { NotFoundError } from '../../platform/errors.js';
 import { buildSmartDiff, latestReviewPerAgent } from './helpers.js';
 import type { SmartDiffRepository } from './repository.js';
+import type { SmartDiffPort } from './types.js';
 
 /**
  * The Smart Diff (L03) service — pure code, no LLM call, no `Container`.
@@ -10,7 +11,7 @@ import type { SmartDiffRepository } from './repository.js';
  * (`.claude/skills/onion-architecture/rules.md:210`), the same shape
  * `intent/service.ts` takes (`IntentDeps`).
  */
-export class SmartDiffService {
+export class SmartDiffService implements SmartDiffPort {
   constructor(private readonly repo: SmartDiffRepository) {}
 
   async get(workspaceId: string, prId: string): Promise<SmartDiff> {

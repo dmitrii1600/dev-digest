@@ -15,6 +15,7 @@ import {
   cs,
 } from "../comments";
 import { type Line } from "../helpers";
+import { NEW_LINE_ATTR } from "../anchors";
 import { s, lineRowFor, lineSignFor } from "../styles";
 import { CommentThreadView } from "../CommentThreadView";
 import { InlineComposer } from "../InlineComposer";
@@ -60,6 +61,7 @@ export function CodeLine({
       onMouseLeave={() => setHover(false)}
     >
       <div
+        {...{ [NEW_LINE_ATTR]: typeof ln.newNo === "number" ? ln.newNo : undefined }}
         style={
           worstSeverity
             ? { ...lineRowFor(ln.kind), boxShadow: `inset 3px 0 0 ${SEV[worstSeverity].c}` }

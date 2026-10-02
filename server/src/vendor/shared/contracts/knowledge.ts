@@ -26,25 +26,124 @@ export const Conformance = z.object({
 export type Conformance = z.infer<typeof Conformance>;
 
 // ---- Onboarding ----
-export const OnboardingLink = z.object({
-  label: z.string(),
+// 'openrouter' routes through the OpenAI-compatible API (OpenAIProvider with a
+// custom baseURL) — used by the CI runner for cheap models (DeepSeek/GLM/MiniMax).
+// Declared here, ahead of the Agents block, because `Onboarding` uses it at
+// module-evaluation time.
+export const Provider = z.enum(['openai', 'anthropic', 'openrouter']);
+export type Provider = z.infer<typeof Provider>;
+
+/** Display order of the tour's five sections. */
+export const OnboardingSectionId = z.enum([
+  'architecture',
+  'critical_paths',
+  'run_locally',
+  'reading_path',
+  'first_tasks',
+]);
+export type OnboardingSectionId = z.infer<typeof OnboardingSectionId>;
+
+/** A file the index picked, with the model's one-line reason (null when it gave none). */
+export const OnboardingFile = z.object({
   path: z.string(),
+  reason: z.string().nullable(),
 });
-export type OnboardingLink = z.infer<typeof OnboardingLink>;
+export type OnboardingFile = z.infer<typeof OnboardingFile>;
 
-export const OnboardingSection = z.object({
-  kind: z.string(),
-  title: z.string(),
-  body: z.string(), // markdown
-  diagram: z.string().nullish(), // mermaid
-  links: z.array(OnboardingLink),
+export const OnboardingCommand = z.object({
+  line: z.string(),
+  source_path: z.string(),
 });
-export type OnboardingSection = z.infer<typeof OnboardingSection>;
+export type OnboardingCommand = z.infer<typeof OnboardingCommand>;
 
+/** The model's estimate of a starter task's size — a hint, not grounded in the repo. */
+export const OnboardingComplexity = z.enum(['low', 'medium', 'high']);
+export type OnboardingComplexity = z.infer<typeof OnboardingComplexity>;
+
+export const OnboardingTask = z.object({
+  text: z.string(),
+  paths: z.array(z.string()).min(1),
+  /** Absent on tours stored before labels existed; null when the model gave no valid level. */
+  complexity: OnboardingComplexity.nullable().optional(),
+});
+export type OnboardingTask = z.infer<typeof OnboardingTask>;
+
+/** The stored tour — one per repo. Every path in it was grounded before storing. */
 export const Onboarding = z.object({
-  sections: z.array(OnboardingSection),
+  repo_id: z.string(),
+  generated_at: z.string(),
+  index_sha: z.string(),
+  files_indexed: z.number().int(),
+  provider: Provider,
+  model: z.string(),
+  architecture: z.object({ prose: z.string(), diagram: z.string().nullable() }),
+  critical_paths: z.array(OnboardingFile).max(6),
+  run_locally: z.array(OnboardingCommand).max(10),
+  reading_path: z.array(OnboardingFile).max(8),
+  first_tasks: z.array(OnboardingTask).max(5),
 });
 export type Onboarding = z.infer<typeof Onboarding>;
+
+/** `GET /repos/:id/onboarding` — the stored tour plus what the page needs around it. */
+export const OnboardingPage = z.object({
+  repo: z.object({
+    name: z.string(),
+    full_name: z.string(),
+    default_branch: z.string(),
+  }),
+  tour: Onboarding.nullable(),
+  generating: z.boolean(),
+  stale: z.boolean(),
+});
+export type OnboardingPage = z.infer<typeof OnboardingPage>;
+
+/** `POST /repos/:id/onboarding/generate` takes no input; send `{}`. */
+export const OnboardingGenerateBody = z.object({}).strict();
+export type OnboardingGenerateBody = z.infer<typeof OnboardingGenerateBody>;
+
+/**
+ * What the model returns — the model's contract, enforced out of band by
+ * `response_format: json_schema`. No `.max()` and no `.optional()` (strict
+ * json_schema); caps and the path check are applied in code before storing.
+ */
+export const OnboardingDraft = z.object({
+  architecture: z
+    .string()
+    .describe('Markdown prose: what the system is and how its main parts fit together.'),
+  diagram: z
+    .string()
+    .nullable()
+    .describe('A Mermaid flowchart of the architecture, without code fences; null when none.'),
+  file_reasons: z
+    .array(
+      z.object({
+        path: z.string().describe('Repo-relative path of a listed file, exactly as shown.'),
+        reason: z.string().describe('One line on why a new contributor should read this file.'),
+      }),
+    )
+    .describe('One entry per listed file; only for files in the provided list.'),
+  commands: z
+    .array(
+      z.object({
+        line: z.string().describe('One shell command line to set up or run the project.'),
+        source_path: z.string().describe('Path of the provided file the command comes from.'),
+      }),
+    )
+    .describe('Commands to run the project locally, in order.'),
+  first_tasks: z
+    .array(
+      z.object({
+        text: z.string().describe('One line describing a starter task for a new contributor.'),
+        paths: z.array(z.string()).describe('Provided file paths the task touches, at least one.'),
+        complexity: z
+          .string()
+          .nullable()
+          .describe("Rough size for a new contributor: 'low', 'medium' or 'high'; null when unsure."),
+      }),
+    )
+    .describe('Starter tasks, one line each.'),
+});
+export type OnboardingDraft = z.infer<typeof OnboardingDraft>;
 
 // ---- Eval ----
 export const EvalPerTrace = z.object({
@@ -326,10 +425,6 @@ export const ConventionSkillDraft = z.object({
 export type ConventionSkillDraft = z.infer<typeof ConventionSkillDraft>;
 
 // ---- Agents ----
-// 'openrouter' routes through the OpenAI-compatible API (OpenAIProvider with a
-// custom baseURL) — used by the CI runner for cheap models (DeepSeek/GLM/MiniMax).
-export const Provider = z.enum(['openai', 'anthropic', 'openrouter']);
-export type Provider = z.infer<typeof Provider>;
 
 // Review execution strategy (matches @devdigest/reviewer-core's ReviewStrategy):
 //  - single-pass: send the WHOLE diff in ONE model call (default)

@@ -140,11 +140,30 @@ describe('AI contracts parse fixtures', () => {
         completeness_pct: 80,
       }),
     ).not.toThrow();
+    const tour = {
+      repo_id: 'r1',
+      generated_at: '2026-10-01T00:00:00.000Z',
+      index_sha: 'abc123',
+      files_indexed: 42,
+      provider: 'openrouter',
+      model: 'm',
+      architecture: { prose: 'p', diagram: null },
+      critical_paths: [{ path: 'a.ts', reason: null }],
+      run_locally: [{ line: 'pnpm dev', source_path: 'package.json' }],
+      reading_path: [{ path: 'a.ts', reason: 'entry point' }],
+      first_tasks: [{ text: 'Add a test', paths: ['a.ts'] }],
+    };
+    expect(() => Onboarding.parse(tour)).not.toThrow(); // a tour stored before task complexity existed
+    const labelled = { ...tour, first_tasks: [{ text: 'Add a test', paths: ['a.ts'], complexity: 'low' }] };
+    expect(() => Onboarding.parse(labelled)).not.toThrow();
+    expect(() => Onboarding.parse({ ...tour, first_tasks: [{ ...tour.first_tasks[0], complexity: null }] })).not.toThrow();
+    expect(() => Onboarding.parse({ ...tour, first_tasks: [{ ...tour.first_tasks[0], complexity: 'huge' }] })).toThrow();
     expect(() =>
       Onboarding.parse({
-        sections: [{ kind: 'architecture', title: 'T', body: 'b', links: [] }],
+        ...tour,
+        reading_path: Array.from({ length: 9 }, (_, i) => ({ path: `f${i}.ts`, reason: null })),
       }),
-    ).not.toThrow();
+    ).toThrow();
     expect(() =>
       EvalRun.parse({
         recall: 0.82,

@@ -119,6 +119,7 @@ export interface RefRow {
 export interface FileRankRow {
   path: string;
   percentile: number;
+  rank: number;
 }
 
 export interface RepoMapResult {

@@ -436,16 +436,23 @@ export class RepoIntelRepository {
       .where(eq(t.fileEdges.repoId, repoId));
   }
 
-  /** `{path, percentile}` for the given paths (smart-diff / run-executor). */
+  /** `{path, percentile, rank}` for the given paths (smart-diff / run-executor / onboarding). */
   async getFileRankFor(repoId: string, paths: string[]): Promise<FileRankRow[]> {
     if (paths.length === 0) return [];
     return this.db
-      .select({ path: t.fileRank.filePath, percentile: t.fileRank.percentile })
+      .select({
+        path: t.fileRank.filePath,
+        percentile: t.fileRank.percentile,
+        rank: t.fileRank.rank,
+      })
       .from(t.fileRank)
       .where(and(eq(t.fileRank.repoId, repoId), inArray(t.fileRank.filePath, paths)));
   }
 
-  /** Top `limit` paths by rank DESC (caller filters tests/configs in JS). */
+  /**
+   * Top `limit` paths by rank DESC, equal ranks by path ASC (caller filters
+   * tests/configs in JS). The tiebreak makes the LIMIT cut-off deterministic.
+   */
   async getRankedPaths(
     repoId: string,
     limit: number,
@@ -454,7 +461,7 @@ export class RepoIntelRepository {
       .select({ path: t.fileRank.filePath, rank: t.fileRank.rank })
       .from(t.fileRank)
       .where(eq(t.fileRank.repoId, repoId))
-      .orderBy(desc(t.fileRank.rank))
+      .orderBy(desc(t.fileRank.rank), asc(t.fileRank.filePath))
       .limit(limit);
   }
 

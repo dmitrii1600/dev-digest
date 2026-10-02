@@ -34,6 +34,17 @@ export class ExternalServiceError extends AppError {
   }
 }
 
+/**
+ * A provider got an answer but it never matched the requested schema (after any
+ * reprompts). Typed so callers branch with `instanceof`, never on message text.
+ */
+export class StructuredOutputError extends ExternalServiceError {
+  constructor(message: string, details?: unknown) {
+    super(message, details);
+    this.name = 'StructuredOutputError';
+  }
+}
+
 export class ConfigError extends AppError {
   constructor(message: string, details?: unknown) {
     super('config_error', message, 500, details);

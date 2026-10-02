@@ -26,3 +26,9 @@ test-results/
 
 # pr-self-review output (reports, cache, waivers, history)
 .devdigest/pr-self-review/
+
+# scripts/verify.mjs result cache, keyed by tree fingerprint
+.devdigest/verify/
+
+# /run-plan run reports, one folder per plan stem
+.devdigest/sdd/

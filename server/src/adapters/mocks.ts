@@ -36,6 +36,7 @@ import type {
   FetchedResource,
 } from '@devdigest/shared';
 import { parseUnifiedDiff } from './git/diff-parser.js';
+import { StructuredOutputError } from '../platform/errors.js';
 
 /**
  * Deterministic MOCK adapters for tests/dev — NO real network. Each mirrors the
@@ -94,7 +95,7 @@ export class MockLLMProvider implements LLMProvider {
     const fixture = this.opts.structuredBySchema?.[req.schemaName] ?? this.opts.structured ?? {};
     const parsed = (req.schema as z.ZodType<T>).safeParse(fixture);
     if (!parsed.success) {
-      throw new Error(`MockLLMProvider fixture failed schema: ${parsed.error.message}`);
+      throw new StructuredOutputError(`MockLLMProvider fixture failed schema: ${parsed.error.message}`);
     }
     return {
       data: parsed.data,
@@ -274,6 +275,8 @@ export interface MockGitOptions {
   head?: string;
   /** Head `currentHead()` returns AFTER `sync()` runs — simulates fetch+reset advancing HEAD. */
   syncedHead?: string;
+  /** Paths `listTracked` reports as tracked; `'fail'` makes it throw (fail-closed tests). */
+  tracked?: string[] | 'fail';
 }
 
 export class MockGitClient implements GitClient {
@@ -317,6 +320,11 @@ export class MockGitClient implements GitClient {
   }
   async readFile(_repo: RepoRef, path: string): Promise<string> {
     return this.opts.files?.[path] ?? '';
+  }
+  async listTracked(_clonePath: string, underDir: string): Promise<string[]> {
+    if (this.opts.tracked === 'fail') throw new Error('mock git: listTracked failed');
+    const prefix = underDir.endsWith('/') ? underDir : `${underDir}/`;
+    return (this.opts.tracked ?? []).filter((p) => p.startsWith(prefix));
   }
 }
 

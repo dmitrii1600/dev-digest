@@ -1,6 +1,7 @@
 import type { BlastRadius, PrHistory, RepoRef } from '@devdigest/shared';
 import type { RepoIntel } from '../repo-intel/types.js';
 import type { BlastRepository } from './repository.js';
+import type { BlastPort } from './types.js';
 import {
   buildPrHistory,
   collectUniqueCommits,
@@ -34,7 +35,7 @@ export interface PrHistoryGitHubPort {
  * arguments (onion rule 9); `routes.ts` wires them, so this is unit-tested
  * hermetically with plain fakes (no Postgres, no Container).
  */
-export class BlastService {
+export class BlastService implements BlastPort {
   constructor(
     private readonly deps: {
       prs: Pick<BlastRepository, 'getPrScope'>;

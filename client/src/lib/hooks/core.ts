@@ -15,7 +15,6 @@ import type {
   Repo,
   PrMeta,
   PrDetail,
-  SpecFile,
   IndexStatus,
 } from "../types";
 
@@ -120,14 +119,6 @@ export function usePullDetail(prId: string | number | null | undefined) {
 }
 
 // ---- Project Context (A3 contract; safe to call once API exposes it) ----
-export function useContextFiles(repoId: string | null | undefined) {
-  return useQuery({
-    queryKey: ["context", repoId],
-    queryFn: () => api.get<SpecFile[]>(`/repos/${repoId}/context`),
-    enabled: !!repoId,
-  });
-}
-
 export function useReindexContext() {
   const qc = useQueryClient();
   return useMutation({

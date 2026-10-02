@@ -2,7 +2,9 @@ import { z } from 'zod';
 
 /**
  * PR Brief building blocks: Intent, Blast radius, Risks, PR History,
- * Smart Diff. Composed into PrBrief.
+ * Smart Diff, plus the generated brief record. Composed into PrBrief, the
+ * `pr_brief.json` document, in which each writer owns one top-level key
+ * (`brief` and `history`) and merges it in atomically.
  */
 
 // ---- Intent ----
@@ -158,11 +160,160 @@ export const SmartDiff = z.object({
 });
 export type SmartDiff = z.infer<typeof SmartDiff>;
 
-// ---- Composed PR Brief (pr_brief.json) ----
+// ---- Generated PR Brief ----
+
+/** Every [fact, status] pair a brief may report as missing, degraded or
+ *  trimmed. The single source: the `BriefMissingFact` union below, the server
+ *  helpers and the client copy all pin to it. */
+export const BRIEF_FACT_PAIRS = [
+  ['intent', 'absent'],
+  ['intent', 'stale'],
+  ['blast', 'degraded'],
+  ['blast', 'unavailable'],
+  ['linked_issue', 'absent'],
+  ['linked_issue', 'missing_token'],
+  ['linked_issue', 'fetch_failed'],
+  ['linked_issue', 'cut'],
+  ['project_context', 'absent'],
+  ['project_context', 'skipped'],
+  ['project_context', 'truncated'],
+  ['project_context', 'dropped'],
+  ['description', 'absent'],
+  ['description', 'truncated'],
+  ['callers', 'dropped'],
+  ['file_stats', 'folded'],
+] as const;
+
+// `detail` carries: a BlastDegradedReason for blast/degraded; a document path
+// for project_context/skipped|truncated|dropped; the issue number for
+// linked_issue/missing_token|fetch_failed|cut; the folded-file count for
+// file_stats/folded; null otherwise. A pair outside BRIEF_FACT_PAIRS fails
+// PrBriefRecord parsing.
+export const BriefMissingFact = z.discriminatedUnion('fact', [
+  z.object({
+    fact: z.literal('intent'),
+    status: z.enum(['absent', 'stale']),
+    detail: z.string().nullable(),
+  }),
+  z.object({
+    fact: z.literal('blast'),
+    status: z.enum(['degraded', 'unavailable']),
+    detail: z.string().nullable(),
+  }),
+  z.object({
+    fact: z.literal('linked_issue'),
+    status: z.enum(['absent', 'missing_token', 'fetch_failed', 'cut']),
+    detail: z.string().nullable(),
+  }),
+  z.object({
+    fact: z.literal('project_context'),
+    status: z.enum(['absent', 'skipped', 'truncated', 'dropped']),
+    detail: z.string().nullable(),
+  }),
+  z.object({
+    fact: z.literal('description'),
+    status: z.enum(['absent', 'truncated']),
+    detail: z.string().nullable(),
+  }),
+  z.object({
+    fact: z.literal('callers'),
+    status: z.enum(['dropped']),
+    detail: z.string().nullable(),
+  }),
+  z.object({
+    fact: z.literal('file_stats'),
+    status: z.enum(['folded']),
+    detail: z.string().nullable(),
+  }),
+]);
+export type BriefMissingFact = z.infer<typeof BriefMissingFact>;
+export type BriefFact = BriefMissingFact['fact'];
+
+export const BriefReviewFocusItem = z.object({
+  file: z.string(),
+  line: z.number().int().min(1),
+  reason: z.string().max(200),
+});
+export type BriefReviewFocusItem = z.infer<typeof BriefReviewFocusItem>;
+
+/** `Risk` as stored: bounded and always anchored to at least one file. */
+export const StoredRisk = Risk.extend({
+  title: z.string().max(120),
+  explanation: z.string().max(600),
+  file_refs: z.array(z.string()).min(1),
+});
+export type StoredRisk = z.infer<typeof StoredRisk>;
+
+// A field added later must be `.nullish()` — stored documents predate it.
+// `input_tokens` is our cl100k count of what we sent, taken before the call
+// (NFR-2/NFR-9). `tokens_in`/`tokens_out` are the provider's reported usage
+// (the banner cost line). They measure different things and are kept apart.
+export const PrBriefRecord = z.object({
+  summary: z.string().max(600),
+  risks: z.array(StoredRisk).max(8),
+  review_focus: z.array(BriefReviewFocusItem).max(8),
+  missing_facts: z.array(BriefMissingFact),
+  head_sha: z.string(),
+  provider: z.string(),
+  model: z.string(),
+  input_tokens: z.number().int(),
+  tokens_in: z.number().int().nullable(),
+  tokens_out: z.number().int().nullable(),
+  cost_usd: z.number().nullable(),
+  generated_at: z.string(),
+});
+export type PrBriefRecord = z.infer<typeof PrBriefRecord>;
+
+export const PrBriefResponse = z.object({
+  brief: PrBriefRecord.nullable(),
+  stale: z.boolean(),
+  head_sha: z.string(),
+  generating: z.boolean(),
+});
+export type PrBriefResponse = z.infer<typeof PrBriefResponse>;
+
+/** What the brief model returns — out-of-band `response_format: json_schema`.
+ *  No caps, no `int()`/`min(1)`: the provider's schema dialect is narrow, so
+ *  the file filter and the length caps are enforced in code, not here. */
+export const BriefDraft = z.object({
+  summary: z.string().describe('At most two sentences: what this PR does and why it matters to a reviewer.'),
+  risks: z
+    .array(
+      z.object({
+        kind: z.string().describe('A short category label, e.g. "security", "data", "compatibility".'),
+        title: z.string().describe('A short headline for the risk.'),
+        explanation: z.string().describe('Why this is a risk, in one or two sentences.'),
+        severity: RiskSeverity,
+        file_refs: z
+          .array(z.string())
+          .describe(
+            'Paths from the listed files only. A ref may carry a line suffix, ":line" or ":start-end". At most 8 risks in total.',
+          ),
+      }),
+    )
+    .describe('At most 8 risks, most severe first.'),
+  review_focus: z
+    .array(
+      z.object({
+        file: z.string().describe('A bare path from the listed files, with no line suffix.'),
+        line: z.number().describe('A new-side line number in that file.'),
+        reason: z.string().describe('Why a reviewer should read this spot first.'),
+      }),
+    )
+    .describe('At most 8 places to read first, in reading order.'),
+});
+export type BriefDraft = z.infer<typeof BriefDraft>;
+
+// ---- PR Brief document (pr_brief.json) ----
+// Each writer owns one top-level key and merges it atomically (`||`):
+// `brief` is the generated brief, `history` is Prior PRs.
 export const PrBrief = z.object({
-  intent: Intent,
-  blast: BlastRadius,
-  risks: Risks,
-  history: PrHistory,
+  brief: PrBriefRecord.optional(),
+  history: z
+    .object({
+      computed_for_sha: z.string(),
+      history: z.array(PrHistoryItem),
+    })
+    .optional(),
 });
 export type PrBrief = z.infer<typeof PrBrief>;

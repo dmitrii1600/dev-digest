@@ -6,7 +6,10 @@ export const s = {
   list: { display: "flex", flexDirection: "column", gap: 10 } satisfies CSSProperties,
   empty: { padding: "24px", fontSize: 14, color: "var(--text-muted)", textAlign: "center" } satisfies CSSProperties,
   fileCard: {
-    border: "1px solid var(--border)",
+    borderTop: "1px solid var(--border)",
+    borderRight: "1px solid var(--border)",
+    borderBottom: "1px solid var(--border)",
+    borderLeft: "1px solid var(--border)",
     borderRadius: 7,
     overflow: "hidden",
     background: "var(--bg-elevated)",
@@ -65,6 +68,14 @@ export const s = {
     paddingRight: 12,
   } satisfies CSSProperties,
 } as const;
+
+/** A file card the URL points at (`?file=`) gets an accent border. Per-side
+ *  borders in both states, so React never swaps `border` for a side property. */
+export function fileCardFor(isTarget: boolean): CSSProperties {
+  if (!isTarget) return s.fileCard;
+  const edge = "1px solid var(--accent)";
+  return { ...s.fileCard, borderTop: edge, borderRight: edge, borderBottom: edge, borderLeft: edge };
+}
 
 /** Chevron rotates 90deg when the file card is open. */
 export function chevronFor(open: boolean): CSSProperties {

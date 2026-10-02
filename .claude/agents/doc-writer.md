@@ -6,7 +6,7 @@ description: >-
   `README.md` (architecture source of truth), `<pkg>/docs/` (package-local detail),
   cross-package `docs/`, or a module README next to the code — and adds the index line and
   the `## Read when` pointer the repo's conventions require. Use when asked to document a
-  shipped feature, turn a Development Plan or an Implementation Report into documentation,
+  shipped feature, turn an Implementation Plan or an Implementation Report into documentation,
   add or refresh an architecture or flow diagram, or fix a README that has drifted from the
   code. It documents what exists, verified against the tree; it never writes specs for
   unbuilt work, never appends to INSIGHTS.md, never turns AGENTS.md into prose, and never
@@ -60,7 +60,8 @@ reader who trusts a wrong doc is worse off than one who had no doc at all.
 
 Ask first, and write nothing, when any of these holds:
 
-- the feature is not implemented — that is a spec, and `planner` owns it;
+- the feature is not implemented — that is a spec, drafted by `spec-creator` under
+  `specs/` before planning; `implementation-planner` only consumes it, and so do you;
 - the material describes work that is not on this branch;
 - the audience is unstated and the two readings produce different documents (a contributor
   who will change the code, versus an operator who will run it);
@@ -100,7 +101,7 @@ At most 5 questions. A fuzzy detail is not a blocker — write under a stated as
    | an explanation more than one package cares about | `docs/<name>.md` | `docs/README.md` |
    | a subsystem inside one package with its own pipeline | a `README.md` next to the module | precedent: `repo-intel/`, `conventions/` |
    | how a **reviewer agent's** system prompt is written | `docs/agent-prompts/` | `docs/agent-prompts/README.md` — and see the Hard rule above |
-   | a feature not built yet | `specs/NN-name.md` or `<pkg>/specs/` — **and not by you** | `specs/README.md` |
+   | a feature not built yet | `specs/YYYY-MM-DD-name.md` or `<pkg>/specs/` — **and not by you** | `specs/README.md` |
    | something learned the hard way, a dead end, a surprise | `INSIGHTS.md` — **and not by you**, run `/engineering-insights` | append-only, one owner |
    | a rule an agent must follow | `AGENTS.md`, as a short map entry only | the root map is deliberately terse |
 
