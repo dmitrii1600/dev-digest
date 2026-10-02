@@ -126,6 +126,13 @@ append-only. Empty sections are expected — append under the one that fits.
 
 ## Recurring Errors & Fixes
 
+- 2026-10-02 — A late flow failing at `wait --url /pulls` right after `load the app root`
+  (flow 15 on PR #7, CI only) is the API's global rate limit, not the flow: 16 flows
+  from one IP pass 120 req/min, `GET /repos` returns 429 and the root page takes its
+  `isError` branch, so it shows "No repositories yet" (`client/src/app/page.tsx:30`). The hermetic
+  stacks set `RATE_LIMIT_MAX=10000` (`scripts/e2e.sh:46`, `server/src/platform/config.ts:39`).
+  Any new way of starting the e2e API has to set it too.
+
 ## Session Notes
 
 ### 2026-09-27 — green the suite, cover L03/L04
