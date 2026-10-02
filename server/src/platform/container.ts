@@ -30,6 +30,14 @@ import { ReviewRepository } from '../modules/reviews/repository.js';
 import { SkillsRepository } from '../modules/skills/repository.js';
 import type { RepoIntel } from '../modules/repo-intel/types.js';
 import { RepoIntelService } from '../modules/repo-intel/service.js';
+import type { BlastPort } from '../modules/blast/types.js';
+import { BlastService } from '../modules/blast/service.js';
+import { BlastRepository } from '../modules/blast/repository.js';
+import { REINDEX_NUDGE_INTERVAL_MS } from '../modules/blast/constants.js';
+import type { SmartDiffPort } from '../modules/smart-diff/types.js';
+import { SmartDiffService } from '../modules/smart-diff/service.js';
+import { SmartDiffRepository } from '../modules/smart-diff/repository.js';
+import { INDEXER_VERSION, MAX_CALLERS_PER_SYMBOL, RESYNC_JOB_KIND } from '../modules/repo-intel/constants.js';
 import type { IntentPort } from '../modules/intent/types.js';
 import { IntentService } from '../modules/intent/service.js';
 import { IntentRepository } from '../modules/intent/repository.js';
@@ -66,12 +74,24 @@ export interface ContainerOverrides {
   intent?: IntentPort;
   /** Project Context - tests may inject a stub. */
   projectContext?: ProjectContextPort;
+  /** Blast radius - tests may inject a stub (the PR brief reads it through the port). */
+  blast?: BlastPort;
+  /** Smart Diff - tests may inject a stub (the PR brief reads it through the port). */
+  smartDiff?: SmartDiffPort;
   /** repo-intel T3 adapters — only the indexer pipeline reads these. */
   depgraph?: DepGraph;
   tokenizer?: Tokenizer;
   /** Skills import-from-URL — tests inject `MockUrlFetcher`, never the network. */
   urlFetcher?: UrlFetcher;
 }
+
+/** Minimal structured logger (pino-compatible) the container hands to services it builds. */
+export interface ContainerLogger {
+  info(obj: unknown, msg?: string): void;
+  warn(obj: unknown, msg?: string): void;
+}
+
+const NOOP_LOG: ContainerLogger = { info: () => {}, warn: () => {} };
 
 export class Container {
   readonly config: AppConfig;
@@ -96,12 +116,19 @@ export class Container {
   private _repoIntel?: RepoIntel;
   private _intent?: IntentPort;
   private _projectContext?: ProjectContextPort;
+  private _blast?: BlastPort;
+  private _smartDiff?: SmartDiffPort;
   private _depgraph?: DepGraph;
   private _tokenizer?: Tokenizer;
   private _urlFetcher?: UrlFetcher;
   private _priceBook?: PriceBook;
 
-  constructor(config: AppConfig, db: Db, private overrides: ContainerOverrides = {}) {
+  constructor(
+    config: AppConfig,
+    db: Db,
+    private overrides: ContainerOverrides = {},
+    readonly log: ContainerLogger = NOOP_LOG,
+  ) {
     this.config = config;
     this.db = db;
     this.secrets = overrides.secrets ?? new LocalSecretsProvider(config.secretsPath);
@@ -182,6 +209,41 @@ export class Container {
     return this._projectContext;
   }
 
+  /**
+   * Blast radius. One `BlastService` per container, so the blast route and the
+   * PR brief share a single reindex-nudge throttle (`lastNudgeAt`). The `index`
+   * closures are lazy: a test that patches `container.repoIntel` after
+   * `buildApp()` is still honoured.
+   */
+  get blast(): BlastPort {
+    if (this.overrides.blast) return this.overrides.blast;
+    this._blast ??= new BlastService({
+      prs: new BlastRepository(this.db),
+      index: {
+        getBlastRadius: (repoId, files) => this.repoIntel.getBlastRadius(repoId, files),
+        getIndexState: (repoId) => this.repoIntel.getIndexState(repoId),
+      },
+      log: this.log,
+      repoIntelEnabled: this.config.repoIntelEnabled,
+      maxCallersPerSymbol: MAX_CALLERS_PER_SYMBOL,
+      indexerVersion: INDEXER_VERSION,
+      // Same job the Resync button enqueues; the handler is registered by
+      // repo-intel/routes.ts at boot. Fire-and-forget from the service.
+      requestReindex: async (workspaceId, repoId) => {
+        await this.jobs.enqueue(workspaceId, RESYNC_JOB_KIND, { repoId });
+      },
+      reindexNudgeIntervalMs: REINDEX_NUDGE_INTERVAL_MS,
+    });
+    return this._blast;
+  }
+
+  /** Smart Diff facade (path-based classifier, no model call). */
+  get smartDiff(): SmartDiffPort {
+    if (this.overrides.smartDiff) return this.overrides.smartDiff;
+    this._smartDiff ??= new SmartDiffService(new SmartDiffRepository(this.db));
+    return this._smartDiff;
+  }
+
   /** Import-graph builder (dependency-cruiser). T3 indexer pipeline only. */
   get depgraph(): DepGraph {
     if (this.overrides.depgraph) return this.overrides.depgraph;
@@ -231,22 +293,36 @@ export class Container {
     return this._github;
   }
 
-  /** Resolve an LLM provider by id; constructs from the secret key, cached. */
-  async llm(id: 'openai' | 'anthropic' | 'openrouter'): Promise<LLMProvider> {
+  /**
+   * Resolve an LLM provider by id; constructs from the secret key, cached.
+   *
+   * `opts.singleShot` builds a variant that makes ONE transport attempt (SDK
+   * `maxRetries: 0`, no `withRetry`) and, for OpenRouter, a client timeout of
+   * `timeoutMs`. It is cached under `${id}:single` in the same cache, so
+   * `invalidateSecretCaches()` clears it too. An injected override wins for both.
+   */
+  async llm(
+    id: 'openai' | 'anthropic' | 'openrouter',
+    opts?: { singleShot?: { timeoutMs: number } },
+  ): Promise<LLMProvider> {
     const injected = this.overrides.llm?.[id];
     if (injected) return injected;
-    const cached = this.llmCache.get(id);
+    const cacheKey = opts?.singleShot ? `${id}:single` : id;
+    const cached = this.llmCache.get(cacheKey);
     if (cached) return cached;
-    const provider = await this.buildLlm(id);
-    this.llmCache.set(id, provider);
+    const provider = await this.buildLlm(id, opts?.singleShot);
+    this.llmCache.set(cacheKey, provider);
     return provider;
   }
 
-  private async buildLlm(id: 'openai' | 'anthropic' | 'openrouter'): Promise<LLMProvider> {
+  private async buildLlm(
+    id: 'openai' | 'anthropic' | 'openrouter',
+    singleShot?: { timeoutMs: number },
+  ): Promise<LLMProvider> {
     if (id === 'openai') {
       const key = await this.secrets.get('OPENAI_API_KEY');
       if (!key) throw new ConfigError('OPENAI_API_KEY is not configured');
-      return new OpenAIProvider(key);
+      return new OpenAIProvider(key, singleShot ? { singleShot: true } : undefined);
     }
     if (id === 'openrouter') {
       // Single OpenRouter provider lives in reviewer-core (shared with the CI
@@ -258,12 +334,13 @@ export class Container {
         new OpenRouterProvider(key, {
           estimateCost: (model, tokensIn, tokensOut) =>
             this.priceBook.estimate(model, tokensIn, tokensOut),
+          ...(singleShot ? { maxRetries: 0, timeoutMs: singleShot.timeoutMs } : {}),
         }),
       );
     }
     const key = await this.secrets.get('ANTHROPIC_API_KEY');
     if (!key) throw new ConfigError('ANTHROPIC_API_KEY is not configured');
-    return new AnthropicProvider(key);
+    return new AnthropicProvider(key, singleShot ? { singleShot: true } : undefined);
   }
 
   async embedder(): Promise<Embedder> {

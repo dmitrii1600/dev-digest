@@ -37,6 +37,8 @@ import type {
   ResolvedProjectContext,
 } from './types.js';
 
+const emptyResolved = (): ResolvedProjectContext => ({ docs: [], skipped: [], truncated: [], tokens: 0 });
+
 export class ProjectContextService implements ProjectContextPort {
   /** Per-repo write queue (NFR-4): writes to one clone never interleave in this process. */
   private locks = new Map<string, Promise<unknown>>();
@@ -395,15 +397,42 @@ export class ProjectContextService implements ProjectContextPort {
     clonePath: string | null;
     agentId: string;
   }): Promise<ResolvedProjectContext> {
-    const out: ResolvedProjectContext = { docs: [], skipped: [], truncated: [], tokens: 0 };
-    if (!input.clonePath) return out;
-    const { agentPaths, skills } = await this.deps.repo.pathsForRun(input.agentId, input.repoId);
-    const ordered = orderForInjection(
+    if (!input.clonePath) return emptyResolved();
+    return this.readAll(input.clonePath, await this.orderedPathsFor(input.agentId, input.repoId));
+  }
+
+  async resolveForRepo(input: {
+    workspaceId: string;
+    repoId: string;
+    clonePath: string | null;
+  }): Promise<ResolvedProjectContext> {
+    if (!input.clonePath) return emptyResolved();
+    const seen = new Set<string>();
+    const union: string[] = [];
+    for (const agentId of await this.deps.repo.enabledAgentIds(input.workspaceId)) {
+      for (const path of await this.orderedPathsFor(agentId, input.repoId)) {
+        if (seen.has(path)) continue;
+        seen.add(path);
+        union.push(path);
+      }
+    }
+    return this.readAll(input.clonePath, union);
+  }
+
+  /** One agent's injection order: its own documents, then its enabled skills'. */
+  private async orderedPathsFor(agentId: string, repoId: string): Promise<string[]> {
+    const { agentPaths, skills } = await this.deps.repo.pathsForRun(agentId, repoId);
+    return orderForInjection(
       agentPaths,
       skills.map((s) => s.paths),
     );
-    for (const path of ordered) {
-      const doc = await this.deps.readDoc(input.clonePath, path);
+  }
+
+  /** Reads each path once, in order; a missing/unreadable one lands in `skipped`. */
+  private async readAll(clonePath: string, paths: string[]): Promise<ResolvedProjectContext> {
+    const out = emptyResolved();
+    for (const path of paths) {
+      const doc = await this.deps.readDoc(clonePath, path);
       if (!doc) {
         out.skipped.push(path);
         continue;

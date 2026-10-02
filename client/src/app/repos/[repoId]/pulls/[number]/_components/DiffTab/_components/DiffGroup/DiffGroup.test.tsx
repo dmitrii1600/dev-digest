@@ -72,3 +72,18 @@ describe("DiffGroup collapse state", () => {
     expect(screen.getByText("src/app.ts")).toBeInTheDocument();
   });
 });
+
+describe("DiffGroup target", () => {
+  it("a collapsed-by-default group opens when it holds the target file, and a user click still collapses it", () => {
+    renderGroup({ role: "boilerplate", files: [file("pnpm-lock.yaml")], targetPath: "pnpm-lock.yaml" });
+    expect(screen.getByText("pnpm-lock.yaml")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { expanded: true }));
+    expect(screen.queryByText("pnpm-lock.yaml")).not.toBeInTheDocument();
+  });
+
+  it("stays collapsed when the target is a file in another group", () => {
+    renderGroup({ role: "boilerplate", files: [file("pnpm-lock.yaml")], targetPath: "src/app.ts" });
+    expect(screen.queryByText("pnpm-lock.yaml")).not.toBeInTheDocument();
+  });
+});

@@ -78,6 +78,16 @@ export class ProjectContextRepository implements ProjectContextStore {
     });
   }
 
+  /** `enabled = true` agents of the workspace; `created_at asc, id asc` is the union's order. */
+  async enabledAgentIds(ws: string): Promise<string[]> {
+    const rows = await this.db
+      .select({ id: t.agents.id })
+      .from(t.agents)
+      .where(and(eq(t.agents.workspaceId, ws), eq(t.agents.enabled, true)))
+      .orderBy(asc(t.agents.createdAt), asc(t.agents.id));
+    return rows.map((r) => r.id);
+  }
+
   /** Skills filtered on `skills.enabled AND agent_skills.enabled`, in `agent_skills.order`. */
   async pathsForRun(agentId: string, repoId: string) {
     const agentPaths = await this.agentPaths(agentId, repoId);

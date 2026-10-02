@@ -862,6 +862,17 @@ The orchestrator repeated the known `pnpm exec`-in-a-worktree mistake (What
 Doesn't Work, 2026-09-29) because it skipped reading root INSIGHTS first. This
 time the install failed before touching anything.
 
+### 2026-10-02 — /run-plan on PR Brief (multi-agent, 2 tracks + e2e)
+
+**Fix loop.** The first verify had four PARTIAL rows where the code was right and a plan line was
+stale (`diffPaths` prop, two e2e locator steps). The implementer may not edit the plan in a fix loop,
+so it skipped them. The orchestrator edited those plan lines and marked each "Amended during build";
+the delta verifier then accepted them. Before sending a PARTIAL row to the implementer, check whether
+it is a stale plan line rather than a code gap.
+
+**Review and counts.** The "cross-model" plan review ran on Claude Fable 5.1, the same family; the
+person accepted that. The plan said "17 fact pairs" but listed 16, which step 0 caught.
+
 ## Open Questions
 
 - 2026-09-18 — The pr-self-review PreToolUse hook matches on command text, so a

@@ -1,0 +1,29 @@
+{
+  "name": "PR Brief — summary, risk areas, review focus and the jump to Files changed",
+  "description": "Walks the Overview tab's PR Brief section (L06) on the seeded brief for PR #482 (server/src/db/seed-brief.ts, written through the same atomic JSONB merge as the Prior PRs history, so flow 13 still finds its history next to it): the summary, a risk pill, the 'Review focus — read these first' card, a click on its first row jumping to Files changed with ?tab=diff&file=…&line=…, a reload and a Back that honour the URL (AC-17), and a click on a blast-only file (src/server.ts is a caller in the blast map, not a changed file) that stays on Overview and shows the 'File not in this PR's diff' notice (EC-6). The seeded pr_files rows carry no patch, so the line scroll falls back to the card top (EC-7); the line anchor itself is proven in DiffTab.test.tsx. Never clicks Generate brief or Refresh — both call the LLM. Read-only seeded data, no model call. Assumes a freshly-seeded DB where acme/payments-api (PR #482) is the first repo — guaranteed by e2e-web.yml.",
+  "steps": [
+    { "cmd": ["open", "{BASE}/"], "label": "load the app root" },
+    { "cmd": ["set", "viewport", "1280", "1800"], "label": "tall viewport so every later click target is inside it (agent-browser does not scroll before a click on Linux; see flow 13)" },
+    { "cmd": ["wait", "--url", "/pulls"], "label": "root redirects to the seeded repo's PR list" },
+    { "cmd": ["wait", "--load", "networkidle"], "label": "PR list data settles" },
+    { "cmd": ["wait", "--text", "Add rate limiting to public API endpoints"], "label": "the seeded PR row has rendered (clicking straight after the redirect is a race that `next dev` loses)" },
+    { "cmd": ["find", "text", "Add rate limiting to public API endpoints", "click"], "label": "open the seeded PR row (title from seed.ts)" },
+    { "cmd": ["wait", "--url", "/pulls/482"], "label": "navigate to the PR detail route" },
+    { "cmd": ["wait", "--load", "networkidle"], "label": "PR detail data settles; Overview is the default tab" },
+    { "cmd": ["wait", "--text", "PR BRIEF"], "label": "the PR Brief SectionLabel renders (CSS-uppercased brief.json title)" },
+    { "cmd": ["wait", "--text", "Adds a token-bucket rate limiter to the public API and mounts it on the webhook routes."], "label": "the seeded summary renders (seed-brief.ts)" },
+    { "cmd": ["wait", "--text", "Limiter keyed on a spoofable header"], "label": "the first risk pill's title renders" },
+    { "cmd": ["wait", "--text", "REVIEW FOCUS — READ THESE FIRST"], "label": "the Review focus card renders (CSS-uppercased brief.json reviewFocus.title)" },
+    { "cmd": ["find", "role", "button", "click", "--name", "src/middleware/ratelimit.ts:12 — Token refill math"], "label": "click the first Review focus row (the risk pill's name carries ':12-30', so the row is addressed by its reason to stay unambiguous)" },
+    { "cmd": ["wait", "--url", "tab=diff"], "label": "the jump switches to Files changed" },
+    { "cmd": ["wait", "--url", "file=src%2Fmiddleware%2Fratelimit.ts"], "label": "the target file is in the URL" },
+    { "cmd": ["wait", "--text", "src/middleware/ratelimit.ts"], "label": "the target file's card renders in Files changed" },
+    { "cmd": ["reload"], "label": "reload on the diff URL (AC-17)" },
+    { "cmd": ["wait", "--url", "file=src%2Fmiddleware%2Fratelimit.ts"], "label": "the target survives the reload" },
+    { "cmd": ["wait", "--text", "src/middleware/ratelimit.ts"], "label": "the target file's card renders again after the reload" },
+    { "cmd": ["back"], "label": "Back to the Overview URL (the jump pushed a history entry)" },
+    { "cmd": ["wait", "--text", "PR BRIEF"], "label": "Overview and its PR Brief section render again" },
+    { "cmd": ["find", "role", "button", "click", "--name", "src/server.ts:31"], "label": "click the third Review focus row: src/server.ts is a blast-map caller, not a changed file (EC-6)" },
+    { "cmd": ["wait", "--text", "File not in this PR's diff"], "label": "the info toast explains why nothing navigated (EC-6)" }
+  ]
+}

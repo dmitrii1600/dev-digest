@@ -3,8 +3,6 @@ import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { SmartDiffResponse } from '@devdigest/shared';
 import { getContext } from '../_shared/context.js';
 import { IdParams } from '../_shared/schemas.js';
-import { SmartDiffRepository } from './repository.js';
-import { SmartDiffService } from './service.js';
 
 /**
  * Smart Diff (L03) module.
@@ -22,8 +20,7 @@ export default async function smartDiffRoutes(appBase: FastifyInstance) {
     { schema: { params: IdParams, response: { 200: SmartDiffResponse } } },
     async (req) => {
       const { workspaceId } = await getContext(container, req);
-      const service = new SmartDiffService(new SmartDiffRepository(container.db));
-      return service.get(workspaceId, req.params.id);
+      return container.smartDiff.get(workspaceId, req.params.id);
     },
   );
 }

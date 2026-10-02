@@ -8,3 +8,4 @@ export { DiffViewer } from "./DiffViewer";
 export type { DiffCommentApi, DiffFindingApi } from "./comments";
 export type { Line } from "./helpers";
 export { lineRowFor, lineSignFor } from "./styles";
+export { findFileCard, findNewLine } from "./anchors";

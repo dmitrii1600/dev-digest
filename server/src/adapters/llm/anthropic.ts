@@ -8,7 +8,7 @@ import type {
   StructuredResult,
   ChatMessage,
 } from '@devdigest/shared';
-import { withRetry, withTimeout } from '../../platform/resilience.js';
+import { withRetry, withTimeout, type RetryOptions } from '../../platform/resilience.js';
 import { toJsonSchema, parseWithRepair } from '../../platform/structured.js';
 import { estimateCost } from './pricing.js';
 import { ExternalServiceError, StructuredOutputError } from '../../platform/errors.js';
@@ -41,9 +41,17 @@ function splitSystem(messages: ChatMessage[]): {
 export class AnthropicProvider implements LLMProvider {
   readonly id = 'anthropic' as const;
   private client: Anthropic;
+  /** `{ retries: 0 }` on a single-shot instance, `{}` (the default 3) otherwise. */
+  private retry: RetryOptions;
 
-  constructor(apiKey: string) {
-    this.client = new Anthropic({ apiKey });
+  /**
+   * `singleShot` = one transport attempt: the SDK's own retries are off and
+   * every `withRetry` below gets `retries: 0`. The schema re-ask loop is capped
+   * separately by the caller's `req.maxRetries`.
+   */
+  constructor(apiKey: string, opts: { singleShot?: boolean } = {}) {
+    this.client = new Anthropic(opts.singleShot ? { apiKey, maxRetries: 0 } : { apiKey });
+    this.retry = opts.singleShot ? { retries: 0 } : {};
   }
 
   async listModels(): Promise<ModelInfo[]> {
@@ -55,11 +63,14 @@ export class AnthropicProvider implements LLMProvider {
         provider: 'anthropic' as const,
         label: m.display_name,
       }));
-    });
+    }, this.retry);
   }
 
   async complete(req: CompletionRequest): Promise<CompletionResult> {
-    return withRetry(() => withTimeout(this.doComplete(req), req.timeoutMs ?? DEFAULT_TIMEOUT));
+    return withRetry(
+      () => withTimeout(this.doComplete(req), req.timeoutMs ?? DEFAULT_TIMEOUT),
+      this.retry,
+    );
   }
 
   private async doComplete(req: CompletionRequest): Promise<CompletionResult> {
@@ -97,25 +108,27 @@ export class AnthropicProvider implements LLMProvider {
     let lastRaw = '';
 
     for (let attempt = 1; attempt <= maxRetries + 1; attempt++) {
-      const res = await withRetry(() =>
-        withTimeout(
-          this.client.messages.create({
-            model: req.model,
-            system: system || undefined,
-            messages,
-            max_tokens: req.maxTokens ?? DEFAULT_MAX_TOKENS,
-            temperature: req.temperature ?? 0,
-            tools: [
-              {
-                name: toolName,
-                description: `Return the result as ${req.schemaName}.`,
-                input_schema: jsonSchema.schema as Anthropic.Tool.InputSchema,
-              },
-            ],
-            tool_choice: { type: 'tool', name: toolName },
-          }),
-          req.timeoutMs ?? DEFAULT_TIMEOUT,
-        ),
+      const res = await withRetry(
+        () =>
+          withTimeout(
+            this.client.messages.create({
+              model: req.model,
+              system: system || undefined,
+              messages,
+              max_tokens: req.maxTokens ?? DEFAULT_MAX_TOKENS,
+              temperature: req.temperature ?? 0,
+              tools: [
+                {
+                  name: toolName,
+                  description: `Return the result as ${req.schemaName}.`,
+                  input_schema: jsonSchema.schema as Anthropic.Tool.InputSchema,
+                },
+              ],
+              tool_choice: { type: 'tool', name: toolName },
+            }),
+            req.timeoutMs ?? DEFAULT_TIMEOUT,
+          ),
+        this.retry,
       );
       tokensIn += res.usage.input_tokens;
       tokensOut += res.usage.output_tokens;

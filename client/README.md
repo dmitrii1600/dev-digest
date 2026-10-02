@@ -4,7 +4,7 @@ The DevDigest UI: import repos, browse pull requests, run and read AI reviews,
 author agents, and author reusable **Skills** attached to them. App Router +
 React Server/Client components, data via **TanStack Query** hooks over the
 Fastify API. (This is the starter surface plus L02's Skills Lab; course lessons
-still add Memory, Eval, Blast/Brief, multi-agent, CI, and dashboard screens.)
+still add Memory, Eval, multi-agent, CI, and dashboard screens.)
 
 - **Stack:** Next.js 15 (App Router), React 19, TanStack Query, `next-intl`
   (messages in `messages/<locale>/*.json`), `recharts`, `mermaid`,
@@ -34,7 +34,7 @@ flowchart TD
   SETTINGS["/settings/:section<br/>API keys · models"]
 
   PULLS -->|"GET /repos/:id/pulls · /repos/:id/index-state"| API
-  PR -->|"GET /pulls/:id · /reviews · /pulls/:id/comments · /pulls/:id/blast-radius · /pulls/:id/history<br/>POST /pulls/:id/review · /findings/:id/(accept|dismiss)"| API
+  PR -->|"GET /pulls/:id · /reviews · /pulls/:id/comments · /pulls/:id/blast-radius · /pulls/:id/history · /pulls/:id/brief<br/>POST /pulls/:id/review · /pulls/:id/brief · /findings/:id/(accept|dismiss)"| API
   AGENTS -->|"/agents · /agents/:id · /agents/:id/skills/:skillId"| API
   SKILLS -->|"/skills · /skills/:id/(versions|restore|agents|stats) · /skills/import(/preview) · /skills/import/url(/preview)"| API
   CONV -->|"GET /repos/:id/conventions · POST …/extract · PATCH …/:candidateId · POST …/skill(/preview)"| API
@@ -86,6 +86,55 @@ Server side: `server/src/modules/project-context/README.md`.
 - **Run trace:** the prompt block for this slot is labelled "Project context —
   attached specs (untrusted)" (`messages/en/runs.json`, `trace.prompt.specs`),
   and the trace's `specs_read` lists the injected paths.
+
+## PR Brief
+
+Server side: `server/src/modules/brief/README.md`. The brief is the top of a PR's
+Overview tab: a summary, **Risk areas** and **Review focus — read these first**,
+each pointing at a file in Files changed. Opening the tab never calls the model;
+only Generate, the refresh button and Retry do.
+
+```mermaid
+flowchart LR
+  subgraph Overview["OverviewTab"]
+    HOOK["lib/hooks/brief.ts<br/>usePrBrief · useGenerateBrief"]
+    BRIEF["PrBrief<br/>banner · missing facts · 4 bodies"]
+    RISK["RiskAreas · ReviewFocus<br/>buttons carrying file:line"]
+  end
+  HOOK -->|"GET · POST /pulls/:id/brief"| API[("Fastify API")]
+  HOOK -->|"PrBriefResponse"| BRIEF
+  HOOK -->|"brief.risks · brief.review_focus"| RISK
+  RISK -->|"ref"| JUMP{"use-brief-jump.ts<br/>is the file in the diff?"}
+  JUMP -->|"yes: router.push ?tab=diff + file + line"| PAGE["page.tsx<br/>readDiffTarget"]
+  PAGE -->|"target prop"| DIFF["DiffTab<br/>open group + card, scroll"]
+  JUMP -. "no: notify.info 'File not in this PR's diff'" .-> RISK
+```
+
+- **Which body shows** is `briefView` in `PrBrief/helpers.ts`, with the precedence
+  generating → error → ready → empty. A 409 from this tab followed by the server
+  reporting `generating` therefore renders only the skeleton.
+- **No extra polling while waiting.** `usePrBrief` refetches every 3 s only when
+  the response says `generating` (another tab, or a revisit); the tab that sent
+  the POST shows its skeleton from `mutation.isPending` and stores the POST
+  response directly (`lib/hooks/brief.ts`).
+- **`OverviewTab` owns the hooks and `PrBrief` takes props.** The Risk areas and
+  Review focus cards need the same brief, and they are shown only for a stored
+  brief that is not being regenerated.
+- **A jump is a navigation, not a callback chain.** `use-brief-jump.ts` strips a
+  leading `./` and a trailing `:line` / `:a-b` from the ref (`diff-target.ts`),
+  and compares the path to the PR's changed files exactly, case-sensitively. A
+  match is `router.push`, so Back returns to Overview and reload keeps the
+  target. A blast-map file that is not part of the diff stays on Overview with the
+  notice. `page.tsx` clears `file` and `line` when the tab is switched by hand.
+- **`DiffTab` acts on the target once the layout has settled.** It waits for
+  Smart Diff to resolve (files change group when it does), opens the target's
+  group (`DiffGroup`) and card, marks the card, then scrolls to the
+  `data-new-line` row, or to the card top when that line is not rendered. A
+  target that is not in the diff marks and scrolls nothing.
+- **Missing inputs are shown, not hidden.** Each `missing_facts` entry from the
+  server maps to a line in `messages/en/brief.json` (`missingFacts.*`);
+  `PrBrief/missing-facts.test.ts` pins that table to `BRIEF_FACT_PAIRS` in the
+  shared contract, in both directions.
 
 ## Testing
 

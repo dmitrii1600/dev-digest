@@ -14,6 +14,7 @@ import { SEED_SKILLS, SEED_SKILL_LINKS } from './seed-skills.js';
 import { seedConventions } from './seed-conventions.js';
 import { seedIntent } from './seed-intent.js';
 import { seedBlast } from './seed-blast.js';
+import { seedBrief } from './seed-brief.js';
 import { DEFAULT_WORKSPACE_NAME, SYSTEM_USER_EMAIL } from './seed-constants.js';
 
 /** Default provider/model for the built-in reviewer agents. */
@@ -330,6 +331,9 @@ export async function seed(db: Db): Promise<{ workspaceId: string; userId: strin
 
   // ---- blast radius (L04): synthetic full index + one cached prior PR ----
   await seedBlast(db, repoId, { id: pr!.id, headSha: pr!.headSha });
+
+  // ---- PR brief (L06): one stored brief for PR #482, merged next to the history above ----
+  await seedBrief(db, { id: pr!.id, headSha: pr!.headSha });
 
   // ---- demo agent runs for PR #482 (+ their traces) ----
   // Without these the run timeline, the trace drawer and the PR list's COST

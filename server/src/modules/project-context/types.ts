@@ -57,6 +57,18 @@ export interface ProjectContextPort {
     clonePath: string | null;
     agentId: string;
   }): Promise<ResolvedProjectContext>;
+  /**
+   * The union of what every ENABLED agent of the workspace would inject, for
+   * features that are not tied to one agent (the PR brief). Agents are taken
+   * in `created_at asc, id asc` order; within an agent its own documents come
+   * first, then its enabled skills'. The first occurrence of a path wins.
+   * Never throws for a missing clone or file.
+   */
+  resolveForRepo(input: {
+    workspaceId: string;
+    repoId: string;
+    clonePath: string | null;
+  }): Promise<ResolvedProjectContext>;
 }
 
 /** What the service needs from persistence (implemented by `repository.ts`). */
@@ -73,6 +85,8 @@ export interface ProjectContextStore {
     repoId: string,
   ): Promise<{ agentPaths: string[]; skills: { skillId: string; paths: string[] }[] }>;
   usedByPairs(ws: string, repoId: string): Promise<{ agentId: string; path: string }[]>;
+  /** Enabled agents of the workspace, ordered `created_at asc, id asc`. */
+  enabledAgentIds(ws: string): Promise<string[]>;
 }
 
 export interface ProjectContextDeps {

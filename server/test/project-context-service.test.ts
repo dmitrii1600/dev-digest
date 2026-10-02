@@ -30,6 +30,7 @@ function makeStore(clonePath: string | null): ProjectContextStore {
     replaceSkillPaths: async () => undefined,
     pathsForRun: async () => ({ agentPaths: [], skills: [] }),
     usedByPairs: async () => [],
+    enabledAgentIds: async () => [],
   };
 }
 

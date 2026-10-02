@@ -97,6 +97,10 @@ per domain · `src/vendor/shared/` canonical Zod contracts.
 - The Onboarding Tour (routes, `generation_failed` reasons, in-memory lock, 120 s
   timer, grounding) → `src/modules/onboarding/README.md` — **read before changing
   how a tour is generated or which files it cites**
+- The PR Brief (routes, `brief_failed` reasons, the one-call rule, token budget,
+  grounding, the `brief`/`history` key split in `pr_brief.json`) →
+  `src/modules/brief/README.md` — **read before changing how a brief is generated,
+  stored or which files it cites**
 - How a schema-mismatch from a provider is signalled (`StructuredOutputError`,
   `SchemaFailureTagger`) → `README.md#structured-output-failures-are-typed` —
   **read before branching on an LLM adapter error**

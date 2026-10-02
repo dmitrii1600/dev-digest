@@ -7,7 +7,13 @@
 import React from "react";
 import { useTranslations } from "next-intl";
 import { SectionLabel, Button } from "@devdigest/ui";
-import { DiffViewer, type DiffCommentApi, type DiffFindingApi } from "@/components/diff-viewer";
+import {
+  DiffViewer,
+  findFileCard,
+  findNewLine,
+  type DiffCommentApi,
+  type DiffFindingApi,
+} from "@/components/diff-viewer";
 import {
   usePrComments,
   useCreatePrComment,
@@ -19,6 +25,7 @@ import { notify } from "@/providers/toast";
 import type { FindingRecord, PrFile } from "@devdigest/shared";
 import { FindingCard } from "../FindingCard";
 import { DiffGroup } from "./_components/DiffGroup";
+import type { DiffTarget } from "@/app/repos/[repoId]/pulls/[number]/diff-target";
 import { findingsByPath, groupFiles, latestFindingsPerAgent } from "./helpers";
 
 interface DiffTabProps {
@@ -27,16 +34,19 @@ interface DiffTabProps {
   files: PrFile[];
   /** Inline commenting is offered only on open PRs (GitHub rejects otherwise). */
   canComment?: boolean;
+  /** The `?file=&line=` navigation target: its card opens, is marked, and is
+      scrolled to once the layout has settled. */
+  target?: DiffTarget | null;
 }
 
 type OrderMode = "smart" | "original";
 
-export function DiffTab({ prId, filesCount, files, canComment }: DiffTabProps) {
+export function DiffTab({ prId, filesCount, files, canComment, target }: DiffTabProps) {
   const t = useTranslations("prReview");
   const { data: comments } = usePrComments(prId);
   const create = useCreatePrComment(prId);
   const { data: reviews } = usePrReviews(prId);
-  const { data: smartDiff } = useSmartDiff(prId);
+  const { data: smartDiff, isPending: smartDiffPending } = useSmartDiff(prId);
   const action = useFindingAction();
 
   // Comments (and findings) show by default — spec decision 2. Today's flat
@@ -50,6 +60,36 @@ export function DiffTab({ prId, filesCount, files, canComment }: DiffTabProps) {
   const findings = React.useMemo(() => latestFindingsPerAgent(reviews), [reviews]);
   const byPath = React.useMemo(() => findingsByPath(findings), [findings]);
   const groups = React.useMemo(() => groupFiles(files, smartDiff), [files, smartDiff]);
+
+  // EC-13: a target that is not in the diff marks nothing and scrolls nothing.
+  const targetFile = target?.file;
+  const targetLine = target?.line ?? null;
+  const targetPath = targetFile && files.some((f) => f.path === targetFile) ? targetFile : null;
+  // Until Smart Diff settles every file sits in `core`, so the target's card can
+  // still change group; scrolling then would land on the wrong card.
+  const layoutPending = order === "smart" && !!smartDiffPending;
+  const targetRole = !targetPath
+    ? null
+    : order === "original"
+      ? "flat"
+      : (groups.find((g) => g.files.some((f) => f.path === targetPath))?.role ?? null);
+
+  const rootRef = React.useRef<HTMLElement | null>(null);
+  const handledRef = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    if (!targetPath || !targetRole || layoutPending) {
+      if (!targetPath) handledRef.current = null;
+      return;
+    }
+    const key = `${targetPath}:${targetLine}:${targetRole}`;
+    if (handledRef.current === key) return;
+    handledRef.current = key;
+    const card = findFileCard(rootRef.current, targetPath);
+    if (!card) return;
+    const lineEl = targetLine != null ? findNewLine(card, targetLine) : null;
+    if (lineEl) lineEl.scrollIntoView({ block: "center" });
+    else card.scrollIntoView({ block: "start" }); // EC-7: line not shown → card top
+  }, [targetPath, targetLine, targetRole, layoutPending]);
 
   const commenting: DiffCommentApi = {
     comments: comments ?? [],
@@ -100,7 +140,7 @@ export function DiffTab({ prId, filesCount, files, canComment }: DiffTabProps) {
   );
 
   return (
-    <section>
+    <section ref={rootRef}>
       <SectionLabel
         icon="Code"
         right={
@@ -152,7 +192,7 @@ export function DiffTab({ prId, filesCount, files, canComment }: DiffTabProps) {
       )}
 
       {order === "original" ? (
-        <DiffViewer files={files} commenting={commenting} />
+        <DiffViewer files={files} commenting={commenting} targetPath={targetPath} />
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
           {groups.map((g) => (
@@ -164,6 +204,7 @@ export function DiffTab({ prId, filesCount, files, canComment }: DiffTabProps) {
               hasReview={hasReview}
               commenting={commenting}
               findings={findingApi}
+              targetPath={targetPath}
             />
           ))}
         </div>

@@ -10,6 +10,13 @@ export const s = {
     alignItems: "start",
     marginBottom: 20,
   } satisfies CSSProperties,
+  /** Intent, then the brief's Risk areas, stacked in the grid's first column. */
+  leftCol: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 20,
+    minWidth: 0,
+  } satisfies CSSProperties,
   descriptionBox: {
     border: "1px solid var(--border)",
     borderRadius: 8,
@@ -18,6 +25,7 @@ export const s = {
     fontSize: 14,
     color: "var(--text-secondary)",
     whiteSpace: "pre-wrap",
+    overflowWrap: "anywhere", // a long URL in a PR body must not scroll Overview sideways (NFR-12)
     lineHeight: 1.55,
   } satisfies CSSProperties,
 } as const;

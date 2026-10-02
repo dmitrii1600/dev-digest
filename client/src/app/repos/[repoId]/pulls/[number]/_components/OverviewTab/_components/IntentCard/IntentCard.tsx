@@ -167,6 +167,7 @@ export function IntentCard({ prId }: { prId: string | null }) {
               key={`${src.kind}-${src.ref}-${i}`}
               color={src.status === "unavailable" ? "var(--text-muted)" : "var(--text-secondary)"}
               icon={src.status === "unavailable" ? "AlertTriangle" : undefined}
+              style={s.sourceBadge}
             >
               {t(`card.sourceKind.${src.kind}`)}
               {src.status !== "available" ? ` · ${t(`card.status.${src.status}`)}` : ""}

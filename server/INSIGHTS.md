@@ -136,6 +136,14 @@ append-only. Empty sections are expected — append under the one that fits.
   and `.env.example` are never there, and every run command sourced from them
   is dropped. Onboarding grounds on "the prompt carried this file" instead
   (`groundedPathSet`, `src/modules/onboarding/helpers.ts`).
+- 2026-10-02 — `pnpm typecheck` never sees `server/test/**`: `tsconfig.json:28` includes only
+  `src/**/*.ts`, and vitest strips types. A test fake typed as a port (`makeStore` in
+  `test/project-context-service.test.ts`) stays green after the port gains a method. When you widen a
+  port, grep `test/` for its fakes by hand.
+- 2026-10-02 — A green `node scripts/verify.mjs server --it` proves nothing when Docker is down: every
+  `*.it.test.ts` gates on `dockerAvailable()` (`test/helpers/pg.ts:23`) and self-skips, and the lane
+  still reports green. Track A of PR Brief shipped 3 unexecuted `.it` files this way. Run `docker info`
+  first, or check the vitest output for skipped tests.
 
 ## Codebase Patterns
 
@@ -277,6 +285,10 @@ append-only. Empty sections are expected — append under the one that fits.
   cache miss (`modules/blast/constants.ts`), so it is cached per PR head sha in
   `pr_brief.json.history` (`blast/repository.ts`). A missing token or a rate
   limit degrades to `{ history: [] }` with a warn log, never a 500.
+- 2026-10-02 — `pr_brief.json` has two writers, and each owns one top-level key: blast owns `history`
+  and brief owns `brief`. Each write is ONE upsert, `set: { json: sql\`${t.prBrief.json} || excluded.json\` }`
+  (`blast/repository.ts:130`, `brief/repository.ts:77`). Why: the old read-merge-write in `upsertHistory`
+  lost one write when both ran at once. A third writer gets its own key and the same statement.
 
 - 2026-09-27 — A hand-seeded repo-intel index is only "live" for blast if it has
   ALL of: `file_edges` caller→decl (so `resolveReferences` sets `decl_file`),
@@ -378,6 +390,11 @@ append-only. Empty sections are expected — append under the one that fits.
   An atomic temp-then-rename save needs a short bounded retry (`src/modules/project-context/repository-writes.ts:150-165`),
   and a test whose reader loops without pause still sees `EPERM` on win32. It must count the successful replaces,
   not expect every one to succeed.
+
+- 2026-10-02 — `completeStructured({ maxRetries: 0 })` stops only the schema re-ask. The transport still
+  retries: `withRetry` 3 times on 429/5xx, plus the SDK's own default retries. When a spec says "exactly
+  one model call", use `container.llm(id, { singleShot: { timeoutMs } })` (`platform/container.ts:306`,
+  cached as `${id}:single`), which sets SDK `maxRetries: 0` and `withRetry` `retries: 0`.
 
 ## Recurring Errors & Fixes
 
