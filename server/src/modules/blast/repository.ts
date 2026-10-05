@@ -1,4 +1,4 @@
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import type { PrHistoryItem } from '@devdigest/shared';
 import type { Db } from '../../db/client.js';
 import * as t from '../../db/schema.js';
@@ -112,25 +112,22 @@ export class BlastRepository {
   }
 
   /**
-   * Merge-write `pr_brief.json.history`, preserving whatever else the
-   * document already holds (`intent`/`blast`/`risks` land there too, per
-   * `PrBrief` — `contracts/brief.ts:157-164`). `pr_brief.json` is `NOT NULL`,
-   * so a first write for this PR still needs the read-merge-write.
+   * Merge-write `pr_brief.json.history` as ONE statement: top-level `||` keeps
+   * every other key of the document (the PR brief owns `brief`), and the
+   * `ON CONFLICT` makes a first write — or two concurrent ones — safe.
+   * `pr_brief.json` is `NOT NULL`, so the insert supplies the whole document.
    */
   async upsertHistory(
     prId: string,
     computedForSha: string,
     history: PrHistoryItem[],
   ): Promise<void> {
-    const [row] = await this.db
-      .select({ json: t.prBrief.json })
-      .from(t.prBrief)
-      .where(eq(t.prBrief.prId, prId));
-    const base = (row?.json as Record<string, unknown> | null) ?? {};
-    const next = { ...base, history: { computed_for_sha: computedForSha, history } };
     await this.db
       .insert(t.prBrief)
-      .values({ prId, json: next })
-      .onConflictDoUpdate({ target: t.prBrief.prId, set: { json: next } });
+      .values({ prId, json: { history: { computed_for_sha: computedForSha, history } } })
+      .onConflictDoUpdate({
+        target: t.prBrief.prId,
+        set: { json: sql`${t.prBrief.json} || excluded.json` },
+      });
   }
 }

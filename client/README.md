@@ -4,7 +4,7 @@ The DevDigest UI: import repos, browse pull requests, run and read AI reviews,
 author agents, and author reusable **Skills** attached to them. App Router +
 React Server/Client components, data via **TanStack Query** hooks over the
 Fastify API. (This is the starter surface plus L02's Skills Lab; course lessons
-still add Memory, Eval, Blast/Brief, multi-agent, CI, and dashboard screens.)
+still add Memory, Eval, multi-agent, CI, and dashboard screens.)
 
 - **Stack:** Next.js 15 (App Router), React 19, TanStack Query, `next-intl`
   (messages in `messages/<locale>/*.json`), `recharts`, `mermaid`,
@@ -30,19 +30,111 @@ flowchart TD
   AGENTS["/agents"] --> AGENT["/agents/:id<br/>editor (config · skills)"]
   SKILLS["/skills<br/>Skills Lab"] --> SKILL["/skills/:id<br/>editor (config · preview · versions · stats)"]
   CONV["/repos/:repoId/conventions<br/>Conventions (scan · accept/reject/edit · create skill)"]
+  CTX["/repos/:repoId/context<br/>Project Context (clone Markdown; author under .devdigest/specs/)"]
   SETTINGS["/settings/:section<br/>API keys · models"]
 
   PULLS -->|"GET /repos/:id/pulls · /repos/:id/index-state"| API
-  PR -->|"GET /pulls/:id · /reviews · /pulls/:id/comments · /pulls/:id/blast-radius · /pulls/:id/history<br/>POST /pulls/:id/review · /findings/:id/(accept|dismiss)"| API
+  PR -->|"GET /pulls/:id · /reviews · /pulls/:id/comments · /pulls/:id/blast-radius · /pulls/:id/history · /pulls/:id/brief<br/>POST /pulls/:id/review · /pulls/:id/brief · /findings/:id/(accept|dismiss)"| API
   AGENTS -->|"/agents · /agents/:id · /agents/:id/skills/:skillId"| API
   SKILLS -->|"/skills · /skills/:id/(versions|restore|agents|stats) · /skills/import(/preview) · /skills/import/url(/preview)"| API
   CONV -->|"GET /repos/:id/conventions · POST …/extract · PATCH …/:candidateId · POST …/skill(/preview)"| API
+  CTX -->|"GET /repos/:id/context · /repos/:id/context/file?path="| API
+  AGENT -->|"Context tab: GET|PUT /agents/:id/context?repoId="| API
+  SKILL -->|"Context tab: GET|PUT /skills/:id/context?repoId="| API
   SETTINGS -->|"/settings · /providers"| API
 ```
 
 Cross-cutting chrome lives in `src/components/app-shell` (nav, breadcrumbs,
 `g`-then-key shortcuts). Pages are thin; feature logic sits in colocated
 `_components/<Name>/` folders, each with its own `*.test.tsx`.
+
+## Project Context
+
+Server side: `server/src/modules/project-context/README.md`.
+
+- **Page** `/repos/:repoId/context` (`ProjectContextView`) lists the clone's
+  Markdown files on the left (toolbar: New file, New folder, Upload, Refresh) and
+  shows the selected document on the right with how many agents use it. Files
+  under `.devdigest/specs/` can be created, uploaded, edited (Preview | Edit),
+  saved and deleted; every other file, and any tracked or over-64 KB one, is
+  Preview only with a "read-only" reason. Saves carry the file's version token: a
+  stale write is a 409 the page resolves with Reload or Overwrite, keeping the
+  user's text. The write hooks (`useCreateContextFile`, `useUploadContextFile`,
+  `useSaveContextFile`, `useDeleteContextFile`) set `meta.inlineError`, so the
+  global mutation toast skips them and the page shows the error inline. Its nav
+  entry is in `src/vendor/ui/nav.ts`.
+- **Unsaved-changes guard** (`src/providers/navigation-guard.tsx`): while a draft
+  is dirty the page registers a blocker. It asks for confirmation on same-origin
+  link clicks (a capture-phase click listener), on the six `router.push` sites in
+  the app shell hooks (`useGlobalShortcuts`, `useShellCommands`,
+  `useShellContext`), on reload and on closing the tab (`beforeunload`).
+  **Limitation:** browser Back/Forward is not guarded, so a Back press with unsaved
+  edits loses them silently.
+- **`src/components/context-docs-picker`** is the shared attach/reorder list
+  (filter, a 560 px preview drawer that can also attach, drag or ArrowUp/Down on
+  the handle to reorder attached rows, per-row token counts with "—" when unknown,
+  a total with an "over 4K soft cap" badge, and a "No documents found" empty state
+  with Refresh). It holds no mutation; the caller passes `attached`, `onChange`
+  and `listState.onRefresh`.
+- **Context tabs** wrap the picker over `useContextFiles` and the attachment
+  hooks in `src/lib/hooks/project-context.ts`: the Agent editor's tab
+  (`AgentEditor/_components/ContextTab`) and the Skill editor's tab
+  (`SkillEditor/_components/ContextTab`), which also notes that agents using the
+  skill inherit its documents and shows a SERIALIZES AS box: the
+  `## Project context` heading, then the attached paths that are present in the
+  listing, in attach order, each with its kind. Both act on the active repo.
+- **Run trace:** the prompt block for this slot is labelled "Project context —
+  attached specs (untrusted)" (`messages/en/runs.json`, `trace.prompt.specs`),
+  and the trace's `specs_read` lists the injected paths.
+
+## PR Brief
+
+Server side: `server/src/modules/brief/README.md`. The brief is the top of a PR's
+Overview tab: a summary, **Risk areas** and **Review focus — read these first**,
+each pointing at a file in Files changed. Opening the tab never calls the model;
+only Generate, the refresh button and Retry do.
+
+```mermaid
+flowchart LR
+  subgraph Overview["OverviewTab"]
+    HOOK["lib/hooks/brief.ts<br/>usePrBrief · useGenerateBrief"]
+    BRIEF["PrBrief<br/>banner · missing facts · 4 bodies"]
+    RISK["RiskAreas · ReviewFocus<br/>buttons carrying file:line"]
+  end
+  HOOK -->|"GET · POST /pulls/:id/brief"| API[("Fastify API")]
+  HOOK -->|"PrBriefResponse"| BRIEF
+  HOOK -->|"brief.risks · brief.review_focus"| RISK
+  RISK -->|"ref"| JUMP{"use-brief-jump.ts<br/>is the file in the diff?"}
+  JUMP -->|"yes: router.push ?tab=diff + file + line"| PAGE["page.tsx<br/>readDiffTarget"]
+  PAGE -->|"target prop"| DIFF["DiffTab<br/>open group + card, scroll"]
+  JUMP -. "no: notify.info 'File not in this PR's diff'" .-> RISK
+```
+
+- **Which body shows** is `briefView` in `PrBrief/helpers.ts`, with the precedence
+  generating → error → ready → empty. A 409 from this tab followed by the server
+  reporting `generating` therefore renders only the skeleton.
+- **No extra polling while waiting.** `usePrBrief` refetches every 3 s only when
+  the response says `generating` (another tab, or a revisit); the tab that sent
+  the POST shows its skeleton from `mutation.isPending` and stores the POST
+  response directly (`lib/hooks/brief.ts`).
+- **`OverviewTab` owns the hooks and `PrBrief` takes props.** The Risk areas and
+  Review focus cards need the same brief, and they are shown only for a stored
+  brief that is not being regenerated.
+- **A jump is a navigation, not a callback chain.** `use-brief-jump.ts` strips a
+  leading `./` and a trailing `:line` / `:a-b` from the ref (`diff-target.ts`),
+  and compares the path to the PR's changed files exactly, case-sensitively. A
+  match is `router.push`, so Back returns to Overview and reload keeps the
+  target. A blast-map file that is not part of the diff stays on Overview with the
+  notice. `page.tsx` clears `file` and `line` when the tab is switched by hand.
+- **`DiffTab` acts on the target once the layout has settled.** It waits for
+  Smart Diff to resolve (files change group when it does), opens the target's
+  group (`DiffGroup`) and card, marks the card, then scrolls to the
+  `data-new-line` row, or to the card top when that line is not rendered. A
+  target that is not in the diff marks and scrolls nothing.
+- **Missing inputs are shown, not hidden.** Each `missing_facts` entry from the
+  server maps to a line in `messages/en/brief.json` (`missingFacts.*`);
+  `PrBrief/missing-facts.test.ts` pins that table to `BRIEF_FACT_PAIRS` in the
+  shared contract, in both directions.
 
 ## Testing
 

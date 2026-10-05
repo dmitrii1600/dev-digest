@@ -21,6 +21,8 @@ import { usePrReviews, useCancelRun, usePrActiveRuns, usePrRuns, useDeleteRun } 
 import { useActiveRepo, useRepoNotFound } from "@/providers/repo-context";
 import { ApiError } from "@/lib/api";
 import { githubPrUrl } from "./github-urls";
+import { readDiffTarget } from "./diff-target";
+import { useBriefJump } from "./use-brief-jump";
 import type { FindingRecord } from "@devdigest/shared";
 
 export default function PRDetailPage() {
@@ -92,13 +94,21 @@ export default function PRDetailPage() {
 
   const tab = search.get("tab") ?? "overview";
   const traceRunId = search.get("trace");
-  const setParam = (key: string, val: string | null) => {
+  const setParam = (key: string, val: string | null, alsoClear: string[] = []) => {
     const sp = new URLSearchParams(search.toString());
     if (val == null) sp.delete(key);
     else sp.set(key, val);
+    for (const k of alsoClear) sp.delete(k);
     router.replace(`/repos/${repoId}/pulls/${number}${sp.toString() ? `?${sp.toString()}` : ""}`);
   };
-  const setTab = (t: string) => setParam("tab", t);
+  // Switching tabs by hand drops the Files changed target, so a stale
+  // `?file=&line=` cannot re-fire when the diff tab is opened again.
+  const setTab = (t: string) => setParam("tab", t, ["file", "line"]);
+  const target = readDiffTarget(search);
+  // The brief's jump action: before the early returns, so hook order is stable
+  // while `pr` is still loading (empty paths → every ref reads "not in the diff").
+  const diffPaths = React.useMemo(() => pr?.files.map((f) => f.path) ?? [], [pr?.files]);
+  const onJump = useBriefJump({ repoId, number, diffPaths });
 
   // Reviews come newest-first; each is its own run (grouped into accordions).
   const runs = reviews ?? [];
@@ -174,6 +184,7 @@ export default function PRDetailPage() {
             repoFullName={repoFullName}
             headSha={pr.head_sha}
             repoId={repoId}
+            onJump={onJump}
           />
         )}
 
@@ -209,6 +220,7 @@ export default function PRDetailPage() {
             filesCount={pr.files_count}
             files={pr.files}
             canComment={pr.status === "open"}
+            target={target}
           />
         )}
       </div>

@@ -7,10 +7,10 @@ import type {
   StructuredRequest,
   StructuredResult,
 } from '@devdigest/shared';
-import { withRetry, withTimeout } from '../../platform/resilience.js';
+import { withRetry, withTimeout, type RetryOptions } from '../../platform/resilience.js';
 import { toJsonSchema, parseWithRepair } from '../../platform/structured.js';
 import { estimateCost } from './pricing.js';
-import { ExternalServiceError } from '../../platform/errors.js';
+import { StructuredOutputError } from '../../platform/errors.js';
 
 const DEFAULT_TIMEOUT = 60_000;
 const EMBED_MODEL = 'text-embedding-3-small';
@@ -47,9 +47,17 @@ function tuningParams(
 export class OpenAIProvider implements LLMProvider {
   readonly id = 'openai' as const;
   private client: OpenAI;
+  /** `{ retries: 0 }` on a single-shot instance, `{}` (the default 3) otherwise. */
+  private retry: RetryOptions;
 
-  constructor(apiKey: string) {
-    this.client = new OpenAI({ apiKey });
+  /**
+   * `singleShot` = one transport attempt: the SDK's own retries are off and
+   * every `withRetry` below gets `retries: 0`. The schema re-ask loop is capped
+   * separately by the caller's `req.maxRetries`.
+   */
+  constructor(apiKey: string, opts: { singleShot?: boolean } = {}) {
+    this.client = new OpenAI(opts.singleShot ? { apiKey, maxRetries: 0 } : { apiKey });
+    this.retry = opts.singleShot ? { retries: 0 } : {};
   }
 
   async listModels(): Promise<ModelInfo[]> {
@@ -58,12 +66,13 @@ export class OpenAIProvider implements LLMProvider {
       return res.data
         .filter((m) => m.id.startsWith('gpt') || m.id.includes('o1') || m.id.includes('o3'))
         .map((m) => ({ id: m.id, provider: 'openai' as const, created: m.created }));
-    });
+    }, this.retry);
   }
 
   async complete(req: CompletionRequest): Promise<CompletionResult> {
-    return withRetry(() =>
-      withTimeout(this.doComplete(req), req.timeoutMs ?? DEFAULT_TIMEOUT),
+    return withRetry(
+      () => withTimeout(this.doComplete(req), req.timeoutMs ?? DEFAULT_TIMEOUT),
+      this.retry,
     );
   }
 
@@ -94,19 +103,21 @@ export class OpenAIProvider implements LLMProvider {
     let lastRaw = '';
 
     for (let attempt = 1; attempt <= maxRetries + 1; attempt++) {
-      const res = await withRetry(() =>
-        withTimeout(
-          this.client.chat.completions.create({
-            model: req.model,
-            messages,
-            ...tuningParams(req.model, req.temperature, req.maxTokens),
-            response_format: {
-              type: 'json_schema',
-              json_schema: { name: req.schemaName, schema: jsonSchema.schema, strict: true },
-            },
-          }),
-          req.timeoutMs ?? DEFAULT_TIMEOUT,
-        ),
+      const res = await withRetry(
+        () =>
+          withTimeout(
+            this.client.chat.completions.create({
+              model: req.model,
+              messages,
+              ...tuningParams(req.model, req.temperature, req.maxTokens),
+              response_format: {
+                type: 'json_schema',
+                json_schema: { name: req.schemaName, schema: jsonSchema.schema, strict: true },
+              },
+            }),
+            req.timeoutMs ?? DEFAULT_TIMEOUT,
+          ),
+        this.retry,
       );
       lastRaw = res.choices?.[0]?.message?.content ?? '';
       tokensIn += res.usage?.prompt_tokens ?? 0;
@@ -129,7 +140,7 @@ export class OpenAIProvider implements LLMProvider {
       messages.push({ role: 'user', content: parsed.repromptMessage });
     }
 
-    throw new ExternalServiceError('OpenAI structured output failed schema validation', {
+    throw new StructuredOutputError('OpenAI structured output failed schema validation', {
       raw: lastRaw,
     });
   }
@@ -142,6 +153,6 @@ export class OpenAIProvider implements LLMProvider {
         DEFAULT_TIMEOUT,
       );
       return res.data.map((d) => d.embedding);
-    });
+    }, this.retry);
   }
 }

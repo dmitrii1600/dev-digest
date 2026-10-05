@@ -6,12 +6,12 @@ grounded structured findings). Fastify 5 + Drizzle ORM over Postgres (pgvector).
 Adapters (LLM, GitHub, git, ast-grep, …) sit behind a DI container so they can be
 swapped for mocks in tests.
 
-> This is the **starter** module set plus L02's first half (`modules/skills/` —
-> see below). Later course lessons add their own modules (intent/smart-diff,
-> blast, brief/context/onboarding, eval/ci/hooks, memory, plugins, …) — each is a
-> self-contained `modules/<name>/` plugin plus, usually, a slot it starts feeding
-> the reviewer prompt. The DB schema already contains **every** table; the
-> unused ones simply sit empty until a lesson fills them.
+> This is the starter module set plus the lesson modules built so far: skills and
+> conventions (L02), intent and smart-diff (L03), blast (L04), project-context,
+> onboarding and brief (L05). Later lessons add their own (eval/ci/hooks, memory,
+> plugins, …) — each is a self-contained `modules/<name>/` plugin plus, usually, a
+> slot it starts feeding the reviewer prompt. The DB schema already contains
+> **every** table; the unused ones simply sit empty until a lesson fills them.
 
 - **Stack:** Fastify 5 (`@fastify/helmet`, `@fastify/rate-limit`, `@fastify/cors`,
   `fastify-sse-v2` for streaming run traces), Drizzle ORM, `postgres`, pgvector.
@@ -56,6 +56,40 @@ flowchart LR
   SSE and `/health*` are exempt.
 - Modules are registered statically in `src/modules/index.ts` (one import + one
   `app.register` each); the engine reaps orphaned `running` runs on boot.
+- **The container hands out shared services and a single-shot LLM.**
+  `container.blast` and `container.smartDiff` (`platform/container.ts:218,241`)
+  are cached, so the routes and the PR brief share one instance and one
+  reindex-throttle map. `container.llm(id, { singleShot: { timeoutMs } })`
+  (`:304-313`) returns a variant that makes one transport attempt, cached under
+  `${id}:single`; why a feature wants it is in
+  [`modules/brief/README.md`](src/modules/brief/README.md#one-call-no-retry).
+
+### Structured-output failures are typed
+
+A provider that answered, but whose answer never matched the requested schema,
+throws `StructuredOutputError` (`src/platform/errors.ts:41`) — a subclass of
+`ExternalServiceError`, so it keeps `code: external_service_error` and status
+`502`. Callers branch with `instanceof`, never on message text; the onboarding
+service is the first (`modules/onboarding/service.ts:43`).
+
+- **Thrown directly by** the OpenAI adapter (`adapters/llm/openai.ts:143`), the
+  Anthropic adapter (`adapters/llm/anthropic.ts:160`) and `MockLLMProvider` when
+  its fixture fails the schema (`adapters/mocks.ts:98`).
+- **`SchemaFailureTagger` covers OpenRouter.** `OpenRouterProvider` lives in
+  `reviewer-core` (ring 0), which cannot import server errors and throws a bare
+  `Error`. `container.llm('openrouter')` therefore wraps it in
+  `adapters/llm/schema-failure.ts` (`platform/container.ts:333`). The decorator
+  hands the provider a derived copy of the request schema whose `safeParse`
+  records its last outcome; a throw that follows a failed `safeParse` is rethrown
+  as `StructuredOutputError`, anything else passes through untouched. Every other
+  method delegates unchanged.
+- **Limits.** The decorator needs the failure to reach `safeParse`: OpenRouter
+  output that is not JSON fails earlier, in `parseWithRepair`, and stays a plain
+  error (see the limitation in
+  [`modules/onboarding/README.md`](src/modules/onboarding/README.md#known-limitations)).
+  It also relies on zod v3 binding `safeParse` as an own property of the schema
+  instance (`schema-failure.ts:43-45`), so recheck it when zod is upgraded; the
+  tests are `test/schema-failure.test.ts`.
 
 ## API map (starter)
 
@@ -81,7 +115,10 @@ flowchart TB
   end
   subgraph Intel["Repo intelligence"]
     repoIntel["repo-intel<br/>/repos/:id/index-state · /resync"]
+    projectContext["project-context<br/>/repos/:id/context(/file) · POST /repos/:id/context/files · /context/upload · PUT·DELETE /repos/:id/context/file · /agents/:id/context · /skills/:id/context"]
     blast["blast<br/>/pulls/:id/blast-radius · /pulls/:id/history"]
+    onboarding["onboarding<br/>/repos/:id/onboarding · /repos/:id/onboarding/generate"]
+    brief["brief<br/>GET·POST /pulls/:id/brief"]
   end
   subgraph Platform["Platform"]
     settings["settings<br/>/settings · /providers"]

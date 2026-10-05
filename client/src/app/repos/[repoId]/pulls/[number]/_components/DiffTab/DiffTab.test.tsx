@@ -3,7 +3,7 @@
  * `PRRow.test.tsx` mocks `@/lib/hooks/reviews`; `NextIntlClientProvider` gets
  * the real `prReview` + `shell` messages.
  */
-import { describe, it, expect, afterEach, vi } from "vitest";
+import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
 import { render, screen, cleanup, fireEvent, within } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
 import type { PrFile, ReviewRecord, SmartDiff } from "@devdigest/shared";
@@ -13,13 +13,14 @@ import shell from "../../../../../../../../messages/en/shell.json";
 const mutate = vi.fn();
 
 let mockReviews: ReviewRecord[] | undefined;
+let mockSmart: { data?: SmartDiff; isPending?: boolean } = {};
 
 vi.mock("@/lib/hooks/reviews", () => ({
   usePrComments: () => ({ data: [] }),
   useCreatePrComment: () => ({ mutateAsync: vi.fn(), isPending: false }),
   usePrReviews: () => ({ data: mockReviews }),
   useFindingAction: () => ({ mutate, isPending: false }),
-  useSmartDiff: () => ({ data: SMART_DIFF }),
+  useSmartDiff: () => mockSmart,
 }));
 
 import { DiffTab } from "./DiffTab";
@@ -100,9 +101,16 @@ function renderTab() {
   );
 }
 
+const scrollIntoView = vi.fn();
+beforeEach(() => {
+  Element.prototype.scrollIntoView = scrollIntoView;
+  mockSmart = { data: SMART_DIFF };
+});
+
 afterEach(() => {
   cleanup();
   mutate.mockClear();
+  scrollIntoView.mockClear();
   mockReviews = undefined;
 });
 
@@ -213,5 +221,92 @@ describe("DiffTab — original order", () => {
     expect(screen.queryByText(prReview.smartDiff.boilerplateLabel)).not.toBeInTheDocument();
     // The flat list shows every file directly, in GitHub order.
     expect(screen.getByText("pnpm-lock.yaml")).toBeInTheDocument();
+  });
+});
+
+describe("DiffTab — navigation target (?file=&line=)", () => {
+  const LOCK_PATCH = ["@@ -10,2 +10,3 @@", " ctx ten", " ctx eleven", "+added twelve"].join("\n");
+  const TARGET_FILES: PrFile[] = [
+    { path: "src/app.ts", additions: 1, deletions: 0, patch: PATCH },
+    { path: "pnpm-lock.yaml", additions: 1, deletions: 0, patch: LOCK_PATCH },
+    { path: "docs/x.md", additions: 1, deletions: 0, patch: null },
+  ];
+  const SMART_TARGET: SmartDiff = {
+    groups: [
+      { role: "core", files: [{ path: "src/app.ts", additions: 1, deletions: 0, finding_lines: [] }] },
+      { role: "docs", files: [{ path: "docs/x.md", additions: 1, deletions: 0, finding_lines: [] }] },
+      { role: "boilerplate", files: [{ path: "pnpm-lock.yaml", additions: 1, deletions: 0, finding_lines: [] }] },
+    ],
+    split_suggestion: { too_big: false, total_lines: 3, proposed_splits: [] },
+  };
+
+  const tree = (target: { file: string; line: number | null } | null) => (
+    <NextIntlClientProvider locale="en" messages={{ prReview, shell }}>
+      <DiffTab prId="pr-1" filesCount={TARGET_FILES.length} files={TARGET_FILES} target={target} />
+    </NextIntlClientProvider>
+  );
+
+  function cardOf(path: string): HTMLElement {
+    const el = Array.from(document.querySelectorAll("[data-diff-file]")).find(
+      (e) => e.getAttribute("data-diff-file") === path,
+    );
+    return el as HTMLElement;
+  }
+
+  it("opens a collapsed-by-default group, marks the card and scrolls the target line into view", () => {
+    mockSmart = { data: SMART_TARGET, isPending: false };
+    render(tree({ file: "pnpm-lock.yaml", line: 12 }));
+
+    expect(screen.getByText("added twelve")).toBeInTheDocument();
+    expect(cardOf("pnpm-lock.yaml").style.borderTop).toContain("var(--accent)");
+    expect(cardOf("src/app.ts").style.borderTop).not.toContain("var(--accent)");
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+    const el = scrollIntoView.mock.contexts[0] as HTMLElement;
+    expect(el.getAttribute("data-new-line")).toBe("12");
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: "center" });
+  });
+
+  it("falls back to the card top when the line is not shown or the file has no patch, with no error", () => {
+    mockSmart = { data: SMART_TARGET, isPending: false };
+    const { unmount } = render(tree({ file: "pnpm-lock.yaml", line: 999 }));
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: "start" });
+    expect((scrollIntoView.mock.contexts[0] as HTMLElement).getAttribute("data-diff-file")).toBe(
+      "pnpm-lock.yaml",
+    );
+    unmount();
+
+    scrollIntoView.mockClear();
+    render(tree({ file: "docs/x.md", line: 3 }));
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+    expect((scrollIntoView.mock.contexts[0] as HTMLElement).getAttribute("data-diff-file")).toBe(
+      "docs/x.md",
+    );
+  });
+
+  it("marks and scrolls nothing when the target file is not in the diff", () => {
+    mockSmart = { data: SMART_TARGET, isPending: false };
+    render(tree({ file: "src/server.ts", line: 31 }));
+    expect(scrollIntoView).not.toHaveBeenCalled();
+    for (const el of document.querySelectorAll("[data-diff-file]")) {
+      expect((el as HTMLElement).style.borderTop).not.toContain("var(--accent)");
+    }
+  });
+
+  it("on reload waits for Smart Diff, then scrolls once inside the file's real group", () => {
+    mockSmart = { isPending: true };
+    const target = { file: "pnpm-lock.yaml", line: 12 };
+    const { rerender } = render(tree(target));
+    expect(scrollIntoView).not.toHaveBeenCalled();
+
+    mockSmart = { data: SMART_TARGET, isPending: false };
+    rerender(tree(target));
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+    const el = scrollIntoView.mock.contexts[0] as HTMLElement;
+    expect(el.getAttribute("data-new-line")).toBe("12");
+    expect(el.closest("[data-diff-file]")?.getAttribute("data-diff-file")).toBe("pnpm-lock.yaml");
+
+    rerender(tree({ ...target }));
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
   });
 });

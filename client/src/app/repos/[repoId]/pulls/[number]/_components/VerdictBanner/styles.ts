@@ -35,6 +35,38 @@ export const s = {
     color: "var(--text-secondary)",
     marginTop: 8,
   } satisfies CSSProperties,
+  info: {
+    display: "inline-flex",
+    alignItems: "center",
+    color: "var(--text-muted)",
+    cursor: "help",
+  } satisfies CSSProperties,
+  side: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "flex-end",
+    gap: 10,
+    flexShrink: 0,
+  } satisfies CSSProperties,
+  actions: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: 10,
+    flexWrap: "wrap",
+  } satisfies CSSProperties,
+  spinner: {
+    display: "grid",
+    placeItems: "center",
+    width: 52,
+    height: 52,
+    color: "var(--accent)",
+  } satisfies CSSProperties,
+  footer: {
+    fontSize: 12,
+    color: "var(--text-muted)",
+    textAlign: "right",
+  } satisfies CSSProperties,
   scoreCol: {
     display: "flex",
     flexDirection: "column",

@@ -1,15 +1,68 @@
 {
   "title": "Onboarding Tour",
-  "sections": "Sections",
-  "sectionCount": "{count} sections",
+  "heading": "Onboarding for <repo>{name}</repo>",
+  "subtitle": "Generated from index of {count, plural, one {# file} other {# files}} · last refreshed {ago}",
+  "ago": {
+    "now": "just now",
+    "minutes": "{count, plural, one {# minute} other {# minutes}} ago",
+    "hours": "{count, plural, one {# hour} other {# hours}} ago",
+    "days": "{count, plural, one {# day} other {# days}} ago"
+  },
+  "aiGenerated": "AI-generated · {provider}/{model}",
+  "onThisPage": "On this page",
+  "sections": {
+    "architecture": "Architecture overview",
+    "critical_paths": "Critical paths",
+    "run_locally": "How to run locally",
+    "reading_path": "Guided reading path",
+    "first_tasks": "First tasks"
+  },
+  "expandHint": "Expand or collapse",
   "regenerate": "Regenerate",
-  "regenerating": "Regenerating…",
-  "unknownError": "Unknown error",
-  "generate": {
-    "title": "Generate onboarding tour",
-    "body": "DevDigest indexes the repo and specs, then writes a 5-section guided tour: overview, architecture, key modules, getting started, and conventions & gotchas.",
-    "cta": "Generate onboarding tour",
-    "generating": "Generating…"
+  "generating": "Generating…",
+  "stale": "This tour predates the current index",
+  "shareLink": "Share link",
+  "linkCopied": "Link copied",
+  "copyFailed": "Could not copy to the clipboard",
+  "copyCommand": "Copy {command}",
+  "commandCopied": "Command copied",
+  "open": "Open",
+  "openFile": "Open {path} on GitHub",
+  "noReason": "No reason given",
+  "complexity": {
+    "low": "Low complexity",
+    "medium": "Medium complexity",
+    "high": "High complexity"
+  },
+  "sectionEmpty": {
+    "architecture": "No architecture overview was produced.",
+    "critical_paths": "No critical paths were found in the index.",
+    "run_locally": "No run commands could be confirmed from the repo's files.",
+    "reading_path": "No files to read were found in the index.",
+    "first_tasks": "No starter tasks could be tied to files in this repo."
+  },
+  "empty": {
+    "title": "No onboarding tour yet",
+    "body": "DevDigest reads the repo index and writes a five-part tour: Architecture overview, Critical paths, How to run locally, Guided reading path and First tasks.",
+    "cta": "Generate onboarding tour"
+  },
+  "errors": {
+    "repo_not_cloned": "This repo is not cloned yet. Clone it, then generate the tour.",
+    "repo_not_indexed": {
+      "flag_off": "Repo indexing is switched off, so there is nothing to build the tour from.",
+      "never_indexed": "This repo has not been indexed yet. Index it, then generate the tour.",
+      "index_failed": "The last index run for this repo failed. Re-index it, then generate the tour.",
+      "no_ranked_files": "The index has no ranked source files for this repo."
+    },
+    "generation_running": "A tour is already being generated for this repo.",
+    "provider_key_missing": "No API key is set for {provider}. Add one to generate the tour.",
+    "apiKeysLink": "Open Settings → API Keys",
+    "generation_failed": {
+      "timeout": "Generation did not finish within 120 seconds. Nothing was saved.",
+      "invalid_output": "The model returned output that could not be used. Nothing was saved.",
+      "llm_error": "The model call failed. Nothing was saved."
+    },
+    "unknown": "Could not generate the tour."
   },
   "loadError": {
     "title": "Couldn’t load the onboarding tour"

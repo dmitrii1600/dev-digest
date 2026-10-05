@@ -4,6 +4,7 @@ import React from "react";
 import { useRouter } from "next/navigation";
 import { NAV, SETTINGS_ITEM, resolveHref } from "@devdigest/ui";
 import { useActiveRepo } from "@/providers/repo-context";
+import { useNavigationGuard } from "@/providers/navigation-guard";
 import { G_NAV_TIMEOUT_MS } from "../constants";
 import { isTextInput } from "../helpers";
 
@@ -19,6 +20,7 @@ interface GlobalShortcutHandlers {
 export function useGlobalShortcuts({ onOpenPalette, onOpenHelp }: GlobalShortcutHandlers): void {
   const router = useRouter();
   const { repoId } = useActiveRepo();
+  const { confirmLeave } = useNavigationGuard();
 
   React.useEffect(() => {
     let gPending = false;
@@ -43,8 +45,12 @@ export function useGlobalShortcuts({ onOpenPalette, onOpenHelp }: GlobalShortcut
       if (gPending) {
         gPending = false;
         const target = NAV.flatMap((g) => g.items).find((it) => it.gKey === e.key);
-        if (target) router.push(resolveHref(target.href, repoId));
-        else if (e.key === SETTINGS_ITEM.gKey) router.push(SETTINGS_ITEM.href);
+        const href = target
+          ? resolveHref(target.href, repoId)
+          : e.key === SETTINGS_ITEM.gKey
+            ? SETTINGS_ITEM.href
+            : null;
+        if (href && confirmLeave()) router.push(href);
       }
     };
     window.addEventListener("keydown", onKey);
@@ -52,5 +58,5 @@ export function useGlobalShortcuts({ onOpenPalette, onOpenHelp }: GlobalShortcut
       window.removeEventListener("keydown", onKey);
       clearTimeout(gTimer);
     };
-  }, [router, repoId, onOpenPalette, onOpenHelp]);
+  }, [router, repoId, confirmLeave, onOpenPalette, onOpenHelp]);
 }

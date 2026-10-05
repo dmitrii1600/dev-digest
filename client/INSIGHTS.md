@@ -221,6 +221,15 @@ append-only. Empty sections are expected — append under the one that fits.
 
 
 
+- 2026-09-29 — A route `page.tsx` that only forwards a URL param stays a server
+  component: `async`, `await params` (a `Promise` in Next 15), render the client
+  leaf (`src/app/repos/[repoId]/context/page.tsx`). Five older pages
+  (`conventions`, `pulls`, `onboarding`, `agents/[id]`, `skills/[id]`) still put
+  `"use client"` + `useParams` on the page; `architecture-reviewer` flags a new
+  one as a WARNING (`next-best-practices` RSC-boundary row), so copy the context
+  page, not those. Why: a client page pulls the whole route tree into the client
+  bundle for no interactivity gain.
+
 ## Tool & Library Notes
 
 - 2026-09-16 — `@testing-library/user-event` is **not** installed; the suite uses

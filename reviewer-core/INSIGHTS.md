@@ -27,6 +27,15 @@ append-only. Empty sections are expected — append under the one that fits.
 
 ## Tool & Library Notes
 
+- 2026-10-01 — `OpenRouterProvider` builds its OpenAI client with
+  `timeout: 90_000` and `maxRetries: 2` (`src/llm/openrouter.ts:54-55`).
+  `req.timeoutMs` is ignored, and `req.maxRetries` controls only schema
+  reprompts. A caller timer above 90 s never fires first, because the SDK
+  silently re-sends instead, and a call the caller abandons keeps running and
+  can be billed twice. Output that is not JSON fails in `parseWithRepair`
+  (`src/llm/openrouter.ts:100`) and is thrown as a plain `Error` with no type to
+  check.
+
 ## Recurring Errors & Fixes
 
 ## Session Notes

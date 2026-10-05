@@ -686,7 +686,7 @@ export class RepoIntelService implements RepoIntel {
       for (let depth = 0; depth < BFS_DEPTH; depth += 1) {
         const next = (adj.get(cur) ?? [])
           .filter((t) => !inChain.has(t))
-          .sort((a, b) => (rankOf.get(b) ?? 0) - (rankOf.get(a) ?? 0))[0];
+          .sort((a, b) => (rankOf.get(b) ?? 0) - (rankOf.get(a) ?? 0) || a.localeCompare(b))[0];
         if (!next) break;
         chain.push(next);
         inChain.add(next);
@@ -728,7 +728,8 @@ const JUNK_PATH_PATTERNS = [
 ] as const;
 
 function isJunkPath(path: string): boolean {
-  const lower = path.toLowerCase();
+  // Leading '/' so the `/dir/` patterns also match a repo-root `test/x.ts`.
+  const lower = `/${path.toLowerCase()}`;
   return JUNK_PATH_PATTERNS.some((p) => lower.includes(p));
 }
 

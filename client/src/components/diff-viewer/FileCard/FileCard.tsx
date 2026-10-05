@@ -10,6 +10,7 @@ import { Icon, SEV } from "@devdigest/ui";
 import type { PrFile } from "@/lib/types";
 import { sortBySeverity } from "@/components/findings-preview";
 import { AUTO_EXPAND_MAX_LINES } from "../constants";
+import { DIFF_FILE_ATTR } from "../anchors";
 import { parsePatch, type Line } from "../helpers";
 import {
   buildThreads,
@@ -22,7 +23,7 @@ import {
   type DiffFindingApi,
   cs,
 } from "../comments";
-import { s, chevronFor } from "../styles";
+import { s, chevronFor, fileCardFor } from "../styles";
 import { CodeLine } from "../CodeLine";
 import { OutdatedComments } from "../OutdatedComments";
 
@@ -52,10 +53,13 @@ export function FileCard({
   file,
   commenting,
   findings,
+  isTarget = false,
 }: {
   file: PrFile;
   commenting?: DiffCommentApi;
   findings?: DiffFindingApi;
+  /** The URL points at this file (`?file=`): open it and mark it. */
+  isTarget?: boolean;
 }) {
   const t = useTranslations("shell");
   // A file with non-dismissed findings must be open regardless of size — a
@@ -73,7 +77,7 @@ export function FileCard({
   const hasFindings = (findings?.byPath.get(file.path)?.length ?? 0) > 0;
   const smallEnough = (file.additions ?? 0) + (file.deletions ?? 0) <= AUTO_EXPAND_MAX_LINES;
   const [userOpen, setUserOpen] = React.useState<boolean | null>(null);
-  const open = userOpen ?? (hasFindings || smallEnough);
+  const open = userOpen ?? (isTarget || hasFindings || smallEnough);
   const lines = React.useMemo(() => parsePatch(file.patch), [file.patch]);
 
   const renderedKeys = React.useMemo(() => {
@@ -110,7 +114,7 @@ export function FileCard({
     findingsForFile.length > 0 ? sortBySeverity(findingsForFile)[0]!.severity : null;
 
   return (
-    <div style={s.fileCard}>
+    <div style={fileCardFor(isTarget)} {...{ [DIFF_FILE_ATTR]: file.path }}>
       <div onClick={() => setUserOpen(!open)} style={s.fileHeader}>
         <Icon.ChevronRight size={13} style={chevronFor(open)} />
         <Icon.FileText size={14} style={s.fileIcon} />

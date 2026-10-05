@@ -13,7 +13,7 @@ decide. If the two ever disagree, the script is right and this file is stale.
 | **backend** | `server/src/**/*.ts`, not `vendor/ui` | `onion-architecture` | `fastify-best-practices` for `routes.ts`, `app.ts`, `server.ts`, `platform/**` · `drizzle-orm-patterns` for `repository*.ts`, `db/**` · `postgresql-table-design` for `db/schema/**` · `security` for `routes.ts`, `adapters/{auth,secrets,github}/**` · `zod` + `typescript-expert` for `vendor/shared/contracts/**` |
 | **engine** | `reviewer-core/src/**/*.ts`, not tests | `typescript-expert` | `security` for `prompt.ts`, `grounding.ts`, `llm/**` · `zod` for schema / structured-output files |
 | **mcp** | `mcp/src/**/*.ts`, not tests | `typescript-expert`, `security` | `zod` for `tools/**`, `api-client.ts`, `resolve.ts`, `config.ts` |
-| **convention-only** | `e2e/**`, `server/test/**`, `client/messages/**`, vendored trees, `.claude/**`, `.github/**`, `scripts/**`, `docs/**`, specs, migrations, configs, every non-source extension | — (static rules + machine checks only) | — |
+| **convention-only** | `e2e/**`, `server/test/**`, `client/messages/**`, vendored trees, `.claude/**`, `.github/**`, `scripts/**`, `docs/**`, specs, migrations, configs, every non-source extension | — (static rules + machine checks only; a changed `**/specs/*.md` that carries a `Spec ID:` line is run through `scripts/spec-lint.mjs` — filename/ID/Status mismatches are CRITICAL, template and EARS gaps are WARNING) | — |
 | **unrouted** | any other `.ts/.tsx/.js/.mjs/.cjs` | — | reported as a WARNING so the table gets extended |
 
 Why the groups are cut this way:
@@ -30,6 +30,24 @@ Why the groups are cut this way:
   to report.
 - **Tests are their own group.** `react-testing-library` reviews tests; nothing else should
   judge a test file by component rules.
+
+## Write-time vs review-time
+
+The table above names every skill that *reviews* a file. Not all of them help *write*
+one. The implementer and the test-writer load only the write-time set; the review-time
+set is applied later, by `/pr-self-review` on the finished diff (and, for boundaries, by
+`architecture-reviewer`).
+
+| Skill | Loaded | Why |
+|---|---|---|
+| `onion-architecture`, `frontend-ui-architecture`, `react-best-practices`, `next-best-practices`, `fastify-best-practices`, `drizzle-orm-patterns`, `postgresql-table-design`, `zod`, `react-testing-library` | **write-time** — from the plan's *Skill contract*, once each, at the first step that needs it | they say where code goes and how it is shaped; without them the code is written wrong |
+| `security`, `typescript-expert` | **review-time only** — the gate, never the implementer | both are long, confidence-based finding catalogues (attacker-controlled input traced to a sink; unsafe `as`, `any` in a public signature). They grade a finished diff; loaded onto a blank file they cost ~700 lines of context and change nothing about what gets typed |
+
+`implementation-planner` derives the *Skill contract* from the write-time row only. A
+`routes.ts` step therefore names `onion-architecture` and `fastify-best-practices`, not
+`security`; the security review of that route still happens, on the gate. A skill is
+loaded **once per run**, never once per step — the `Skill` tool appends the whole body to
+the context every time it is called.
 
 ## Severity normalisation
 

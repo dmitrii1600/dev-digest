@@ -224,6 +224,10 @@ export class ReviewRunExecutor {
       // section byte-identically (existing agents' prompts must not change).
       const skillBlocks = await this.buildSkillBlocks(agent.id, runLog);
 
+      // Project Context — attached clone documents, read once at run start.
+      // Best-effort: no attachments => empty => `specs` omitted, prompt unchanged.
+      const projectDocs = await this.buildProjectDocs(pull.repoId, repo.clonePath, agent.id, runLog);
+
       // ---- Engine: assemble → single-pass → grounding -----------------------
       // The pure review pipeline lives in @devdigest/reviewer-core (shared with
       // the CI runner). The service owns only I/O: repo-intel context resolution
@@ -239,6 +243,8 @@ export class ReviewRunExecutor {
         // L02 — resolved skill bodies, non-'manual' sources already wrapped as
         // untrusted (see buildSkillBlocks). Omitted when no skill is attached.
         ...(skillBlocks ? { skills: skillBlocks } : {}),
+        // Project Context — path-labelled untrusted documents; omitted when none reach the run.
+        ...(projectDocs.length > 0 ? { specs: projectDocs } : {}),
         // T1.3 — pass the callers digest only when we built one. assemblePrompt
         // omits the section when this is empty/undefined.
         ...(callersDigest ? { callers: callersDigest } : {}),
@@ -339,7 +345,7 @@ export class ReviewRunExecutor {
         })),
         raw_output: outcome.raw,
         memory_pulled: [],
-        specs_read: [],
+        specs_read: projectDocs.map((d) => d.path),
         // Persisted log = the run's FULL event buffer (incl. shared pre-work:
         // diff load + intent), not just events recorded inside this method.
         log: runLog.logFor(runId),
@@ -401,6 +407,28 @@ export class ReviewRunExecutor {
     const tokens = bodies.reduce((n, b) => n + this.container.tokenizer.count(b), 0);
     runLog.info(`skills: ${bodies.length} skill(s) attached (${tokens} tokens)`);
     return bodies;
+  }
+
+  /**
+   * Project Context (see `modules/project-context/`). Resolved once per agent
+   * run (map-reduce reuses the result per chunk). Never fails the run.
+   */
+  private async buildProjectDocs(
+    repoId: string,
+    clonePath: string | null,
+    agentId: string,
+    runLog: RunLogger,
+  ): Promise<{ path: string; content: string }[]> {
+    const res = await this.container.projectContext
+      .resolveForRun({ repoId, clonePath, agentId })
+      .catch(() => null);
+    if (!res) return [];
+    for (const p of res.skipped) runLog.info(`project context: skipped ${p} (missing or unreadable)`);
+    for (const p of res.truncated) runLog.info(`project context: truncated ${p} at 64 KB`);
+    runLog.info(
+      `project context: ${res.docs.length} document(s) (${res.tokens} tokens); skipped: ${res.skipped.join(', ') || 'none'}; truncated: ${res.truncated.join(', ') || 'none'}`,
+    );
+    return res.docs;
   }
 
   /**

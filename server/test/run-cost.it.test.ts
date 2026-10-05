@@ -8,6 +8,17 @@ import { MockLLMProvider, MockEmbedder, MockGitClient } from '../src/adapters/mo
 import * as t from '../src/db/schema.js';
 import { eq } from 'drizzle-orm';
 import type { Review, PrMeta, RunSummary, RunTrace } from '@devdigest/shared';
+import type { IntentPort } from '../src/modules/intent/types.js';
+
+// Same as reviews.it: without this stub every review run makes a real, paid
+// OpenRouter intent call inside the 10 s `waitForPrRuns` budget.
+const intentStub: IntentPort = {
+  get: async () => null,
+  ensure: async () => null,
+  derive: async () => {
+    throw new Error('not used');
+  },
+};
 
 /**
  * Run cost badge — the cost the engine already computes must survive the trip
@@ -102,6 +113,7 @@ d('run cost badge (Testcontainers pg)', () => {
       db: pg.handle.db,
       overrides: {
         embedder: new MockEmbedder(),
+        intent: intentStub,
         git: new MockGitClient({ diff: DIFF }),
         llm: { openai: new MockLLMProvider('openai', { structured: REVIEW_FIXTURE }) },
       },

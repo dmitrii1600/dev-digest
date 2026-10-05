@@ -67,6 +67,15 @@ append-only. Empty sections are expected — append under the one that fits.
 
 
 
+- 2026-10-01 — The "hermetic" e2e stack is not hermetic about secrets: the API
+  it starts reads `~/.devdigest/secrets.json` (`server/src/platform/config.ts:83`,
+  no env override for `secretsPath`), so a developer `GITHUB_TOKEN` there makes
+  the seeded `acme/payments-api` call the real GitHub (`HttpError: Not Found …
+  list-pull-requests`) and 11 of 14 flows fail at `wait --url /pulls`. Run
+  `./scripts/e2e.sh` with `HOME` and `USERPROFILE` pointed at an empty scratch
+  dir (14/14 then), or add a `DEVDIGEST_SECRETS_PATH` override and have the
+  script set it; the failure looks like a flow regression and is not one.
+
 ## Codebase Patterns
 
 - 2026-09-16 — Flow assertions are strings from `server/src/db/seed.ts`, so a seed
@@ -116,6 +125,13 @@ append-only. Empty sections are expected — append under the one that fits.
 
 
 ## Recurring Errors & Fixes
+
+- 2026-10-02 — A late flow failing at `wait --url /pulls` right after `load the app root`
+  (flow 15 on PR #7, CI only) is the API's global rate limit, not the flow: 16 flows
+  from one IP pass 120 req/min, `GET /repos` returns 429 and the root page takes its
+  `isError` branch, so it shows "No repositories yet" (`client/src/app/page.tsx:30`). The hermetic
+  stacks set `RATE_LIMIT_MAX=10000` (`scripts/e2e.sh:46`, `server/src/platform/config.ts:39`).
+  Any new way of starting the e2e API has to set it too.
 
 ## Session Notes
 

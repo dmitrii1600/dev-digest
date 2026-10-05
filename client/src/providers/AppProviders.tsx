@@ -10,6 +10,7 @@ import {
 } from "@tanstack/react-query";
 import { ThemeProvider } from "./theme";
 import { RepoProvider } from "./repo-context";
+import { NavigationGuardProvider } from "./navigation-guard";
 import { ToastProvider, notify } from "./toast";
 import { ApiError } from "@/lib/api";
 
@@ -30,7 +31,8 @@ export function Providers({ children }: { children: React.ReactNode }) {
           },
         },
         // Global error surfacing (errors anywhere → toast). Mutations always
-        // toast (they are user actions). Queries only toast on network/5xx —
+        // toast (they are user actions) unless the mutation renders its own
+        // inline error (`meta.inlineError`). Queries only toast on network/5xx —
         // expected 4xx like a 404 "no tour yet" stay silent for inline empty states.
         queryCache: new QueryCache({
           onError: (err) => {
@@ -39,7 +41,10 @@ export function Providers({ children }: { children: React.ReactNode }) {
           },
         }),
         mutationCache: new MutationCache({
-          onError: (err) => notify.error(errorMessage(err)),
+          onError: (err, _vars, _ctx, mutation) => {
+            if (mutation.meta?.inlineError === true) return;
+            notify.error(errorMessage(err));
+          },
         }),
       })
   );
@@ -47,7 +52,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
     <QueryClientProvider client={qc}>
       <ThemeProvider>
         <ToastProvider>
-          <RepoProvider>{children}</RepoProvider>
+          <RepoProvider>
+            <NavigationGuardProvider>{children}</NavigationGuardProvider>
+          </RepoProvider>
         </ToastProvider>
       </ThemeProvider>
     </QueryClientProvider>

@@ -5,7 +5,7 @@ import type { RunTrace } from "@devdigest/shared";
 import messages from "../../../../../../../../messages/en/runs.json"; // apps/web/messages/en/runs.json
 
 // Mock the trace hooks so the drawer renders without a query client / SSE.
-const TRACE: RunTrace = {
+let TRACE: RunTrace = {
   config: { agent: "Security", version: "1", provider: "openai", model: "gpt-4.1", pr: 482, source: "local" },
   stats: { duration_ms: 8200, tokens_in: 12000, tokens_out: 1500, findings: 2, grounding: "2/2 passed" },
   prompt_assembly: { system: "You are a reviewer.", skills: "### skill", memory: null, specs: null, user: "Review PR #482" },
@@ -49,7 +49,11 @@ vi.mock("../../../../../../../lib/hooks/reviews", () => ({
 
 import RunTraceDrawer from "./RunTraceDrawer";
 
-afterEach(cleanup);
+const BASE_TRACE = TRACE;
+afterEach(() => {
+  cleanup();
+  TRACE = BASE_TRACE;
+});
 
 function renderWithIntl(ui: React.ReactElement) {
   return render(
@@ -103,5 +107,38 @@ describe("A5 Run Trace drawer (smoke)", () => {
     );
     fireEvent.click(screen.getByText("Findings"));
     expect(screen.getByText("Hardcoded Stripe secret key in commit")).toBeInTheDocument();
+  });
+});
+
+describe("Project context slot", () => {
+  const SPECS = '<untrusted source="doc:specs/a.md">\nspec body\n</untrusted>';
+
+  it("labels the slot, expands to the full text and copies exactly that text", () => {
+    TRACE = {
+      ...BASE_TRACE,
+      prompt_assembly: { ...BASE_TRACE.prompt_assembly, specs: SPECS },
+      specs_read: ["specs/a.md", "docs/b.md"],
+    };
+    const writeText = vi.fn();
+    Object.assign(navigator, { clipboard: { writeText } });
+    renderWithIntl(<RunTraceDrawer runId="r1" agentName="Security" prNumber={482} onClose={() => {}} />);
+    // Specs read row lists the paths in order.
+    const a = screen.getByText("specs/a.md");
+    const b = screen.getByText("docs/b.md");
+    expect(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    fireEvent.click(screen.getByText("Prompt assembly"));
+    const label = screen.getByText("Project context — attached specs (untrusted)");
+    fireEvent.click(label);
+    expect(screen.getByText(/spec body/)).toBeInTheDocument();
+    const head = label.parentElement as HTMLElement;
+    fireEvent.click(head.querySelector('button[aria-label="Copy"]') as HTMLElement);
+    expect(writeText).toHaveBeenCalledWith(SPECS);
+  });
+
+  it("renders a pre-feature trace (specs null, nothing read) without the row", () => {
+    renderWithIntl(<RunTraceDrawer runId="r1" agentName="Security" prNumber={482} onClose={() => {}} />);
+    fireEvent.click(screen.getByText("Prompt assembly"));
+    expect(screen.queryByText(/Project context/)).toBeNull();
+    expect(screen.getByText("Specs read")).toBeInTheDocument();
   });
 });
