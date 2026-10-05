@@ -63,11 +63,17 @@ function main(): void {
   console.log(`A = ${labelA}  sha ${a.git_sha}${a.dirty ? "-dirty" : ""}  (${a.times} runs)`);
   console.log(`B = ${labelB}  sha ${b.git_sha}${b.dirty ? "-dirty" : ""}  (${b.times} runs)`);
 
-  const nodeids = [...new Set([...Object.keys(a.tests), ...Object.keys(b.tests)])].sort();
-  for (const id of nodeids) {
-    const ta = a.tests[id];
-    const tb = b.tests[id];
-    const shortId = id.split(" > ").slice(-1)[0];
+  // Pair tests by CASE NAME, not full nodeid: the nodeid embeds the file and the artifact
+  // (`agent:architecture-reviewer > …` vs `agent:architecture-reviewer-lite > …`), so an A/B of two
+  // artifacts sharing one case list would otherwise never line up.
+  const byCase = (tests: RepeatFile["tests"]) =>
+    Object.fromEntries(Object.entries(tests).map(([id, t]) => [id.split(" > ").slice(-1)[0], t]));
+  const testsA = byCase(a.tests);
+  const testsB = byCase(b.tests);
+  const names = [...new Set([...Object.keys(testsA), ...Object.keys(testsB)])].sort();
+  for (const shortId of names) {
+    const ta = testsA[shortId];
+    const tb = testsB[shortId];
     rateRow("\n  ", shortId, ta?.pass, tb?.pass);
 
     const practiceTexts = [...new Set([...Object.keys(ta?.practices ?? {}), ...Object.keys(tb?.practices ?? {})])];

@@ -37,5 +37,8 @@ export function subscriptionEnv(): Record<string, string> {
 
   delete env.ANTHROPIC_API_KEY;
   delete env.ANTHROPIC_AUTH_TOKEN;
+  // The subscription login carries the account's claude.ai connectors; an eval session must not
+  // reach them (see run-claude.ts — strictMcpConfig is the primary guard, this is the second).
+  env.ENABLE_CLAUDEAI_MCP_SERVERS = "false";
   return env;
 }

@@ -4,7 +4,7 @@
  */
 
 import { query, type Options } from "@anthropic-ai/claude-agent-sdk";
-import { EVAL_MODEL, MAX_TURNS, SPAWN_TOOLS } from "../config.js";
+import { EVAL_MODEL, MAX_TURNS, MUTATING_TOOLS, SPAWN_TOOLS } from "../config.js";
 import { REPO_ROOT } from "../artifacts/paths.js";
 import { subscriptionEnv } from "./env.js";
 
@@ -62,9 +62,19 @@ export async function runClaude(prompt: string, opts: RunOptions = {}): Promise<
   const options: Options = {
     model: opts.model ?? EVAL_MODEL,
     maxTurns: opts.maxTurns ?? MAX_TURNS,
-    permissionMode: "bypassPermissions", // safe: evals only read/plan and tools are allow-listed
+    permissionMode: "bypassPermissions",
     systemPrompt,
     allowedTools,
+    // `allowedTools` only PRE-APPROVES the listed tools — under bypassPermissions every other tool
+    // stays usable. Observed on a logged-in machine: a workflow session used Edit to append to
+    // server/INSIGHTS.md, and other sessions used the account's claude.ai connectors (Claude Docs,
+    // Artifact) to create private artifacts in the user's account. So the session gets EXACTLY
+    // the allow-listed built-ins (`tools`), mutating ones are refused even if a nested definition
+    // asks for them, and no MCP server or account connector is loaded.
+    tools: allowedTools,
+    disallowedTools: MUTATING_TOOLS.filter((t) => !allowedTools.includes(t)),
+    mcpServers: {},
+    strictMcpConfig: true,
     cwd: opts.cwd ?? REPO_ROOT,
     // Default: do NOT load on-disk config — isolates the injected artifact. workflowTask overrides.
     settingSources: opts.settingSources ?? [],
@@ -111,7 +121,9 @@ export async function runClaude(prompt: string, opts: RunOptions = {}): Promise<
             }
             if (block.name === "Read") {
               const fp = input.file_path ?? input.path;
-              if (fp) reads.push(fp);
+              // Forward slashes on every OS — cases match repo-relative paths like
+              // "reviewer-core/INSIGHTS.md", which never match a Windows "reviewer-core\INSIGHTS.md".
+              if (fp) reads.push(String(fp).replace(/\\/g, "/"));
             }
             if (block.name === "Skill") {
               const s = input.skill ?? input.command;
