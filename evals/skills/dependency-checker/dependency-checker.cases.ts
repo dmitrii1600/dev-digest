@@ -1,83 +1,70 @@
 import type { SkillCase } from "../../src/index.js";
+import { fixtureReader } from "../../src/index.js";
 
-// This skill's job is to analyze real files (package.json, tsconfig.json, node_modules sizes),
-// but "quality" cases run with no tools (skillTask measures the SKILL.md content in isolation —
-// see tasks.ts). So each prompt inlines a small synthetic dataset the skill can reason over
-// directly, standing in for what the skill would normally gather itself with Read/Bash/Grep.
+const fx = fixtureReader(import.meta.url);
 
-const REPO_DATA = `Here is the data you'd normally gather yourself — treat it as already collected, and produce the report directly from it (do not ask for tool access or more data).
+// The skill normally gathers this itself (Read/Bash/Grep), but "quality" cases run with no tools
+// (skillTask measures the SKILL.md content in isolation — see tasks.ts). So each prompt hands over
+// a raw snapshot of what the collection step would have produced.
+//
+// The fixtures are RAW command output — package.json, tsconfig paths, `du`, an `rg` import list —
+// with no commentary. Nothing says which dependency is unused, which versions drift or which import
+// is wrong; the model has to derive that from the data. Seeded problems in repo-snapshot.md:
+//   1. moment declared in server/package.json, imported nowhere          → unused runtime dep
+//   2. zod 3.23.8 in server + reviewer-core, 3.22.4 in client           → version drift
+//   3. server/src/services/review-service.ts → ../../../reviewer-core/src/pipeline.js
+//                                                                        → deep import past the entry point
+//   4. server/src/services/date.ts imports date-fns, server does not declare it
+//                                                                        → undeclared dependency
+// clean-snapshot.md has none of them — the negative case.
+const HANDOFF =
+  "Here is the raw data the collection step produced — treat it as already collected and build the report from it directly (do not ask for tool access or more data).";
 
-server/package.json dependencies: fastify@5.1.0, drizzle-orm@0.36.0, zod@3.23.8, pg@8.13.0, moment@2.30.1
-server/package.json devDependencies: vitest@2.1.4, typescript@5.6.3, tsx@4.19.0
-client/package.json dependencies: next@15.0.3, react@19.0.0, react-dom@19.0.0, @tanstack/react-query@5.59.0, zod@3.22.4, date-fns@4.1.0
-client/package.json devDependencies: vitest@2.1.4, typescript@5.6.3, tailwindcss@3.4.14
-reviewer-core/package.json dependencies: zod@3.23.8
-reviewer-core/package.json devDependencies: typescript@5.6.3
-e2e/package.json dependencies: (none runtime)
-e2e/package.json devDependencies: playwright@1.48.2, typescript@5.6.3
-
-Installed sizes (du -sh):
-server/node_modules/moment: 4.2M
-server/node_modules/drizzle-orm: 8.1M
-server/node_modules/fastify: 6.5M
-server/node_modules/pg: 3.8M
-server/node_modules/zod: 2.1M
-client/node_modules/next: 132M
-client/node_modules/react-dom: 6.9M
-client/node_modules/date-fns: 22M
-client/node_modules/zod: 1.9M
-reviewer-core/node_modules/zod: 2.1M
-e2e/node_modules/playwright: 210M
-
-server/package.json also declares zod@3.23.8, client/package.json declares zod@3.22.4, reviewer-core/package.json declares zod@3.23.8 — three different resolved zod versions across packages.
-
-grep for imports crossing package boundaries:
-- server/src/routes/reviews.ts imports types from "@shared/review-types" (alias to server/src/vendor/shared)
-- server/src/services/review-service.ts imports "reviewer-core/src/pipeline.js" directly by relative path (not via the package's public entry point)
-- client/src/lib/api-types.ts imports "@shared/review-types" (same alias as server)
-- grep found no import of "moment" anywhere under server/src — only present in package.json`;
+const REPO = `${HANDOFF}\n\n${fx("repo-snapshot.md")}`;
+const CLEAN = `${HANDOFF}\n\n${fx("clean-snapshot.md")}`;
 
 export const cases: SkillCase[] = [
   {
     name: "full report follows the required 5-section structure with a Mermaid graph",
     kind: "quality",
-    prompt: `Run a dependency check on this repo. I want the full report: graph, sizes, prioritized findings, recommendations.\n\n${REPO_DATA}`,
+    prompt: `Run a dependency check on this repo. I want the full report: graph, sizes, prioritized findings, recommendations.\n\n${REPO}`,
     grounding: ["```mermaid", "flowchart"],
     practices: [
       "the report has a section named 'Scope' listing which packages (client, server, reviewer-core, e2e) were analyzed",
       "the report includes a Mermaid diagram (a fenced ```mermaid code block using flowchart) showing dependency relationships between packages",
       "the report has a section with a size breakdown table showing dependencies and their installed size, not just a vague size statement",
-      "the report has a 'Findings & Priorities' section (or equivalently named) that groups findings under explicit severity tiers such as P0, P1, P2, or Info — not an unranked bullet list",
+      "the report has a 'Findings & Priorities' section that groups findings under explicit severity tiers P0, P1, P2 and Info — not an unranked bullet list",
       "the report ends with a Summary section giving 3-5 concrete, actionable takeaways ordered by priority",
-      "every finding names a specific package, dependency, or file rather than giving generic advice like 'consider optimizing dependencies'",
     ],
-    threshold: 0.7,
+    threshold: 0.8,
     maxTurns: 10,
   },
   {
-    name: "distinguishes internal (path-alias) dependencies from external npm dependencies",
+    name: "derives the seeded problems from raw data, with internal and external kept apart",
     kind: "quality",
-    prompt: `This repo isn't a monorepo — server, client, reviewer-core, and e2e share code via TypeScript path aliases, not workspace:* packages. Analyze our dependencies, including how these packages depend on each other internally.\n\n${REPO_DATA}`,
+    prompt: `This repo isn't a monorepo — packages share code through TypeScript path aliases. Analyze our dependencies, including how the packages depend on each other internally, and tell me what to fix first.\n\n${REPO}`,
     practices: [
-      "the answer explicitly distinguishes internal cross-package dependencies (the @shared/review-types alias and the direct relative import into reviewer-core/src/pipeline.js) from external npm package dependencies, rather than treating them as the same kind of dependency",
-      "the answer flags server/src/services/review-service.ts importing reviewer-core/src/pipeline.js by relative path instead of through reviewer-core's public entry point as a P0-tier or otherwise explicitly called-out issue",
-      "the answer does not claim these packages are linked via workspace:* or pnpm workspaces, since the project explicitly is not a monorepo",
+      "flags server/src/services/review-service.ts importing reviewer-core/src/pipeline.js by relative path (instead of reviewer-core's public entry point) as a P0 finding",
+      "flags that server/src/services/date.ts imports date-fns while server/package.json does not declare it, as an undeclared dependency",
+      "calls out moment as declared in server/package.json but never imported, i.e. an unused runtime dependency",
+      "calls out zod being declared at 3.22.4 in client but 3.23.8 in server and reviewer-core as version drift, as its own finding rather than only a note in a table",
+      "labels the @shared alias and the reviewer-core relative import as internal dependencies, distinct from external npm packages",
+      "does not describe the packages as linked via workspace:* or pnpm/npm workspaces, and does not propose migrating to a monorepo",
     ],
-    threshold: 0.6,
+    threshold: 0.8,
     maxTurns: 10,
   },
   {
-    name: "severity tiers are used consistently and recommendations are specific, not vague",
+    name: "negative: a clean snapshot gets no fabricated findings",
     kind: "quality",
-    prompt: `We suspect some npm dependencies in server/ and client/ are unused or duplicated across packages with different versions. Check our dependencies and tell me what to prioritize fixing first.\n\n${REPO_DATA}`,
+    prompt: `Check our dependencies and tell me what to prioritize fixing.\n\n${CLEAN}`,
     practices: [
-      "findings are explicitly labeled with one of the defined severity tiers (P0, P1, P2, or Info) rather than left unranked",
-      "the three different zod versions across server, client, and reviewer-core are called out explicitly as version drift",
-      "moment being declared in server/package.json but never imported anywhere under server/src is called out explicitly as an unused dependency",
-      "each recommendation names a specific package name and package.json/file location (e.g. server/package.json, moment, zod) rather than a generic suggestion",
-      "removing a dependency (e.g. moment) is presented as a recommendation for the user to confirm, not something already executed",
+      "reports no P0 and no P1 findings — the P0 and P1 tiers are empty or explicitly marked as none",
+      "does not claim any declared dependency is unused (fastify, zod, vitest, typescript and tsx are all imported or used via scripts)",
+      "does not report version drift for zod, which is 3.23.8 in both packages",
+      "does not flag the @devdigest/reviewer-core alias import in server/src/services/review-service.ts as a boundary violation — it goes through the public entry point",
     ],
-    threshold: 0.6,
+    threshold: 1.0,
     maxTurns: 10,
   },
 ];

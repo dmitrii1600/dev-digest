@@ -1,0 +1,23 @@
+diff --git a/server/src/modules/reviews/helpers.ts b/server/src/modules/reviews/helpers.ts
+index 7c3d9a2..e18b4f6 100644
+--- a/server/src/modules/reviews/helpers.ts
++++ b/server/src/modules/reviews/helpers.ts
+@@ -1,9 +1,14 @@
+ import type { Review } from "@devdigest/shared";
++import type { BriefSummary } from "@devdigest/shared";
++import { BRIEF_MAX_RISKS } from "./constants.js";
+
+ export function toReviewDto(row: Review) {
+   return { id: row.id, verdict: row.verdict, score: row.score };
+ }
++
++export function attachBrief(dto: ReturnType<typeof toReviewDto>, brief: BriefSummary | null) {
++  return { ...dto, risks: brief ? brief.risks.slice(0, BRIEF_MAX_RISKS) : [] };
++}
+diff --git a/server/src/modules/reviews/constants.ts b/server/src/modules/reviews/constants.ts
+index 1a2b3c4..5d6e7f8 100644
+--- a/server/src/modules/reviews/constants.ts
++++ b/server/src/modules/reviews/constants.ts
+@@ -1,2 +1,3 @@
+ export const REVIEW_PAGE_SIZE = 50;
++export const BRIEF_MAX_RISKS = 5;
