@@ -21,6 +21,7 @@ Reusable AI skills that provide specialized knowledge and workflows. Canonical l
 | [pr-self-review](pr-self-review/SKILL.md) | Shared | Pre-PR gate: routes the diff to the skills that own each file, runs lint/typecheck/arch, and blocks `gh pr create` / `git push` on any CRITICAL finding |
 | [spec-writing](spec-writing/SKILL.md) | Shared | House rules for a feature spec: template, EARS criteria, design-review checklist, traceability, size budget, spec smells, self-check |
 | [run-plan](run-plan/SKILL.md) | Shared | `/run-plan plans/<stem>.md` — builds an approved plan through the agent chain with capped fix loops (verifier, architecture review, gate) and a per-run report folder |
+| [dependency-checker](dependency-checker/SKILL.md) | Shared | Audits every package's dependencies — external by type and installed size, internal via tsconfig aliases, drift, unused deps, deep imports → Mermaid graph + size tables + P0/P1/P2/Info findings + prioritized summary. Analysis only |
 | [workflow-retro](workflow-retro/SKILL.md) | Shared | `/workflow-retro [--deep]` — **manual only**: retrospective of a finished agent workflow (agents, order, tokens, hard / easy / duplicated / missed per agent, proposals) → one entry in `docs/retro/ledger/`; numbers from `scripts/retro-usage.mjs` |
 
 ## What Are Skills?
