@@ -129,7 +129,7 @@ jobs:
       - run: pnpm exec vitest run "skills/${{ matrix.skill }}/" | tee results-summary.txt
       - if: always()
         run: |
-          { echo "### skill: ${{ matrix.skill }}"; echo '```'; tail -40 results-summary.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          { echo "### skill: ${{ matrix.skill }}"; echo '```'; tail -40 results-summary.txt 2>/dev/null || echo "(no eval output — an earlier step failed, see the job log)"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
       - if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -173,7 +173,7 @@ jobs:
       - run: pnpm exec vitest run "agents/${{ matrix.agent }}/" --no-file-parallelism | tee results-summary.txt
       - if: always()
         run: |
-          { echo "### agent: ${{ matrix.agent }}"; echo '```'; tail -40 results-summary.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          { echo "### agent: ${{ matrix.agent }}"; echo '```'; tail -40 results-summary.txt 2>/dev/null || echo "(no eval output — an earlier step failed, see the job log)"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
       - if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -215,7 +215,7 @@ jobs:
       - run: pnpm exec vitest run workflow --no-file-parallelism | tee results-summary.txt
       - if: always()
         run: |
-          { echo "### workflow tier"; echo '```'; tail -60 results-summary.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          { echo "### workflow tier"; echo '```'; tail -60 results-summary.txt 2>/dev/null || echo "(no eval output — an earlier step failed, see the job log)"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
       - if: always()
         uses: actions/upload-artifact@v4
         with:
