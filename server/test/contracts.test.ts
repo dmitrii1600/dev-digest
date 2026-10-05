@@ -11,6 +11,7 @@ import {
   Conformance,
   Onboarding,
   EvalRun,
+  EvalSuiteRun,
   MemoryItem,
   RunTrace,
   Settings,
@@ -176,6 +177,44 @@ describe('AI contracts parse fixtures', () => {
         per_trace: [{ name: 't01', pass: true, expected: 'x', actual: 'x' }],
       }),
     ).not.toThrow();
+    // EC-8: an empty denominator is "not available" (null), never 0 or 1.
+    expect(() =>
+      EvalRun.parse({
+        recall: null,
+        precision: null,
+        citation_accuracy: null,
+        traces_passed: 0,
+        traces_total: 0,
+        duration_ms: 0,
+        cost_usd: null,
+        per_trace: [],
+      }),
+    ).not.toThrow();
+    const suiteRun = {
+      id: 'run1',
+      kind: 'suite',
+      owner_kind: 'agent',
+      owner_id: 'a1',
+      agent_id: 'a1',
+      agent_version: 3,
+      provider: 'openai',
+      model: 'gpt-4.1',
+      status: 'partial',
+      error: null,
+      skills: [{ skill_id: 's1', name: 'Security', version: 2 }],
+      cases: [{ case_id: 'c1', fingerprint: 'abc' }],
+      cases_total: 2,
+      cases_passed: 1,
+      cases_errored: 1,
+      metrics: { recall: 1, precision: null, citation_accuracy: 0.5 },
+      duration_ms: 1200,
+      cost_usd: null,
+      started_at: '2026-10-05T00:00:00.000Z',
+      finished_at: '2026-10-05T00:00:01.200Z',
+    };
+    const parsed = EvalSuiteRun.parse(suiteRun);
+    expect(EvalSuiteRun.parse(JSON.parse(JSON.stringify(parsed)))).toEqual(parsed);
+    expect(parsed.metrics.precision).toBeNull();
     expect(() =>
       MemoryItem.parse({
         content: 'c',

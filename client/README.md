@@ -3,8 +3,8 @@
 The DevDigest UI: import repos, browse pull requests, run and read AI reviews,
 author agents, and author reusable **Skills** attached to them. App Router +
 React Server/Client components, data via **TanStack Query** hooks over the
-Fastify API. (This is the starter surface plus L02's Skills Lab; course lessons
-still add Memory, Eval, multi-agent, CI, and dashboard screens.)
+Fastify API. (This is the starter surface plus L02's Skills Lab and L06's Eval
+screens; course lessons still add Memory, multi-agent, CI, and dashboard screens.)
 
 - **Stack:** Next.js 15 (App Router), React 19, TanStack Query, `next-intl`
   (messages in `messages/<locale>/*.json`), `recharts`, `mermaid`,
@@ -27,11 +27,12 @@ flowchart TD
   ONB["/onboarding<br/>add repo"] -->|"POST /repos"| API[("Fastify API")]
   PULLS --> PR["/pulls/:number<br/>review detail<br/>(overview · diff · findings)"]
 
-  AGENTS["/agents"] --> AGENT["/agents/:id<br/>editor (config · skills)"]
+  AGENTS["/agents"] --> AGENT["/agents/:id<br/>editor (config · skills · context · evals)"]
   SKILLS["/skills<br/>Skills Lab"] --> SKILL["/skills/:id<br/>editor (config · preview · versions · stats)"]
   CONV["/repos/:repoId/conventions<br/>Conventions (scan · accept/reject/edit · create skill)"]
   CTX["/repos/:repoId/context<br/>Project Context (clone Markdown; author under .devdigest/specs/)"]
   SETTINGS["/settings/:section<br/>API keys · models"]
+  EVAL["/eval<br/>Eval Dashboard"] --> EVALAGENT["/eval/:agentId<br/>tiles · trend · runs · Compare"]
 
   PULLS -->|"GET /repos/:id/pulls · /repos/:id/index-state"| API
   PR -->|"GET /pulls/:id · /reviews · /pulls/:id/comments · /pulls/:id/blast-radius · /pulls/:id/history · /pulls/:id/brief<br/>POST /pulls/:id/review · /pulls/:id/brief · /findings/:id/(accept|dismiss)"| API
@@ -42,6 +43,10 @@ flowchart TD
   AGENT -->|"Context tab: GET|PUT /agents/:id/context?repoId="| API
   SKILL -->|"Context tab: GET|PUT /skills/:id/context?repoId="| API
   SETTINGS -->|"/settings · /providers"| API
+  PR -->|"POST /findings/:id/eval-case"| API
+  AGENT -->|"Evals tab: GET /agents/:id/eval-cases · /eval-dashboard · POST …/eval-runs · DELETE /eval-cases/:id"| API
+  EVAL -->|"GET /eval/dashboard"| API
+  EVALAGENT -->|"GET /agents/:id/eval-dashboard · /eval-runs · /eval-runs/compare?a=&b="| API
 ```
 
 Cross-cutting chrome lives in `src/components/app-shell` (nav, breadcrumbs,
@@ -135,6 +140,47 @@ flowchart LR
   server maps to a line in `messages/en/brief.json` (`missingFacts.*`);
   `PrBrief/missing-facts.test.ts` pins that table to `BRIEF_FACT_PAIRS` in the
   shared contract, in both directions.
+
+## Eval
+
+Server side, scoring rules and error codes: `server/src/modules/evals/README.md`. The
+client shows what the server computes; it scores nothing. All data goes through
+`src/lib/hooks/evals.ts` (query-key builders are exported there).
+
+```mermaid
+flowchart LR
+  CARD["FindingCard<br/>Turn into eval case"] -->|"POST /findings/:id/eval-case"| API[("Fastify API")]
+  TAB["agents/:id Evals tab<br/>case list · Run all evals"] -->|"cases · dashboard · POST eval-runs"| API
+  DASH["/eval<br/>one card per agent"] -->|"GET /eval/dashboard"| API
+  PAGE["/eval/:agentId<br/>tiles · banner · trend · runs"] -->|"GET eval-dashboard · eval-runs"| API
+  PAGE --> CMP["CompareRunsModal<br/>two selected runs"]
+  CMP -->|"GET eval-runs/compare + agent versions"| API
+  TILES["components/eval-metrics<br/>MetricTiles · MetricDelta"] -.->|"shared by tab and page"| TAB
+  TILES -.-> PAGE
+```
+
+- **Where a case is made.** `FindingsPanel` owns the create mutation and passes the card
+  `evalAvailable`, which `ReviewRunAccordion` sets only when the review has an agent that still
+  exists (`agent_id` and `agent_name` both set). The Files-changed tab renders cards without
+  the action. The button is enabled only for an accepted or dismissed finding; a 422 with
+  `details.reason === 'diff_too_large'` gets its own message, any other failure a generic one
+  (`FindingsPanel/helpers.ts`, `evalStatusForError`).
+- **A run is a poll.** `POST …/eval-runs` returns the `running` run at once; the run list and the
+  agent dashboard refetch every 2 s while one is `running`. The Run button stays disabled until
+  it ends, and a 409 only triggers a refetch, with no error text.
+- **"Not available" is "—", never 0.** Metrics are nullable in the contract. `MetricTrendChart`
+  is feature-local and uses `recharts` directly with `connectNulls={false}`, because the
+  vendored `LineChart` plots a missing value as 0.
+- **Change is text, not colour.** `MetricDelta` renders a sign glyph and a unit (`▲ +3.0 pts`,
+  `+2 cases`); the vendored `MetricCard.delta` is not used because it is unsigned and icon-only.
+- **Compare** is enabled for exactly two selected runs, and only `completed` and `partial` runs
+  are selectable. The prompt diff comes from the two agent versions (`useAgentVersion`) run
+  through `diffLines`, which lives in `src/components/diff-viewer/line-diff.ts` since the
+  skill Versions tab became its second user. If either version cannot be read, the metrics
+  still show and the diff is replaced by a notice.
+- **Nav.** The sidebar entry is in `src/vendor/ui/nav.ts` (key `eval`, under Skills Lab).
+- **The contracts are mirrored.** `client/src/test/eval-contract-sync.test.ts` fails if
+  `contracts/eval-ci.ts` or `contracts/knowledge.ts` differs from the server copy.
 
 ## Testing
 

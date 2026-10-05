@@ -1,6 +1,14 @@
 import { z } from 'zod';
 import { Verdict, Finding } from './findings.js';
-import { EvalRun, EvalOwnerKind, Conformance, Provider, CiFailOn } from './knowledge.js';
+import {
+  EvalOwnerKind,
+  EvalCase,
+  EvalExpectation,
+  EvalTarget,
+  Conformance,
+  Provider,
+  CiFailOn,
+} from './knowledge.js';
 
 /**
  * A4 — Eval / CI / Compose / Conformance API contracts (L06).
@@ -29,61 +37,200 @@ export const EvalCaseInput = z.object({
 });
 export type EvalCaseInput = z.infer<typeof EvalCaseInput>;
 
-/** A persisted eval run row (one execution of a case), returned by the API. */
-export const EvalRunRecord = z.object({
-  id: z.string(),
+/**
+ * Eval cases are made from decided findings (`EvalCase`, `knowledge.ts`); a suite
+ * run is one row per RUN (`EvalSuiteRun`) with one `EvalCaseResult` per case.
+ * A metric is `null` ("not available", shown "—") when its denominator is empty —
+ * never 0 or 1.
+ */
+
+/** Whether a run covered the whole set (`suite`) or one case (`single`, run-controls sibling). */
+export const EvalRunKind = z.enum(['suite', 'single']);
+export type EvalRunKind = z.infer<typeof EvalRunKind>;
+
+/** `partial` = some cases errored; `failed` = every case errored or the run was interrupted. */
+export const EvalRunStatus = z.enum(['running', 'completed', 'partial', 'failed']);
+export type EvalRunStatus = z.infer<typeof EvalRunStatus>;
+
+export const EvalCaseResultStatus = z.enum(['passed', 'failed', 'errored']);
+export type EvalCaseResultStatus = z.infer<typeof EvalCaseResultStatus>;
+
+/** A skill enabled on the agent when the run started, with its version at that moment. */
+export const EvalRunSkill = z.object({
+  skill_id: z.string(),
+  name: z.string(),
+  version: z.number().int(),
+});
+export type EvalRunSkill = z.infer<typeof EvalRunSkill>;
+
+/** A case in the run's set, with the content fingerprint it had at run time. */
+export const EvalRunCaseRef = z.object({
   case_id: z.string(),
-  case_name: z.string().nullish(),
-  ran_at: z.string(),
-  actual_output: z.unknown(),
-  pass: z.boolean().nullable(),
+  fingerprint: z.string(),
+});
+export type EvalRunCaseRef = z.infer<typeof EvalRunCaseRef>;
+
+export const EvalMetrics = z.object({
   recall: z.number().nullable(),
   precision: z.number().nullable(),
   citation_accuracy: z.number().nullable(),
+});
+export type EvalMetrics = z.infer<typeof EvalMetrics>;
+
+/** One eval run: the header, the agent snapshot it ran against and the aggregate metrics. */
+export const EvalSuiteRun = z.object({
+  id: z.string(),
+  kind: EvalRunKind,
+  owner_kind: EvalOwnerKind,
+  owner_id: z.string(),
+  agent_id: z.string(),
+  agent_version: z.number().int(),
+  provider: z.string(),
+  model: z.string(),
+  status: EvalRunStatus,
+  error: z.string().nullable(),
+  skills: z.array(EvalRunSkill),
+  cases: z.array(EvalRunCaseRef),
+  cases_total: z.number().int(),
+  cases_passed: z.number().int(),
+  cases_errored: z.number().int(),
+  metrics: EvalMetrics,
+  duration_ms: z.number().int().nullable(),
+  cost_usd: z.number().nullable(),
+  started_at: z.string(),
+  finished_at: z.string().nullable(),
+});
+export type EvalSuiteRun = z.infer<typeof EvalSuiteRun>;
+
+/** The outcome of one case in one run. `case_id` is null once the case was deleted. */
+export const EvalCaseResult = z.object({
+  case_id: z.string().nullable(),
+  case_name: z.string(),
+  expectation: EvalExpectation,
+  target: EvalTarget,
+  fingerprint: z.string(),
+  status: EvalCaseResultStatus,
+  error: z.string().nullable(),
+  produced: z.number().int(),
+  kept: z.number().int(),
+  matched: z.number().int(),
+  findings: z.array(
+    z.object({
+      file: z.string(),
+      start_line: z.number().int(),
+      end_line: z.number().int(),
+      title: z.string(),
+      severity: z.string(),
+    }),
+  ),
   duration_ms: z.number().int().nullable(),
   cost_usd: z.number().nullable(),
 });
-export type EvalRunRecord = z.infer<typeof EvalRunRecord>;
+export type EvalCaseResult = z.infer<typeof EvalCaseResult>;
 
-/** Result of running a single case: the metrics (EvalRun) + the persisted row id. */
-export const EvalRunResult = z.object({
-  run_id: z.string(),
-  case_id: z.string(),
-  result: EvalRun,
+/** `GET /eval-runs/:id` — the run plus every case's result. */
+export const EvalSuiteRunDetail = EvalSuiteRun.extend({
+  results: z.array(EvalCaseResult),
 });
-export type EvalRunResult = z.infer<typeof EvalRunResult>;
+export type EvalSuiteRunDetail = z.infer<typeof EvalSuiteRunDetail>;
 
-/** One point on the dashboard trend (per run, chronological). */
+/** A case in the Evals tab list, with its result in the latest completed run. */
+export const EvalCaseListItem = EvalCase.extend({
+  last_result: z.enum(['passed', 'failed', 'errored', 'never_run']),
+});
+export type EvalCaseListItem = z.infer<typeof EvalCaseListItem>;
+
+/** `GET /agents/:id/eval-cases` — `passing` / `total` cover the current cases only. */
+export const EvalCaseList = z.object({
+  cases: z.array(EvalCaseListItem),
+  passing: z.number().int(),
+  total: z.number().int(),
+  latest_run_id: z.string().nullable(),
+});
+export type EvalCaseList = z.infer<typeof EvalCaseList>;
+
+/** `POST /findings/:id/eval-case` — `created: false` reports the case that already existed. */
+export const EvalCaseCreateResult = z.object({
+  case: EvalCase,
+  created: z.boolean(),
+});
+export type EvalCaseCreateResult = z.infer<typeof EvalCaseCreateResult>;
+
+/** A metric that dropped between the two latest completed runs, in percentage points. */
+export const EvalRegression = z.object({
+  metric: z.enum(['recall', 'precision', 'citation_accuracy']),
+  drop_points: z.number(),
+});
+export type EvalRegression = z.infer<typeof EvalRegression>;
+
+/** One card on the workspace dashboard: an agent that has cases and its latest run. */
+export const EvalAgentCard = z.object({
+  agent_id: z.string(),
+  agent_name: z.string(),
+  provider: z.string(),
+  model: z.string(),
+  cases_total: z.number().int(),
+  latest: EvalSuiteRun.nullable(),
+});
+export type EvalAgentCard = z.infer<typeof EvalAgentCard>;
+
+/** `GET /agents/:id/eval-runs/compare?a=&b=` — values older → newer, deltas newer − older. */
+export const EvalRunComparison = z.object({
+  older: EvalSuiteRun,
+  newer: EvalSuiteRun,
+  deltas: z.object({
+    recall: z.number().nullable(),
+    precision: z.number().nullable(),
+    citation_accuracy: z.number().nullable(),
+    cost_usd: z.number().nullable(),
+  }),
+  case_sets: z.object({
+    same: z.boolean(),
+    older_count: z.number().int(),
+    newer_count: z.number().int(),
+    edited_count: z.number().int(),
+  }),
+  model_changed: z.boolean(),
+  skills_changed: z.boolean(),
+});
+export type EvalRunComparison = z.infer<typeof EvalRunComparison>;
+
+/** One point on the dashboard trend (per completed run, chronological). */
 export const EvalTrendPoint = z.object({
+  run_id: z.string(),
   ran_at: z.string(),
-  recall: z.number(),
-  precision: z.number(),
-  citation_accuracy: z.number(),
-  pass_rate: z.number(),
+  agent_version: z.number().int(),
+  recall: z.number().nullable(),
+  precision: z.number().nullable(),
+  citation_accuracy: z.number().nullable(),
+  pass_rate: z.number().nullable(),
+  cases_passed: z.number().int(),
+  cases_total: z.number().int(),
   cost_usd: z.number().nullable(),
 });
 export type EvalTrendPoint = z.infer<typeof EvalTrendPoint>;
 
-/** Aggregate dashboard for an owner (agent/skill) or the whole workspace. */
+/** Aggregate dashboard for an agent, or the whole workspace (`owner_*` null, `agents` filled). */
 export const EvalDashboard = z.object({
   owner_kind: EvalOwnerKind.nullable(),
   owner_id: z.string().nullable(),
+  owner_name: z.string().nullable(),
   cases_total: z.number().int(),
-  current: z.object({
-    recall: z.number(),
-    precision: z.number(),
-    citation_accuracy: z.number(),
-    traces_passed: z.number().int(),
-    traces_total: z.number().int(),
+  current: EvalMetrics.extend({
+    cases_passed: z.number().int(),
+    cases_total: z.number().int(),
     cost_usd: z.number().nullable(),
-  }),
-  delta: z.object({
-    recall: z.number(),
-    precision: z.number(),
-    citation_accuracy: z.number(),
+  }).nullable(),
+  /** Metrics as signed percentage points, `cases_passed` as a signed case count; null when either run lacks the value. */
+  delta: EvalMetrics.extend({
+    cases_passed: z.number().int().nullable(),
   }),
   trend: z.array(EvalTrendPoint),
-  recent_runs: z.array(EvalRunRecord),
+  recent_runs: z.array(EvalSuiteRun),
+  /** One card per agent with cases; `[]` on a per-agent dashboard. */
+  agents: z.array(EvalAgentCard),
+  running: EvalSuiteRun.nullable(),
+  regressions: z.array(EvalRegression),
   alert: z.string().nullable(),
 });
 export type EvalDashboard = z.infer<typeof EvalDashboard>;

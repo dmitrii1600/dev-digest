@@ -120,6 +120,10 @@ const RING_2 = [
   'src/modules/reviews/findings.ts',
   'src/modules/reviews/diff-loader.ts',
   'src/modules/_shared/severity.ts',
+  'src/modules/_shared/review-inputs.ts',
+  // The `EvalsStore` port and the DTOs shared by the ring-2 service and the
+  // ring-3 repository: a type-only file, so it gets the ring-2 zone too.
+  'src/modules/evals/types.ts',
   'src/platform/model-router.ts',
   'src/platform/run-logger.ts',
   'src/platform/trace-builder.ts',

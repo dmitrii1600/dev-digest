@@ -16,6 +16,9 @@ vi.mock("../../../../../../../lib/hooks/reviews", () => ({
   useFindingAction: () => ({ mutate: vi.fn(), isPending: false }),
   useDeleteReview: () => ({ mutate: vi.fn(), isPending: false }),
 }));
+vi.mock("../../../../../../../lib/hooks/evals", () => ({
+  useCreateEvalCaseFromFinding: () => ({ mutate: vi.fn(), isPending: false }),
+}));
 
 import { ReviewRunAccordion } from "./ReviewRunAccordion";
 
@@ -141,5 +144,38 @@ describe("severity pills", () => {
     fireEvent.click(pill(/critical/i));
     expect(pill(/critical/i)).toHaveAttribute("aria-pressed", "true");
     expect(pill(/warning/i)).toHaveAttribute("aria-pressed", "false");
+  });
+});
+
+/**
+ * EC-3: "Turn into eval case" is offered only when the review has a producing
+ * agent that still exists. `agent_name` is null on the record when the agent was
+ * deleted, so both ids must be present.
+ */
+describe("eval case action availability", () => {
+  const accepted = { ...finding("a1", "CRITICAL"), accepted_at: "2026-10-05T10:00:00Z" } as FindingRecord;
+
+  function renderWith(over: Partial<ReviewRecord>) {
+    return render(
+      <NextIntlClientProvider locale="en" messages={{ prReview: messages }}>
+        <div data-theme="dark">
+          <ReviewRunAccordion review={{ ...review([accepted]), ...over }} prId="pr1" defaultOpen />
+        </div>
+      </NextIntlClientProvider>,
+    );
+  }
+  const action = () => screen.queryByRole("button", { name: "Turn into eval case" });
+
+  it("shows the action for a review whose agent exists, and hides it when the agent is missing or gone", () => {
+    renderWith({});
+    expect(action()).toBeInTheDocument();
+    cleanup();
+
+    renderWith({ agent_id: null, agent_name: null } as Partial<ReviewRecord>);
+    expect(action()).not.toBeInTheDocument();
+    cleanup();
+
+    renderWith({ agent_name: null } as Partial<ReviewRecord>);
+    expect(action()).not.toBeInTheDocument();
   });
 });

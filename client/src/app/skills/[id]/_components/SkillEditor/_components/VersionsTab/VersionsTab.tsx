@@ -4,10 +4,9 @@ import React from "react";
 import { useTranslations } from "next-intl";
 import { Badge, Button, ErrorState, Skeleton } from "@devdigest/ui";
 import type { Skill, SkillVersion } from "@devdigest/shared";
-import { lineRowFor, lineSignFor } from "@/components/diff-viewer";
+import { diffLines, isUnchanged, lineRowFor, lineSignFor } from "@/components/diff-viewer";
 import { useSkillVersions, useRestoreSkillVersion } from "@/lib/hooks/skills";
 import { useToast } from "@/providers/toast";
-import { diffLines, isUnchanged } from "./diff";
 import { currentVersion, formatVersionDate, isCurrent } from "./helpers";
 import { s } from "./styles";
 

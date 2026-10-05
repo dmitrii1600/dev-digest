@@ -312,9 +312,24 @@ append-only. Empty sections are expected — append under the one that fits.
   not `no_ranked_files`: the facade synthesises a `no_data` degraded state
   (`src/modules/onboarding/helpers.ts:63`). A test for `no_ranked_files` needs a
   state row with zero rank rows.
+- 2026-10-05 — `eval_cases.owner_id` is polymorphic (no FK), so deleting an
+  agent removes its cases by hand: `AgentsRepository.deleteById`
+  (`src/modules/agents/repository.ts`) deletes `eval_cases` for
+  `owner_kind = 'agent'` in the same transaction as the agent. Eval runs and
+  their per-case rows go by FK cascade. This is the one place a second module
+  writes an evals table. The "evals-owned helper that takes the `tx`" shape is
+  not available: `no-cross-module-reach-in` forbids `agents` importing
+  `modules/evals`. When skill-owned cases ship, `skills/repository.ts` needs the
+  same cleanup, or move both behind a helper in `modules/_shared/`.
 
 
 
+
+- 2026-10-05 — A feature-folder `types.ts` (a port plus DTOs) matches no lint zone, so a `drizzle-orm` import
+  there passes `pnpm lint` silently. List each one in `RING_2` by path (`eslint.config.mjs:123-126`), not as a
+  `src/modules/*/types.ts` glob: `blast`, `intent`, `project-context` and `smart-diff` `types.ts` are unaudited
+  and a glob may turn lint red. Mirror every `RING_2` addition in `.claude/skills/onion-architecture/layers.md`,
+  which as of this date still lacks `_shared/review-inputs.ts` and `evals/types.ts`.
 
 ## Tool & Library Notes
 

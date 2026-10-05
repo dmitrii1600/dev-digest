@@ -6,10 +6,11 @@ import React from "react";
 import { useTranslations } from "next-intl";
 import { Toggle, EmptyState } from "@devdigest/ui";
 import type { FindingRecord, Severity } from "@devdigest/shared";
-import { FindingCard } from "../FindingCard";
+import { FindingCard, type EvalCaseStatus } from "../FindingCard";
 import { useFindingAction } from "@/lib/hooks/reviews";
+import { useCreateEvalCaseFromFinding } from "@/lib/hooks/evals";
 import { KEY_TO_ACTION } from "./constants";
-import { visibleFindings } from "./helpers";
+import { evalStatusForError, visibleFindings } from "./helpers";
 import { s } from "./styles";
 
 export function FindingsPanel({
@@ -18,6 +19,7 @@ export function FindingsPanel({
   repoFullName,
   headSha,
   severity = null,
+  evalAgentAvailable = false,
 }: {
   findings: FindingRecord[];
   prId: string;
@@ -26,9 +28,14 @@ export function FindingsPanel({
   /** Severity filter driven by the pills above; null shows everything. Owned by
    *  the accordion so the pills and this list read the same state. */
   severity?: Severity | null;
+  /** The review has a producing agent that still exists — only then can a finding
+   *  become an eval case (EC-3). */
+  evalAgentAvailable?: boolean;
 }) {
   const t = useTranslations("prReview");
   const action = useFindingAction();
+  const createEvalCase = useCreateEvalCaseFromFinding();
+  const [evalStatus, setEvalStatus] = React.useState<Record<string, EvalCaseStatus>>({});
   const [hideLow, setHideLow] = React.useState(false);
   const [focusIdx, setFocusIdx] = React.useState(0);
 
@@ -57,6 +64,12 @@ export function FindingsPanel({
     return () => window.removeEventListener("keydown", handler);
   }, [shown, focused, action, prId]);
 
+  const turnIntoEval = (findingId: string) =>
+    createEvalCase.mutate(findingId, {
+      onSuccess: (res) => setEvalStatus((m) => ({ ...m, [findingId]: res.created ? "created" : "exists" })),
+      onError: (err) => setEvalStatus((m) => ({ ...m, [findingId]: evalStatusForError(err) })),
+    });
+
   return (
     <div>
       <div style={s.toolbar}>
@@ -79,6 +92,10 @@ export function FindingsPanel({
               pending={action.isPending}
               repoFullName={repoFullName}
               headSha={headSha}
+              evalAvailable={evalAgentAvailable}
+              evalPending={createEvalCase.isPending}
+              evalStatus={evalStatus[f.id] ?? null}
+              onTurnIntoEval={() => turnIntoEval(f.id)}
               onAction={(act) => action.mutate({ findingId: f.id, action: act, prId })}
             />
           ))

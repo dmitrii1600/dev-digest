@@ -6,7 +6,7 @@
  *  patch, and a version history has two plain strings and no patch. Only the
  *  *rendering* vocabulary is shared — this returns the diff-viewer's own `Line`
  *  shape, so the rows look exactly like the PR diff. */
-import type { Line } from "@/components/diff-viewer";
+import type { Line } from "./helpers";
 
 /** Classic LCS table. Skill bodies are a few dozen lines, so the O(n·m) table
  *  is cheaper than the machinery needed to avoid it. */

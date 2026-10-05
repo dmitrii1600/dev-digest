@@ -204,9 +204,17 @@ export class SkillsRepository {
    * unfiltered view is `AgentsRepository.linkedSkills`, which stays unfiltered
    * because it still needs to show disabled links.
    */
-  async blocksForAgent(agentId: string): Promise<{ id: string; source: string; body: string }[]> {
+  async blocksForAgent(
+    agentId: string,
+  ): Promise<{ id: string; source: string; body: string; name: string; version: number }[]> {
     return this.db
-      .select({ id: t.skills.id, source: t.skills.source, body: t.skills.body })
+      .select({
+        id: t.skills.id,
+        source: t.skills.source,
+        body: t.skills.body,
+        name: t.skills.name,
+        version: t.skills.version,
+      })
       .from(t.agentSkills)
       .innerJoin(t.skills, eq(t.agentSkills.skillId, t.skills.id))
       .where(

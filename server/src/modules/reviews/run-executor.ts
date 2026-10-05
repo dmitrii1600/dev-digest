@@ -7,26 +7,17 @@ import type {
   RunTrace,
   UnifiedDiff,
 } from '@devdigest/shared';
-import { reviewPullRequest, countBlockers, wrapUntrusted } from '@devdigest/reviewer-core';
+import { reviewPullRequest, countBlockers } from '@devdigest/reviewer-core';
 import { RunLogger } from '../../platform/run-logger.js';
 import * as schema from '../../db/schema.js';
 import type { AgentRow } from '../../db/rows.js';
 import type { ReviewRepository, FindingRow, PullRow, ReviewRow } from './repository.js';
 import { REVIEW_STRATEGY } from './constants.js';
 import { taskLine } from './helpers.js';
+import { skillBlockBody } from '../_shared/review-inputs.js';
 import { loadDiff } from './diff-loader.js';
 
 /** Thrown by a run when the user cancels it mid-flight (between map files). */
-/**
- * Skill sources whose body reaches the model as instructions, unwrapped. `manual`
- * is typed by the user; `extracted` is assembled from candidates the user
- * accepted one by one and shown editable before save (the evidence snippets
- * inside it are wrapped individually by the conventions body builder). Every
- * other source — an imported file, a community skill — is someone else's text
- * and is delimiter-wrapped as untrusted, like PR-author content.
- */
-const TRUSTED_SKILL_SOURCES: ReadonlySet<string> = new Set(['manual', 'extracted']);
-
 export class RunCancelledError extends Error {
   constructor() {
     super('Run cancelled');
@@ -401,9 +392,7 @@ export class ReviewRunExecutor {
   private async buildSkillBlocks(agentId: string, runLog: RunLogger): Promise<string[] | undefined> {
     const rows = await this.container.skillsRepo.blocksForAgent(agentId);
     if (rows.length === 0) return undefined;
-    const bodies = rows.map((r) =>
-      TRUSTED_SKILL_SOURCES.has(r.source) ? r.body : wrapUntrusted(`skill-${r.id}`, r.body),
-    );
+    const bodies = rows.map(skillBlockBody);
     const tokens = bodies.reduce((n, b) => n + this.container.tokenizer.count(b), 0);
     runLog.info(`skills: ${bodies.length} skill(s) attached (${tokens} tokens)`);
     return bodies;

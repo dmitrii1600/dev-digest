@@ -8,7 +8,7 @@ swapped for mocks in tests.
 
 > This is the starter module set plus the lesson modules built so far: skills and
 > conventions (L02), intent and smart-diff (L03), blast (L04), project-context,
-> onboarding and brief (L05). Later lessons add their own (eval/ci/hooks, memory,
+> onboarding and brief (L05), evals (L06). Later lessons add their own (ci/hooks, memory,
 > plugins, …) — each is a self-contained `modules/<name>/` plugin plus, usually, a
 > slot it starts feeding the reviewer prompt. The DB schema already contains
 > **every** table; the unused ones simply sit empty until a lesson fills them.
@@ -120,12 +120,18 @@ flowchart TB
     onboarding["onboarding<br/>/repos/:id/onboarding · /repos/:id/onboarding/generate"]
     brief["brief<br/>GET·POST /pulls/:id/brief"]
   end
+  subgraph EvalMod["Evals"]
+    evals["evals<br/>POST /findings/:id/eval-case · /agents/:id/(eval-cases|eval-runs|eval-dashboard)<br/>/agents/:id/eval-runs/compare · /eval-runs/:id · /eval-cases/:id · /eval/dashboard"]
+  end
   subgraph Platform["Platform"]
     settings["settings<br/>/settings · /providers"]
     workspace["workspace<br/>/workspace"]
   end
   HEALTH["/health (liveness) · /health/ready (DB ping → 200/503)"]
 ```
+
+The evals routes, status codes and scoring are documented in
+[`modules/evals/README.md`](src/modules/evals/README.md).
 
 ## Environment
 

@@ -120,6 +120,20 @@
       "when": 1790700406265,
       "tag": "0016_lethal_hellion",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1791221142449,
+      "tag": "0017_cooing_frank_castle",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1791221151346,
+      "tag": "0018_common_jasper_sitwell",
+      "breakpoints": true
     }
   ]
 }

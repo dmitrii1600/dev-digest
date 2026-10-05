@@ -25,10 +25,27 @@
       "precision": "Precision",
       "citation": "Citation",
       "pass": "Pass",
-      "cost": "Cost"
+      "cost": "Cost",
+      "agent": "Agent",
+      "version": "Version",
+      "versionValue": "v{version}",
+      "status": "Status"
     },
     "pass": "pass",
-    "fail": "fail"
+    "fail": "fail",
+    "emptyTitle": "No eval cases yet",
+    "emptyBody": "Eval cases are made from findings you accepted or dismissed. Open a pull request review and use “Turn into eval case”.",
+    "recentRunsAll": "Recent eval runs",
+    "cardCases": "{passed}/{total} passed",
+    "cardVersion": "v{version} · {date}",
+    "notRun": "Not run yet",
+    "loadError": "Could not load the eval dashboard.",
+    "status": {
+      "running": "running",
+      "completed": "completed",
+      "partial": "partial",
+      "failed": "failed"
+    }
   },
   "caseEditor": {
     "newCase": "New eval case",
@@ -63,7 +80,7 @@
     "casesHeading": "Eval cases",
     "newCase": "New case",
     "loadingCases": "Loading cases…",
-    "emptyCases": "No eval cases yet. Create one to assert this agent's expected findings on a sample diff.",
+    "emptyCases": "No eval cases yet. Accept or dismiss a finding on a pull request, then use “Turn into eval case”.",
     "neverRun": "never run",
     "passed": "passed",
     "failed": "failed",
@@ -71,7 +88,19 @@
     "run": "Run",
     "running": "Running…",
     "edit": "Edit",
-    "delete": "Delete"
+    "delete": "Delete",
+    "runAll": "Run all evals",
+    "runAllEmpty": "Add a case first: turn an accepted or dismissed finding into an eval case.",
+    "passingCount": "{passing} / {total} passing",
+    "mustFind": "must find",
+    "mustNotFlag": "must not flag",
+    "errored": "errored",
+    "deleteTitle": "Delete eval case?",
+    "deleteBody": "Past runs keep their recorded result for this case.",
+    "deleteAria": "Delete eval case {name}",
+    "cancel": "Cancel",
+    "passTile": "PASS",
+    "loadError": "Could not load eval cases."
   },
   "page": {
     "crumbSkillsLab": "Skills Lab",
@@ -80,5 +109,33 @@
     "crumbEvals": "Evals",
     "crumbNewCase": "New case",
     "crumbEvalCase": "Eval case"
+  },
+  "metrics": {
+    "points": "{value} pts",
+    "cases": "{value} cases"
+  },
+  "agentPage": {
+    "compare": "Compare",
+    "compareHint": "Select exactly two runs to compare.",
+    "selectRun": "Select run from {date}",
+    "notEnoughRuns": "Run the eval set at least twice to see a trend.",
+    "regression": "{metric} dropped {points} pts since the previous run",
+    "casesTitle": "Cases",
+    "runsHeading": "Recent runs",
+    "loadError": "Could not load this agent’s eval results."
+  },
+  "compare": {
+    "title": "Compare runs",
+    "olderNewer": "{older} → {newer}",
+    "cost": "Cost",
+    "caseSetsDiffer": "The case sets differ: older run {olderCount} cases, newer run {newerCount} cases, {editedCount} edited.",
+    "modelChanged": "Model changed between these runs.",
+    "skillsChanged": "Skill set changed between these runs.",
+    "promptDiff": "System prompt diff",
+    "promptDiffUnavailable": "The system-prompt diff is unavailable: an agent-version snapshot could not be read.",
+    "promptUnchanged": "System prompt unchanged.",
+    "close": "Close",
+    "loading": "Loading comparison…",
+    "loadError": "Could not compare these runs."
   }
 }

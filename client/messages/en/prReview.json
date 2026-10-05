@@ -9,7 +9,13 @@
     "replyToAuthor": "Reply to author",
     "replyPlaceholder": "Reply to the author about this finding…",
     "sendReply": "Send reply",
-    "cancel": "Cancel"
+    "cancel": "Cancel",
+    "turnIntoEvalCase": "Turn into eval case",
+    "evalNeedsDecision": "Accept or dismiss this finding first to turn it into an eval case.",
+    "evalCaseCreated": "Eval case created.",
+    "evalCaseExists": "This finding is already an eval case.",
+    "evalDiffTooLarge": "The diff is too large to freeze as an eval case.",
+    "evalCaseFailed": "Could not create the eval case."
   },
   "trifecta": {
     "lethal": "LETHAL TRIFECTA — ALL 3 PRESENT",

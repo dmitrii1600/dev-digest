@@ -1,38 +1,144 @@
-import { pgTable, uuid, text, integer, boolean, jsonb, timestamp, doublePrecision } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
+import {
+  pgTable,
+  uuid,
+  text,
+  integer,
+  jsonb,
+  timestamp,
+  doublePrecision,
+  index,
+  uniqueIndex,
+} from 'drizzle-orm/pg-core';
+import { now } from './_shared';
 import { workspaces } from './core';
 import { pullRequests } from './pulls';
+import { findings } from './reviews';
+import { agents } from './agents';
 
 // ============================================================ Eval / Conformance / Compose
 
-export const evalCases = pgTable('eval_cases', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  workspaceId: uuid('workspace_id')
-    .notNull()
-    .references(() => workspaces.id, { onDelete: 'cascade' }),
-  ownerKind: text('owner_kind', { enum: ['skill', 'agent'] }).notNull(),
-  ownerId: uuid('owner_id').notNull(),
-  name: text('name').notNull(),
-  inputDiff: text('input_diff'),
-  inputFiles: jsonb('input_files'),
-  inputMeta: jsonb('input_meta'),
-  expectedOutput: jsonb('expected_output'),
-  notes: text('notes'),
-});
+export const evalCases = pgTable(
+  'eval_cases',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    ownerKind: text('owner_kind', { enum: ['skill', 'agent'] }).notNull(),
+    ownerId: uuid('owner_id').notNull(),
+    name: text('name').notNull(),
+    inputDiff: text('input_diff'),
+    inputFiles: jsonb('input_files'),
+    inputMeta: jsonb('input_meta'),
+    expectedOutput: jsonb('expected_output'),
+    notes: text('notes'),
+    // How the case came to be: frozen from a decided finding, or authored by hand.
+    source: text('source', { enum: ['finding', 'manual'] })
+      .notNull()
+      .default('finding'),
+    // Link to the source finding; the case outlives it (set null), its frozen inputs stay.
+    sourceFindingId: uuid('source_finding_id').references(() => findings.id, {
+      onDelete: 'set null',
+    }),
+    expectation: text('expectation', { enum: ['must_find', 'must_not_flag'] }).notNull(),
+    targetFile: text('target_file').notNull(),
+    targetStartLine: integer('target_start_line').notNull(),
+    targetEndLine: integer('target_end_line').notNull(),
+    // sha256 of the frozen inputs + expectation + target; tells two runs an edited case apart.
+    fingerprint: text('fingerprint').notNull(),
+    createdAt: now(),
+  },
+  (t) => ({
+    ownerIdx: index('eval_cases_owner_idx').on(t.ownerKind, t.ownerId),
+    // Cascade target; Postgres does not index a foreign key on its own.
+    wsIdx: index('eval_cases_ws_idx').on(t.workspaceId),
+    // One case per source finding per owner. NULLs do not collide, so manual cases are free.
+    ownerSourceUq: uniqueIndex('eval_cases_owner_source_uq').on(t.ownerId, t.sourceFindingId),
+    // Set-null target for the source finding FK.
+    sourceFindingIdx: index('eval_cases_source_finding_idx').on(t.sourceFindingId),
+  }),
+);
 
-export const evalRuns = pgTable('eval_runs', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  caseId: uuid('case_id')
-    .notNull()
-    .references(() => evalCases.id, { onDelete: 'cascade' }),
-  ranAt: timestamp('ran_at', { withTimezone: true }).defaultNow().notNull(),
-  actualOutput: jsonb('actual_output'),
-  pass: boolean('pass'),
-  recall: doublePrecision('recall'),
-  precision: doublePrecision('precision'),
-  citationAccuracy: doublePrecision('citation_accuracy'),
-  durationMs: integer('duration_ms'),
-  costUsd: doublePrecision('cost_usd'),
-});
+/** One row per eval RUN (header); the per-case results live in `eval_run_cases`. */
+export const evalRuns = pgTable(
+  'eval_runs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    kind: text('kind', { enum: ['suite', 'single'] })
+      .notNull()
+      .default('suite'),
+    ownerKind: text('owner_kind', { enum: ['skill', 'agent'] }).notNull(),
+    ownerId: uuid('owner_id').notNull(),
+    // The agent that ran (for a skill-owned run, its host agent). Deleting it removes its runs.
+    agentId: uuid('agent_id')
+      .notNull()
+      .references(() => agents.id, { onDelete: 'cascade' }),
+    agentVersion: integer('agent_version').notNull(),
+    provider: text('provider').notNull(),
+    model: text('model').notNull(),
+    status: text('status', { enum: ['running', 'completed', 'partial', 'failed'] }).notNull(),
+    error: text('error'),
+    // [{ skill_id, name, version }] in prompt order — the skill snapshot of this run.
+    skills: jsonb('skills').notNull().default([]),
+    // [{ case_id, fingerprint }] — the case set this run covered.
+    caseRefs: jsonb('case_refs').notNull().default([]),
+    casesTotal: integer('cases_total').notNull().default(0),
+    casesPassed: integer('cases_passed').notNull().default(0),
+    casesErrored: integer('cases_errored').notNull().default(0),
+    // `ran_at` is the start time.
+    ranAt: timestamp('ran_at', { withTimezone: true }).defaultNow().notNull(),
+    finishedAt: timestamp('finished_at', { withTimezone: true }),
+    recall: doublePrecision('recall'),
+    precision: doublePrecision('precision'),
+    citationAccuracy: doublePrecision('citation_accuracy'),
+    durationMs: integer('duration_ms'),
+    costUsd: doublePrecision('cost_usd'),
+  },
+  (t) => ({
+    agentRanIdx: index('eval_runs_agent_ran_idx').on(t.agentId, t.ranAt),
+    wsIdx: index('eval_runs_ws_idx').on(t.workspaceId),
+    // At most one running suite per agent — race-safe backing for the 409 (EC-6).
+    oneRunningSuiteUq: uniqueIndex('eval_runs_one_running_suite_uq')
+      .on(t.agentId)
+      .where(sql`${t.status} = 'running' and ${t.kind} = 'suite'`),
+  }),
+);
+
+/** Per-case outcome of one run. `case_id` goes null when the case is deleted; the row stays. */
+export const evalRunCases = pgTable(
+  'eval_run_cases',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    runId: uuid('run_id')
+      .notNull()
+      .references(() => evalRuns.id, { onDelete: 'cascade' }),
+    caseId: uuid('case_id').references(() => evalCases.id, { onDelete: 'set null' }),
+    caseName: text('case_name').notNull(),
+    expectation: text('expectation', { enum: ['must_find', 'must_not_flag'] }).notNull(),
+    targetFile: text('target_file').notNull(),
+    targetStartLine: integer('target_start_line').notNull(),
+    targetEndLine: integer('target_end_line').notNull(),
+    fingerprint: text('fingerprint').notNull(),
+    status: text('status', { enum: ['passed', 'failed', 'errored'] }).notNull(),
+    error: text('error'),
+    produced: integer('produced').notNull().default(0),
+    kept: integer('kept').notNull().default(0),
+    matched: integer('matched').notNull().default(0),
+    // Kept findings that matched a must_not_flag target — feeds precision.
+    nmfHits: integer('nmf_hits').notNull().default(0),
+    findings: jsonb('findings').notNull().default([]),
+    durationMs: integer('duration_ms'),
+    costUsd: doublePrecision('cost_usd'),
+  },
+  (t) => ({
+    runIdx: index('eval_run_cases_run_idx').on(t.runId),
+    caseIdx: index('eval_run_cases_case_idx').on(t.caseId),
+  }),
+);
 
 export const conformanceChecks = pgTable('conformance_checks', {
   id: uuid('id').primaryKey().defaultRandom(),
