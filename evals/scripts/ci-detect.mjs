@@ -59,11 +59,14 @@ const agents = agentNames.filter((n) => hasEvals("agents", n));
 const skippedAgents = agentNames.filter((n) => !hasEvals("agents", n));
 
 // The workflow tier measures the LIVE harness, so anything that changes it re-triggers it:
-// the root or .claude CLAUDE.md, any agent definition, the workflow cases, or the engine itself.
+// the root or .claude CLAUDE.md, any AGENTS.md (CLAUDE.md is a stub importing it, and the
+// "Read when" routing the workflow cases assert lives there), any agent definition, the
+// workflow cases, or the engine itself.
 const runWorkflow = changed.some(
   (f) =>
     f === "CLAUDE.md" ||
     f === ".claude/CLAUDE.md" ||
+    /^([^/]+\/)?AGENTS\.md$/.test(f) ||
     /^\.claude\/agents\/.+\.md$/.test(f) ||
     /^evals\/workflow\//.test(f) ||
     /^evals\/src\//.test(f),

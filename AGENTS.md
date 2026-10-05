@@ -28,7 +28,26 @@ node scripts/verify.mjs <pkg> [--checks | --tests | --file <p>] [--it]   # lint+
 /run-plan plans/<stem>.md [--with-tests] [--docs]   # build an approved plan: implementer → plan-verifier ↺ → architecture-reviewer ↺ → delta → insights → gate
 /pr-self-review                  # before every PR — the gate blocks gh pr create / git push otherwise
 /workflow-retro [--deep] [--stem <stem>]   # MANUAL ONLY, after a workflow run: retro → docs/retro/ledger/; numbers via node scripts/retro-usage.mjs [--list]
+cd evals && pnpm eval:quality [skill]       # static SKILL.md gate — no model, the blocking CI check
+cd evals && pnpm eval:skills <name>         # skill content eval (model + judge)
+cd evals && pnpm eval:agents <name>         # agent content eval
+cd evals && pnpm eval:workflow              # real harness: routing, dispatch, activation (6 sessions)
+cd evals && pnpm eval:benchmark skills/<name> -n 3              # with vs without the artifact
+cd evals && pnpm eval:repeat <pattern> -n 2 --label <x> && pnpm eval:delta <a> <b>   # version A vs B
 ```
+
+### Which eval after which change
+
+Harness evals (`evals/`, pnpm) measure the AI artifacts, not the product code. Model runs
+spend subscription limits — run the minimum below, not the whole suite. The package and
+its case layout are documented in `evals/README.md`.
+
+| Change | Minimum check |
+|---|---|
+| `.claude/skills/**` | `pnpm eval:quality` · `pnpm eval:skills <name>` if `evals/skills/<name>/` exists |
+| `.claude/agents/**` | `pnpm eval:agents <name>` · the workflow case that dispatches it |
+| `CLAUDE.md` / `AGENTS.md` routing ("Read when", agent chain) | `pnpm eval:workflow` |
+| An eval case, fixture or grader (`evals/**`) | re-run the baseline series (`eval:repeat --label`) before comparing against it |
 
 Checks, per package — **every package has all three**:
 
@@ -63,6 +82,7 @@ dead code, unsafe escapes, and React hook misuse in `client`.
 | `reviewer-core/` | `@devdigest/reviewer-core` | pure review engine: diff → prompt → LLM → findings |
 | `e2e/` | `@devdigest/e2e` | deterministic browser flows (agent-browser, no LLM) |
 | `mcp/` | `@devdigest/mcp` | stdio MCP server — five tools over the local API |
+| `evals/` | `@devdigest/evals` | harness evals for `.claude/` skills, agents and routing (pnpm, Agent SDK) |
 | `server/src/vendor/shared` | `@devdigest/shared` | canonical Zod contracts |
 
 **Not a monorepo.** Five standalone packages, each with its own `package.json`

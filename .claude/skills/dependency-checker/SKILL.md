@@ -129,3 +129,11 @@ Five sections, in this order, with these names — full detail in the template:
   `typescript`, `eslint` are used via `scripts` and config files.
 - Calling `next` or `playwright` a problem just for being large.
 - Presenting a removal as already done.
+- Version drift that appears only as a note in the size table — every drift is its own
+  finding with a tier.
+- Speculating about "if we ever move to a monorepo / workspaces" — it is not the design;
+  recommend within the standalone-package layout.
+- A finding about package-to-package wiring that does not say `internal (tsconfig alias)` or
+  `internal (relative import)`.
+- Findings invented to fill a tier. A clean repo gets `_None._` under P0/P1 — that is a
+  valid, complete answer.
