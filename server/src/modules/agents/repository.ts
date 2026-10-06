@@ -1,7 +1,7 @@
-import { and, asc, desc, eq } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray } from 'drizzle-orm';
 import type { Db } from '../../db/client.js';
 import * as t from '../../db/schema.js';
-import type { CiFailOn, Provider, ReviewStrategy } from '@devdigest/shared';
+import type { AgentVersionConfig, AgentVersionOrigin, CiFailOn, Provider, ReviewStrategy } from '@devdigest/shared';
 import { DEFAULT_AGENT_DESCRIPTION, INITIAL_AGENT_VERSION } from './constants.js';
 import { isConfigChange } from './helpers.js';
 
@@ -49,6 +49,146 @@ export interface LinkedSkillRow {
   enabled: boolean;
 }
 
+/** One `agent_skills` binding as stored. */
+export interface AgentSkillBinding {
+  skillId: string;
+  order: number;
+  enabled: boolean;
+}
+
+/** The slice of an eval run a promotion needs; `skills` is raw jsonb (the service parses it). */
+export interface PromotionRun {
+  agentVersion: number;
+  skills: unknown;
+}
+
+/**
+ * The primitives of one promotion transaction. Each is a single read or write with no policy;
+ * the order they are called in, and every decision between them, belongs to the service.
+ */
+export interface PromotionTx {
+  /** Workspace-scoped `SELECT … FOR UPDATE` on the agent. */
+  lockAgent(workspaceId: string, agentId: string): Promise<AgentRow | undefined>;
+  /**
+   * The agent's OWN suite run. A skill run hosted on this agent also has `agent_id = agentId`,
+   * but its skill set is `[skill]`, so `agent_id` alone is never matched.
+   */
+  findAgentSuiteRun(workspaceId: string, agentId: string, runId: string): Promise<PromotionRun | undefined>;
+  getVersion(agentId: string, version: number): Promise<AgentVersionRow | undefined>;
+  /** Which of `skillIds` still exist in the workspace. */
+  existingSkillIds(workspaceId: string, skillIds: string[]): Promise<Set<string>>;
+  currentLinks(agentId: string): Promise<AgentSkillBinding[]>;
+  replaceLinks(agentId: string, links: AgentSkillBinding[]): Promise<void>;
+  /** Write a snapshot's configuration onto the agent row at `version`. */
+  applyConfig(workspaceId: string, agentId: string, config: AgentVersionConfig, version: number): Promise<AgentRow>;
+  /** Plain insert of the new `agent_versions` row, with its origin. */
+  insertVersion(
+    agentId: string,
+    version: number,
+    config: AgentVersionConfig,
+    skills: string[],
+    origin: AgentVersionOrigin,
+  ): Promise<void>;
+}
+
+type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
+
+function promotionTx(tx: Tx): PromotionTx {
+  return {
+    async lockAgent(workspaceId, agentId) {
+      const [agent] = await tx
+        .select()
+        .from(t.agents)
+        .where(and(eq(t.agents.workspaceId, workspaceId), eq(t.agents.id, agentId)))
+        .for('update');
+      return agent;
+    },
+
+    async findAgentSuiteRun(workspaceId, agentId, runId) {
+      const [run] = await tx
+        .select({ agentVersion: t.evalRuns.agentVersion, skills: t.evalRuns.skills })
+        .from(t.evalRuns)
+        .where(
+          and(
+            eq(t.evalRuns.workspaceId, workspaceId),
+            eq(t.evalRuns.id, runId),
+            eq(t.evalRuns.kind, 'suite'),
+            eq(t.evalRuns.ownerKind, 'agent'),
+            eq(t.evalRuns.ownerId, agentId),
+          ),
+        );
+      return run;
+    },
+
+    async getVersion(agentId, version) {
+      const [row] = await tx
+        .select()
+        .from(t.agentVersions)
+        .where(and(eq(t.agentVersions.agentId, agentId), eq(t.agentVersions.version, version)));
+      return row;
+    },
+
+    async existingSkillIds(workspaceId, skillIds) {
+      if (skillIds.length === 0) return new Set();
+      const rows = await tx
+        .select({ id: t.skills.id })
+        .from(t.skills)
+        .where(and(eq(t.skills.workspaceId, workspaceId), inArray(t.skills.id, skillIds)));
+      return new Set(rows.map((r) => r.id));
+    },
+
+    async currentLinks(agentId) {
+      return tx
+        .select({ skillId: t.agentSkills.skillId, order: t.agentSkills.order, enabled: t.agentSkills.enabled })
+        .from(t.agentSkills)
+        .where(eq(t.agentSkills.agentId, agentId));
+    },
+
+    async replaceLinks(agentId, links) {
+      await tx.delete(t.agentSkills).where(eq(t.agentSkills.agentId, agentId));
+      if (links.length > 0) {
+        await tx.insert(t.agentSkills).values(links.map((l) => ({ agentId, ...l })));
+      }
+    },
+
+    async applyConfig(workspaceId, agentId, c, version) {
+      const [updated] = await tx
+        .update(t.agents)
+        .set({
+          provider: c.provider,
+          model: c.model,
+          systemPrompt: c.system_prompt,
+          outputSchema: (c.output_schema as object | null | undefined) ?? null,
+          strategy: c.strategy,
+          ciFailOn: c.ci_fail_on,
+          repoIntel: c.repo_intel,
+          version,
+        })
+        .where(and(eq(t.agents.workspaceId, workspaceId), eq(t.agents.id, agentId)))
+        .returning();
+      return updated!;
+    },
+
+    async insertVersion(agentId, version, c, skills, origin) {
+      await tx.insert(t.agentVersions).values({
+        agentId,
+        version,
+        configJson: {
+          provider: c.provider,
+          model: c.model,
+          system_prompt: c.system_prompt,
+          output_schema: c.output_schema ?? null,
+          strategy: c.strategy,
+          ci_fail_on: c.ci_fail_on,
+          repo_intel: c.repo_intel,
+          skills,
+        },
+        origin,
+      });
+    },
+  };
+}
+
 export class AgentsRepository {
   constructor(private db: Db) {}
 
@@ -72,14 +212,27 @@ export class AgentsRepository {
   }
 
   /** Delete an agent (scoped to workspace). Versions/skill-links cascade;
-   *  agent_runs keep their history with agent_id set null. Returns false if
-   *  no such agent existed in the workspace. */
+   *  agent_runs keep their history with agent_id set null. The agent's eval
+   *  cases carry no FK to it (`owner_id` is polymorphic), so they are deleted
+   *  here in the same transaction; eval runs and their per-case rows go by FK
+   *  cascade. Returns false if no such agent existed in the workspace. */
   async deleteById(workspaceId: string, id: string): Promise<boolean> {
-    const rows = await this.db
-      .delete(t.agents)
-      .where(and(eq(t.agents.workspaceId, workspaceId), eq(t.agents.id, id)))
-      .returning({ id: t.agents.id });
-    return rows.length > 0;
+    return this.db.transaction(async (tx) => {
+      await tx
+        .delete(t.evalCases)
+        .where(
+          and(
+            eq(t.evalCases.workspaceId, workspaceId),
+            eq(t.evalCases.ownerKind, 'agent'),
+            eq(t.evalCases.ownerId, id),
+          ),
+        );
+      const rows = await tx
+        .delete(t.agents)
+        .where(and(eq(t.agents.workspaceId, workspaceId), eq(t.agents.id, id)))
+        .returning({ id: t.agents.id });
+      return rows.length > 0;
+    });
   }
 
   /** Insert an agent AND record version 1 in agent_versions (immutable snapshot). */
@@ -144,6 +297,18 @@ export class AgentsRepository {
 
     if (configChanged && row) await this.snapshotVersion(row, nextVersion);
     return row;
+  }
+
+  /**
+   * Run `fn` inside ONE transaction and hand it the promotion primitives. The ordered checks and
+   * the restore policy live in `AgentsService.promote`; this method only owns the unit of work.
+   * The agent row is locked (`FOR UPDATE`) by `lockAgent`, so a concurrent edit or a double submit
+   * waits and then sees the new version, and `insertVersion` is a plain insert — a primary-key
+   * clash throws and rolls everything back instead of being swallowed. No primitive updates or
+   * deletes an existing `agent_versions` or `eval_runs` row.
+   */
+  async inPromotionTx<T>(fn: (tx: PromotionTx) => Promise<T>): Promise<T> {
+    return this.db.transaction(async (tx) => fn(promotionTx(tx)));
   }
 
   private async snapshotVersion(row: AgentRow, version: number): Promise<void> {

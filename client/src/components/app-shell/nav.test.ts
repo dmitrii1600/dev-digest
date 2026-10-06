@@ -2,6 +2,16 @@ import { describe, it, expect } from "vitest";
 import { NAV } from "@devdigest/ui";
 import { activeKeyFor } from "./helpers";
 
+describe("SKILLS LAB nav entries", () => {
+  it("lists Eval Dashboard under Skills Lab, after Conventions, and activates it on /eval routes", () => {
+    const items = NAV.find((g) => g.section === "SKILLS LAB")!.items;
+    const i = items.findIndex((x) => x.key === "conventions");
+    expect(items[i + 1]).toMatchObject({ key: "eval", label: "Eval Dashboard", icon: "Gauge", href: "/eval" });
+    expect(activeKeyFor("/eval")).toBe("eval");
+    expect(activeKeyFor("/eval/x")).toBe("eval");
+  });
+});
+
 describe("WORKSPACE nav entries", () => {
   it("lists Pull Requests, Onboarding Tour, Project Context in that order", () => {
     const items = NAV.find((g) => g.section === "WORKSPACE")!.items;

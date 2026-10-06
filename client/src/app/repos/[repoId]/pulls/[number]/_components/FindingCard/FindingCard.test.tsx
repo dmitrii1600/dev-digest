@@ -60,3 +60,63 @@ describe("FindingCard (smoke, both themes)", () => {
     expect(onAction).toHaveBeenCalledWith("dismiss");
   });
 });
+
+describe("FindingCard — Turn into eval case", () => {
+  const NEEDS_DECISION = "Accept or dismiss this finding first to turn it into an eval case.";
+
+  it("is enabled for an accepted finding and for a dismissed one, and fires the callback", () => {
+    const onTurnIntoEval = vi.fn();
+    renderWithIntl(
+      <FindingCard
+        f={{ ...FINDING, accepted_at: "2026-10-05T10:00:00Z" }}
+        defaultExpanded
+        evalAvailable
+        onTurnIntoEval={onTurnIntoEval}
+      />,
+    );
+    const button = screen.getByRole("button", { name: "Turn into eval case" });
+    expect(button).toBeEnabled();
+    fireEvent.click(button);
+    expect(onTurnIntoEval).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText(NEEDS_DECISION)).not.toBeInTheDocument();
+    cleanup();
+
+    renderWithIntl(
+      <FindingCard f={{ ...FINDING, dismissed_at: "2026-10-05T10:00:00Z" }} defaultExpanded evalAvailable />,
+    );
+    expect(screen.getByRole("button", { name: "Turn into eval case" })).toBeEnabled();
+  });
+
+  it("is disabled with the accept-or-dismiss-first text for an undecided finding", () => {
+    renderWithIntl(<FindingCard f={FINDING} defaultExpanded evalAvailable />);
+    const button = screen.getByRole("button", { name: "Turn into eval case" });
+    expect(button).toBeDisabled();
+    expect(button).toHaveAttribute("title", NEEDS_DECISION);
+    expect(screen.getByText(NEEDS_DECISION)).toBeInTheDocument();
+  });
+
+  it("is absent when evalAvailable is false or omitted", () => {
+    renderWithIntl(<FindingCard f={{ ...FINDING, accepted_at: "2026-10-05T10:00:00Z" }} defaultExpanded />);
+    expect(screen.queryByRole("button", { name: "Turn into eval case" })).not.toBeInTheDocument();
+    cleanup();
+    renderWithIntl(
+      <FindingCard f={{ ...FINDING, accepted_at: "2026-10-05T10:00:00Z" }} defaultExpanded evalAvailable={false} />,
+    );
+    expect(screen.queryByRole("button", { name: "Turn into eval case" })).not.toBeInTheDocument();
+  });
+
+  it("confirms each outcome with its exact text", () => {
+    const accepted = { ...FINDING, accepted_at: "2026-10-05T10:00:00Z" };
+    const cases = [
+      ["created", "Eval case created."],
+      ["exists", "This finding is already an eval case."],
+      ["too_large", "The diff is too large to freeze as an eval case."],
+      ["error", "Could not create the eval case."],
+    ] as const;
+    for (const [status, text] of cases) {
+      renderWithIntl(<FindingCard f={accepted} defaultExpanded evalAvailable evalStatus={status} />);
+      expect(screen.getByRole("status")).toHaveTextContent(text);
+      cleanup();
+    }
+  });
+});

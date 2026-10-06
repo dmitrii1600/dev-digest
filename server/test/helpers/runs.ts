@@ -28,7 +28,12 @@ export async function waitForPrRuns(
         ? terminal.length >= expected
         : runs.length > 0 && terminal.length === runs.length;
     if (done) return runs;
-    if (Date.now() - start > timeoutMs) return runs;
+    // Fail loudly: returning here let callers read a trace/review that was not written
+    // yet, and the test then died on an unrelated-looking `undefined` (conventions.it).
+    if (Date.now() - start > timeoutMs) {
+      const states = runs.map((r) => r.status).join(', ') || 'no rows';
+      throw new Error(`waitForPrRuns: runs for PR ${prId} not terminal after ${timeoutMs} ms (${states})`);
+    }
     await new Promise((r) => setTimeout(r, 25));
   }
 }

@@ -23,6 +23,16 @@ import { lineLabel } from "./helpers";
 import { githubBlobUrl } from "../../github-urls";
 import { s } from "./styles";
 
+/** Outcome of the last "Turn into eval case" click, owned by the panel. */
+export type EvalCaseStatus = "created" | "exists" | "too_large" | "error";
+
+const EVAL_STATUS_KEY: Record<EvalCaseStatus, string> = {
+  created: "finding.evalCaseCreated",
+  exists: "finding.evalCaseExists",
+  too_large: "finding.evalDiffTooLarge",
+  error: "finding.evalCaseFailed",
+};
+
 export function FindingCard({
   f,
   focused,
@@ -31,6 +41,10 @@ export function FindingCard({
   pending,
   repoFullName,
   headSha,
+  evalAvailable,
+  onTurnIntoEval,
+  evalPending,
+  evalStatus,
 }: {
   f: FindingRecord;
   focused?: boolean;
@@ -39,6 +53,11 @@ export function FindingCard({
   pending?: boolean;
   repoFullName?: string | null;
   headSha?: string | null;
+  /** The action is offered only where the producing agent still exists (EC-3). */
+  evalAvailable?: boolean;
+  onTurnIntoEval?: () => void;
+  evalPending?: boolean;
+  evalStatus?: EvalCaseStatus | null;
 }) {
   const t = useTranslations("prReview");
   const [expanded, setExpanded] = React.useState(defaultExpanded ?? false);
@@ -50,6 +69,7 @@ export function FindingCard({
   const accepted = !!f.accepted_at;
   const dismissed = !!f.dismissed_at;
   const muted = accepted || dismissed;
+  const decided = accepted || dismissed;
 
   return (
     <div data-finding-id={f.id} style={s.card(!!focused, sevColor, muted)}>
@@ -109,7 +129,25 @@ export function FindingCard({
             >
               {t("finding.dismiss")}
             </Button>
+            {evalAvailable && (
+              <Button
+                kind="ghost"
+                size="sm"
+                icon="FlaskConical"
+                disabled={!decided || evalPending}
+                title={decided ? undefined : t("finding.evalNeedsDecision")}
+                onClick={() => onTurnIntoEval?.()}
+              >
+                {t("finding.turnIntoEvalCase")}
+              </Button>
+            )}
           </div>
+          {evalAvailable && !decided && <div style={s.evalNote}>{t("finding.evalNeedsDecision")}</div>}
+          {evalAvailable && evalStatus && (
+            <div role="status" style={s.evalNote}>
+              {t(EVAL_STATUS_KEY[evalStatus])}
+            </div>
+          )}
         </div>
       )}
     </div>

@@ -122,7 +122,8 @@
       "preview": "Preview",
       "versions": "Versions",
       "stats": "Stats",
-      "context": "Context"
+      "context": "Context",
+      "evals": "Evals"
     }
   },
   "config": {
@@ -184,5 +185,26 @@
     "body": "\"{name}\" will be removed from every agent that carries it. This cannot be undone.",
     "confirm": "Delete",
     "cancel": "Cancel"
+  },
+  "evals": {
+    "title": "Eval cases",
+    "subtitle": "Recall / Precision / Citation for this skill. Deltas compare with the previous run on the same host agent.",
+    "runAll": "Run all evals",
+    "running": "Running…",
+    "newCase": "New eval case",
+    "passingCount": "{passing} / {total} passing",
+    "noHost": "Link this skill to an agent first: running its evals needs a host agent.",
+    "emptyCases": "No eval cases yet. Add one with “New eval case”.",
+    "loadError": "Could not load this skill’s eval cases.",
+    "latestRun": "Latest run on {agent} v{agentVersion} · skill v{skillVersion}",
+    "unknownAgent": "an agent no longer linked",
+    "runConflict": "This skill’s evals are already running.",
+    "hostPicker": {
+      "title": "Run on which agent?",
+      "body": "The skill runs with the host agent’s prompt, model and strategy, and with only this skill enabled.",
+      "label": "Host agent",
+      "confirm": "Run",
+      "cancel": "Cancel"
+    }
   }
 }

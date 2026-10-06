@@ -312,9 +312,39 @@ append-only. Empty sections are expected — append under the one that fits.
   not `no_ranked_files`: the facade synthesises a `no_data` degraded state
   (`src/modules/onboarding/helpers.ts:63`). A test for `no_ranked_files` needs a
   state row with zero rank rows.
+- 2026-10-05 — `eval_cases.owner_id` is polymorphic (no FK), so deleting an
+  agent removes its cases by hand: `AgentsRepository.deleteById`
+  (`src/modules/agents/repository.ts`) deletes `eval_cases` for
+  `owner_kind = 'agent'` in the same transaction as the agent. Eval runs and
+  their per-case rows go by FK cascade. This is the one place a second module
+  writes an evals table. The "evals-owned helper that takes the `tx`" shape is
+  not available: `no-cross-module-reach-in` forbids `agents` importing
+  `modules/evals`. When skill-owned cases ship, `skills/repository.ts` needs the
+  same cleanup, or move both behind a helper in `modules/_shared/`.
+  (2026-10-06: skill-owned cases shipped; `SkillsRepository.deleteById` now deletes
+  skill-owned runs, then cases, then the skill in one transaction —
+  `src/modules/skills/repository.ts:76`. A third owner kind should move both into one helper.)
+- 2026-10-06 — A skill eval run stores its **host** agent's id in `eval_runs.agent_id`
+  (owner is the skill). Any agent-facing run read must filter through `AGENT_SUITE`
+  (`owner_kind = 'agent'`, `src/modules/evals/repository.ts:114`), never on `agent_id`
+  alone, or skill runs leak into that agent's history, dashboard and Compare; skill reads use
+  `OWNER_SUITE` (`:118`). The running-suite unique index is keyed on `owner_id` for the same reason.
 
 
 
+
+- 2026-10-05 — A feature-folder `types.ts` (a port plus DTOs) matches no lint zone, so a `drizzle-orm` import
+  there passes `pnpm lint` silently. List each one in `RING_2` by path (`eslint.config.mjs:123-126`), not as a
+  `src/modules/*/types.ts` glob: `blast`, `intent`, `project-context` and `smart-diff` `types.ts` are unaudited
+  and a glob may turn lint red. Mirror every `RING_2` addition in `.claude/skills/onion-architecture/layers.md`,
+  which as of this date still lacks `_shared/review-inputs.ts` and `evals/types.ts`.
+
+- 2026-10-06 — A multi-check write that must be atomic (promote: lock, validate, 409, rewrite) keeps the
+  *transaction* in the repository but the *decisions* in the service: the repo exposes
+  `inPromotionTx(fn)` handing `fn` single-purpose primitives (`PromotionTx`, `modules/agents/repository.ts:69,310`)
+  and `AgentsService.promote` runs the ordered checks inside the callback (`modules/agents/service.ts:129`).
+  The first build put all of it in `repository.promote()`; architecture review flagged it WARNING —
+  policy in ring 3, untestable without Postgres, plus a ring-3 → ring-2 `helpers.js` import.
 
 ## Tool & Library Notes
 
@@ -413,7 +443,14 @@ append-only. Empty sections are expected — append under the one that fits.
 - 2026-09-26 — `conventions.it.test.ts:474` (`trace.prompt_assembly` undefined)
   failed once inside a full `pnpm test` run and passed alone (7/7). It drives a
   whole review run under parallel Testcontainers; re-run the file alone before
-  blaming a change outside `modules/reviews`.
+  blaming a change outside `modules/reviews`. (2026-10-06: it also failed 3 runs in a
+  row *alone*, once on a clean `b6c1529` worktree, then passed in the next full `--it`
+  run ~20 min later — "fails alone" is not proof of a regression either; prove a
+  clean-HEAD baseline.) Superseded later on 2026-10-06 — root cause found, not a flake:
+  `run-executor.ts` set `agent_runs.status = 'done'` *before* `saveRunTrace`, so a reader that
+  polls the status and then GETs `/runs/:id/trace` raced a 404 (`prompt_assembly` of the error
+  body). Trace is now written first on all three paths (`modules/reviews/run-executor.ts`), and
+  `waitForPrRuns` throws on timeout instead of returning non-terminal rows (`test/helpers/runs.ts`).
 
 - 2026-09-26 — Blast radius shows N symbols and 0 callers on a `full` index.
   Check `repo_index_state.stats->>'edgesWritten'`: if it is `0`, the depgraph

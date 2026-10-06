@@ -149,6 +149,12 @@ path filter — full strategy in **[`TESTING.md`](TESTING.md)**.
 | reviewer-core (engine) | `reviewer-core.yml` | no |
 | mcp (vitest, stdio + in-memory) | `mcp.yml` | no |
 | web e2e (agent-browser, real stack) | `e2e-web.yml` | yes |
+| harness evals: `.claude/skills` (static gate blocks, model runs report-only) | `eval-skills.yml` | no |
+| harness evals: `.claude/agents` (report-only) | `eval-agents.yml` | yes, LiteLLM proxy |
+| harness evals: `CLAUDE.md` / `AGENTS.md` routing (report-only) | `eval-workflow.yml` | yes, LiteLLM proxy |
+
+The three eval workflows run on `pull_request` and on `push` to `main`, only for the paths
+they own, and only for the changed skills and agents that have an `evals/<tier>/<name>/` case.
 
 Server tests split by filename: `*.it.test.ts` are DB-backed (testcontainers
 Postgres); everything else is hermetic. The browser e2e flows live in

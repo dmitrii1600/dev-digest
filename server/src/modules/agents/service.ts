@@ -1,15 +1,18 @@
 import type { Container } from '../../platform/container.js';
 import type {
   Agent,
+  AgentPromoteInput,
   AgentSkillLink,
   AgentVersion,
+  AgentVersionOrigin,
   CiFailOn,
   ModelInfo,
   Provider,
   ReviewStrategy,
 } from '@devdigest/shared';
-import { AgentsRepository } from './repository.js';
-import { toAgentDto, toAgentVersionDto } from './helpers.js';
+import { AppError, NotFoundError } from '../../platform/errors.js';
+import { AgentsRepository, type AgentRow } from './repository.js';
+import { planSkillLinks, readRunSkills, readVersionConfig, toAgentDto, toAgentVersionDto } from './helpers.js';
 
 /**
  * A2 — agents service. Business logic for the Agents tab + Agent Editor.
@@ -47,6 +50,14 @@ export interface UpdateAgentInput {
   repo_intel?: boolean;
   enabled?: boolean;
 }
+
+/** Why a promotion did not happen (or its result) — mapped to an HTTP error by `promote`. */
+type PromoteResult =
+  | { ok: true; agent: AgentRow; newVersion: number; missingSkills: AgentVersionOrigin['missing_skills'] }
+  | { ok: false; reason: 'not_found' }
+  | { ok: false; reason: 'invalid'; field: 'from_version' }
+  | { ok: false; reason: 'unreadable'; version: number }
+  | { ok: false; reason: 'conflict'; currentVersion: number };
 
 export class AgentsService {
   private repo: AgentsRepository;
@@ -106,6 +117,94 @@ export class AgentsService {
       ...(patch.enabled !== undefined ? { enabled: patch.enabled } : {}),
     });
     return row ? toAgentDto(row) : undefined;
+  }
+
+  /**
+   * Restore a past eval run's configuration as a NEW version (current + 1). No model call.
+   * 404 for an unknown agent / run / snapshot, 422 for a `from_version` that is not the run's
+   * or a snapshot that cannot be read, 409 when the agent moved on since the caller looked.
+   * The checks run in this order inside one repository transaction; a refusal writes nothing.
+   * Name, description and `enabled` are left as they are (spec Q-1).
+   */
+  async promote(workspaceId: string, agentId: string, input: AgentPromoteInput): Promise<Agent> {
+    const result = await this.repo.inPromotionTx(async (tx): Promise<PromoteResult> => {
+      const agent = await tx.lockAgent(workspaceId, agentId);
+      if (!agent) return { ok: false, reason: 'not_found' };
+
+      const run = await tx.findAgentSuiteRun(workspaceId, agentId, input.eval_run_id);
+      if (!run) return { ok: false, reason: 'not_found' };
+      if (run.agentVersion !== input.from_version) {
+        return { ok: false, reason: 'invalid', field: 'from_version' };
+      }
+
+      const snapshot = await tx.getVersion(agentId, input.from_version);
+      if (!snapshot) return { ok: false, reason: 'not_found' };
+      const config = readVersionConfig(snapshot.configJson);
+      const runSkills = readRunSkills(run.skills);
+      if (!config || !runSkills) return { ok: false, reason: 'unreadable', version: input.from_version };
+
+      if (agent.version !== input.expected_version) {
+        return { ok: false, reason: 'conflict', currentVersion: agent.version };
+      }
+
+      const existing = await tx.existingSkillIds(
+        workspaceId,
+        runSkills.map((s) => s.skill_id),
+      );
+      const plan = planSkillLinks(runSkills, existing, await tx.currentLinks(agentId));
+      await tx.replaceLinks(agentId, plan.links);
+
+      const newVersion = agent.version + 1;
+      const updated = await tx.applyConfig(workspaceId, agentId, config, newVersion);
+      await tx.insertVersion(
+        agentId,
+        newVersion,
+        config,
+        plan.links.map((l) => l.skillId),
+        {
+          kind: 'promotion',
+          from_version: input.from_version,
+          eval_run_id: input.eval_run_id,
+          missing_skills: plan.missing,
+        },
+      );
+      return { ok: true, agent: updated, newVersion, missingSkills: plan.missing };
+    });
+    if (!result.ok) {
+      switch (result.reason) {
+        case 'not_found':
+          throw new NotFoundError('Agent, eval run or version not found');
+        case 'invalid':
+          throw new AppError('promotion_invalid', 'from_version is not the version this run used', 422, {
+            field: result.field,
+          });
+        case 'unreadable':
+          throw new AppError(
+            'agent_version_unreadable',
+            `Version ${result.version} cannot be read`,
+            422,
+            { version: result.version },
+          );
+        case 'conflict':
+          throw new AppError(
+            'agent_version_conflict',
+            'The agent changed since the promotion was prepared',
+            409,
+            { current_version: result.currentVersion },
+          );
+      }
+    }
+    this.container.log.info(
+      {
+        agentId,
+        fromVersion: input.from_version,
+        newVersion: result.newVersion,
+        evalRunId: input.eval_run_id,
+        missingSkills: result.missingSkills,
+      },
+      'agent promoted',
+    );
+    return toAgentDto(result.agent);
   }
 
   /**

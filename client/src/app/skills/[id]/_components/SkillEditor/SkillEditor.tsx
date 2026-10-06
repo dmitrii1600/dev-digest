@@ -1,4 +1,4 @@
-/* SkillEditor — tab shell: Config, Preview, Versions, Stats. Tab state lives
+/* SkillEditor — tab shell: Config, Preview, Versions, Stats, Context, Evals. Tab state lives
    in the parent page's ?tab=; this component only renders the active one. */
 "use client";
 
@@ -11,6 +11,7 @@ import { PreviewTab } from "./_components/PreviewTab";
 import { VersionsTab } from "./_components/VersionsTab";
 import { StatsTab } from "./_components/StatsTab";
 import { ContextTab } from "./_components/ContextTab";
+import { EvalsTab } from "./_components/EvalsTab";
 import { TABS } from "./constants";
 import { s } from "./styles";
 
@@ -28,6 +29,7 @@ export function SkillEditor({ skill, tab, onTab }: { skill: Skill; tab: string; 
         {tab === "versions" && <VersionsTab skill={skill} />}
         {tab === "stats" && <StatsTab skill={skill} />}
         {tab === "context" && <ContextTab skillId={skill.id} />}
+        {tab === "evals" && <EvalsTab skillId={skill.id} />}
       </div>
     </div>
   );

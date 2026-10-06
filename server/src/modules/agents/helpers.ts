@@ -1,5 +1,5 @@
 import type { Agent, AgentVersion, CiFailOn, Provider, ReviewStrategy } from '@devdigest/shared';
-import { AgentVersionConfig } from '@devdigest/shared';
+import { AgentVersionConfig, AgentVersionOrigin, EvalRunSkill } from '@devdigest/shared';
 import type { AgentRow, AgentVersionRow } from './repository.js';
 
 /**
@@ -38,7 +38,57 @@ export function toAgentVersionDto(row: AgentVersionRow): AgentVersion {
     version: row.version,
     config: AgentVersionConfig.parse(row.configJson),
     created_at: row.createdAt.toISOString(),
+    // A missing or malformed origin reads as "an ordinary edit"; it never fails the read.
+    origin: AgentVersionOrigin.safeParse(row.origin).data ?? null,
   };
+}
+
+/** A snapshot's `config_json` as an `AgentVersionConfig`, or `undefined` when it cannot be read. */
+export function readVersionConfig(configJson: unknown): AgentVersionConfig | undefined {
+  const parsed = AgentVersionConfig.safeParse(configJson);
+  return parsed.success ? parsed.data : undefined;
+}
+
+/** An eval run's recorded skill set (jsonb), or `undefined` when it cannot be read. */
+export function readRunSkills(skills: unknown): { skill_id: string; name: string }[] | undefined {
+  const parsed = EvalRunSkill.array().safeParse(skills);
+  return parsed.success ? parsed.data : undefined;
+}
+
+/** One `agent_skills` binding. */
+export interface SkillLink {
+  skillId: string;
+  order: number;
+  enabled: boolean;
+}
+
+/**
+ * The links an agent gets when it is promoted to a past run's skill set (spec Q1).
+ *  - the run's skills that still exist come first, enabled, in the run's order (0…k-1);
+ *  - every other currently linked skill is kept but DISABLED, after them, in its prior
+ *    relative order (non-destructive; reversible from the Skills tab);
+ *  - the run's skills that no longer exist are reported as `missing` (name from the run record).
+ */
+export function planSkillLinks(
+  runSkills: readonly { skill_id: string; name: string }[],
+  existingSkillIds: ReadonlySet<string>,
+  currentLinks: readonly SkillLink[],
+): { links: SkillLink[]; missing: { skill_id: string; name: string }[] } {
+  const seen = new Set<string>();
+  const links: SkillLink[] = [];
+  const missing: { skill_id: string; name: string }[] = [];
+  for (const s of runSkills) {
+    if (seen.has(s.skill_id)) continue;
+    seen.add(s.skill_id);
+    if (existingSkillIds.has(s.skill_id)) {
+      links.push({ skillId: s.skill_id, order: links.length, enabled: true });
+    } else {
+      missing.push({ skill_id: s.skill_id, name: s.name });
+    }
+  }
+  const rest = [...currentLinks].sort((a, b) => a.order - b.order).filter((l) => !seen.has(l.skillId));
+  for (const l of rest) links.push({ skillId: l.skillId, order: links.length, enabled: false });
+  return { links, missing };
 }
 
 /** Fields whose change bumps the agent's config version (anything but `enabled`). */

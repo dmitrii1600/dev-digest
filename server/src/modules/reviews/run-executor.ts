@@ -7,26 +7,17 @@ import type {
   RunTrace,
   UnifiedDiff,
 } from '@devdigest/shared';
-import { reviewPullRequest, countBlockers, wrapUntrusted } from '@devdigest/reviewer-core';
+import { reviewPullRequest, countBlockers } from '@devdigest/reviewer-core';
 import { RunLogger } from '../../platform/run-logger.js';
 import * as schema from '../../db/schema.js';
 import type { AgentRow } from '../../db/rows.js';
 import type { ReviewRepository, FindingRow, PullRow, ReviewRow } from './repository.js';
 import { REVIEW_STRATEGY } from './constants.js';
 import { taskLine } from './helpers.js';
+import { skillBlockBody } from '../_shared/review-inputs.js';
 import { loadDiff } from './diff-loader.js';
 
 /** Thrown by a run when the user cancels it mid-flight (between map files). */
-/**
- * Skill sources whose body reaches the model as instructions, unwrapped. `manual`
- * is typed by the user; `extracted` is assembled from candidates the user
- * accepted one by one and shown editable before save (the evidence snippets
- * inside it are wrapped individually by the conventions body builder). Every
- * other source — an imported file, a community skill — is someone else's text
- * and is delimiter-wrapped as untrusted, like PR-author content.
- */
-const TRUSTED_SKILL_SOURCES: ReadonlySet<string> = new Set(['manual', 'extracted']);
-
 export class RunCancelledError extends Error {
   constructor() {
     super('Run cancelled');
@@ -88,9 +79,13 @@ export class ReviewRunExecutor {
 
     // Pre-work failure (e.g. diff load) fails EVERY queued run. The error was
     // already emitted via runLog (fanned out → in each run's buffer); here we
-    // mark the rows failed and persist the buffered log so it survives a reload.
+    // persist the buffered log so it survives a reload, then mark the rows failed.
+    // Trace first: a terminal status is the reader's signal that the trace exists.
     const failAll = async (msg: string) => {
       for (const { runId, agent } of jobs) {
+        await this.repo
+          .saveRunTrace(runId, this.traceFromBuffer(runId, pull, agent, '0/0 passed'))
+          .catch(() => undefined);
         await this.repo
           .completeAgentRun(runId, {
             status: 'failed',
@@ -101,9 +96,6 @@ export class ReviewRunExecutor {
             grounding: '0/0 passed',
             error: msg,
           })
-          .catch(() => undefined);
-        await this.repo
-          .saveRunTrace(runId, this.traceFromBuffer(runId, pull, agent, '0/0 passed'))
           .catch(() => undefined);
         this.container.runBus.complete(runId);
       }
@@ -305,19 +297,8 @@ export class ReviewRunExecutor {
       // already carry two different aggregation rules (see docs/read-aggregates.md
       // and server/INSIGHTS.md), and folding a third rule in silently would be
       // a regression, not a fix.
-      await this.repo.completeAgentRun(runId, {
-        status: 'done',
-        durationMs,
-        tokensIn,
-        tokensOut,
-        costUsd,
-        findingsCount: findingRows.length,
-        grounding,
-        score: outcome.review.score,
-        blockers,
-        error: null,
-      });
-
+      // The trace is saved BEFORE the row turns `done`: readers poll the status and then
+      // GET /runs/:id/trace, and the reverse order served them a 404 in between.
       const trace: RunTrace = {
         config: {
           agent: agent.name,
@@ -352,6 +333,18 @@ export class ReviewRunExecutor {
       };
       runLog.info('Run complete; trace persisted');
       await this.repo.saveRunTrace(runId, trace);
+      await this.repo.completeAgentRun(runId, {
+        status: 'done',
+        durationMs,
+        tokensIn,
+        tokensOut,
+        costUsd,
+        findingsCount: findingRows.length,
+        grounding,
+        score: outcome.review.score,
+        blockers,
+        error: null,
+      });
       this.container.runBus.complete(runId);
 
       return { review, findings: findingRows, grounding, raw: outcome.review };
@@ -362,6 +355,9 @@ export class ReviewRunExecutor {
       const status = cancelled ? 'cancelled' : 'failed';
       const msg = cancelled ? 'Cancelled by user' : (err as Error).message;
       runLog.error(cancelled ? 'Run cancelled by user' : `Run failed: ${msg}`);
+      await this.repo
+        .saveRunTrace(runId, this.traceFromBuffer(runId, pull, agent, '0/0 passed', Date.now() - start))
+        .catch(() => undefined);
       await this.repo
         .completeAgentRun(runId, {
           status,
@@ -375,9 +371,6 @@ export class ReviewRunExecutor {
           grounding: '0/0 passed',
           error: msg,
         })
-        .catch(() => undefined);
-      await this.repo
-        .saveRunTrace(runId, this.traceFromBuffer(runId, pull, agent, '0/0 passed', Date.now() - start))
         .catch(() => undefined);
       this.container.runBus.complete(runId);
       throw err;
@@ -401,9 +394,7 @@ export class ReviewRunExecutor {
   private async buildSkillBlocks(agentId: string, runLog: RunLogger): Promise<string[] | undefined> {
     const rows = await this.container.skillsRepo.blocksForAgent(agentId);
     if (rows.length === 0) return undefined;
-    const bodies = rows.map((r) =>
-      TRUSTED_SKILL_SOURCES.has(r.source) ? r.body : wrapUntrusted(`skill-${r.id}`, r.body),
-    );
+    const bodies = rows.map(skillBlockBody);
     const tokens = bodies.reduce((n, b) => n + this.container.tokenizer.count(b), 0);
     runLog.info(`skills: ${bodies.length} skill(s) attached (${tokens} tokens)`);
     return bodies;
