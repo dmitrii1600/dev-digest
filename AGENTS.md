@@ -180,6 +180,9 @@ wrong thing, rather than failing.
   before adding or changing an MCP tool**
 - Subagents, their tools and the chain → `.claude/agents/README.md` — **read before
   invoking or adding an agent**
+- Harness evals for `.claude/` → `evals/README.md` — **after changing `.claude/skills/**`
+  run `pnpm eval:quality` and `pnpm eval:skills <name>`; after `.claude/agents/**` run
+  `pnpm eval:agents <name>`; after `CLAUDE.md` / `AGENTS.md` routing run `pnpm eval:workflow`**
 - Feature specs for the current lesson → `specs/` — **read before implementing a
   lesson feature**
 - Hard-won lessons and decisions → the touched module's `INSIGHTS.md` **and**
