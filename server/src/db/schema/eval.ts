@@ -86,6 +86,8 @@ export const evalRuns = pgTable(
     skills: jsonb('skills').notNull().default([]),
     // [{ case_id, fingerprint }] — the case set this run covered.
     caseRefs: jsonb('case_refs').notNull().default([]),
+    // The case a `single` run covers; null for suite runs and once the case is deleted.
+    singleCaseId: uuid('single_case_id').references(() => evalCases.id, { onDelete: 'set null' }),
     casesTotal: integer('cases_total').notNull().default(0),
     casesPassed: integer('cases_passed').notNull().default(0),
     casesErrored: integer('cases_errored').notNull().default(0),
@@ -101,10 +103,18 @@ export const evalRuns = pgTable(
   (t) => ({
     agentRanIdx: index('eval_runs_agent_ran_idx').on(t.agentId, t.ranAt),
     wsIdx: index('eval_runs_ws_idx').on(t.workspaceId),
-    // At most one running suite per agent — race-safe backing for the 409 (EC-6).
+    // At most one running suite per owner — race-safe backing for the 409 (EC-6). Keyed on
+    // `owner_id` (= agent_id for an agent-owned run) so a skill suite hosted on agent H does
+    // not collide with H's own suite.
     oneRunningSuiteUq: uniqueIndex('eval_runs_one_running_suite_uq')
-      .on(t.agentId)
+      .on(t.ownerId)
       .where(sql`${t.status} = 'running' and ${t.kind} = 'suite'`),
+    // At most one running single-case run per case — race-safe backing for the 409.
+    oneRunningSingleUq: uniqueIndex('eval_runs_one_running_single_uq')
+      .on(t.singleCaseId)
+      .where(sql`${t.status} = 'running' and ${t.kind} = 'single'`),
+    // Set-null target for the single_case_id FK.
+    singleCaseIdx: index('eval_runs_single_case_idx').on(t.singleCaseId),
   }),
 );
 

@@ -121,7 +121,7 @@ flowchart TB
     brief["brief<br/>GET·POST /pulls/:id/brief"]
   end
   subgraph EvalMod["Evals"]
-    evals["evals<br/>POST /findings/:id/eval-case · /agents/:id/(eval-cases|eval-runs|eval-dashboard)<br/>/agents/:id/eval-runs/compare · /eval-runs/:id · /eval-cases/:id · /eval/dashboard"]
+    evals["evals<br/>POST /findings/:id/eval-case · /agents|skills/:id/(eval-cases|eval-runs|eval-dashboard)<br/>/agents/:id/eval-runs/compare · /eval-runs/:id · /eval-cases/:id · /eval-cases/:id/runs · /eval-cases/:id/runs/latest · /eval/dashboard"]
   end
   subgraph Platform["Platform"]
     settings["settings<br/>/settings · /providers"]

@@ -1,24 +1,28 @@
 /* EvalsTab — an agent's eval cases and the latest suite results. Metric tiles
-   (each with a signed change), "Run all evals", the case list under a
-   "N / M passing" count, and a confirmed delete. Cases are made elsewhere: a
-   decided finding on a PR becomes one ("Turn into eval case"). A run executes
-   on the server after the POST returns, so the dashboard poll shows it
-   `running` and the button stays disabled until it ends. */
+   (each with a signed change), "Run all evals", "New eval case", the case list
+   under a "N / M passing" count, per-row Run / Edit / Delete (delete is
+   confirmed). Cases come from a decided finding ("Turn into eval case") or are
+   written here by hand in the shared case editor. A run executes on the server
+   after the POST returns, so the dashboard poll shows it `running` and the
+   button stays disabled until it ends. A single-case run never touches the
+   suite numbers; its result shows beside the row. */
 "use client";
 
 import React from "react";
 import { useTranslations } from "next-intl";
-import { Badge, Button, IconBtn, Skeleton } from "@devdigest/ui";
+import { Button, Skeleton } from "@devdigest/ui";
+import type { EvalCaseListItem } from "@devdigest/shared";
 import { ConfirmModal } from "@/components/confirm-modal";
+import { EvalCaseEditor, EvalCaseList } from "@/components/eval-cases";
 import { MetricTiles } from "@/components/eval-metrics";
 import { ApiError } from "@/lib/api";
 import {
   useAgentEvalCases,
   useAgentEvalDashboard,
   useDeleteEvalCase,
+  useStartCaseRun,
   useStartEvalRun,
 } from "@/lib/hooks/evals";
-import { EXPECTATION_KEY, RESULT_COLOR, RESULT_KEY, targetLabel } from "./helpers";
 import { s } from "./styles";
 
 export function EvalsTab({ agentId }: { agentId: string }) {
@@ -27,7 +31,10 @@ export function EvalsTab({ agentId }: { agentId: string }) {
   const { data: dashboard } = useAgentEvalDashboard(agentId);
   const start = useStartEvalRun(agentId);
   const del = useDeleteEvalCase(agentId);
+  const caseRun = useStartCaseRun();
   const [pendingDelete, setPendingDelete] = React.useState<{ id: string; name: string } | null>(null);
+  // `null` = closed, `"new"` = a blank case, otherwise the case being edited.
+  const [editing, setEditing] = React.useState<EvalCaseListItem | "new" | null>(null);
 
   const noCases = (cases?.total ?? 0) === 0;
   const running = !!dashboard?.running || start.isPending;
@@ -36,6 +43,13 @@ export function EvalsTab({ agentId }: { agentId: string }) {
     start.isError && !(start.error instanceof ApiError && start.error.status === 409)
       ? start.error.message
       : null;
+  // A 409 on a case run means that case is already running — say so.
+  const caseRunError = !caseRun.isError
+    ? null
+    : caseRun.error instanceof ApiError && caseRun.error.status === 409
+      ? t("caseEditor.runConflict")
+      : caseRun.error.message;
+  const editingCase = editing && editing !== "new" ? editing : undefined;
 
   return (
     <div style={s.wrap}>
@@ -63,6 +77,11 @@ export function EvalsTab({ agentId }: { agentId: string }) {
           {startError}
         </div>
       )}
+      {caseRunError && (
+        <div role="alert" style={s.error}>
+          {caseRunError}
+        </div>
+      )}
 
       <MetricTiles dashboard={dashboard} />
 
@@ -71,6 +90,11 @@ export function EvalsTab({ agentId }: { agentId: string }) {
         {cases && (
           <div style={s.count}>{t("evalsTab.passingCount", { passing: cases.passing, total: cases.total })}</div>
         )}
+        <div style={s.spacer}>
+          <Button kind="secondary" size="sm" icon="Plus" onClick={() => setEditing("new")}>
+            {t("caseEditor.newCase")}
+          </Button>
+        </div>
       </div>
 
       {casesLoading ? (
@@ -82,25 +106,24 @@ export function EvalsTab({ agentId }: { agentId: string }) {
       ) : cases.cases.length === 0 ? (
         <div style={s.empty}>{t("evalsTab.emptyCases")}</div>
       ) : (
-        <div style={s.list}>
-          {cases.cases.map((c) => (
-            <div key={c.id} style={s.row}>
-              <div style={s.rowMain}>
-                <span style={s.name}>{c.name}</span>
-                <span className="mono" style={s.meta}>
-                  {t(EXPECTATION_KEY[c.expectation])} · {targetLabel(c.target)}
-                </span>
-              </div>
-              <Badge color={RESULT_COLOR[c.last_result]}>{t(RESULT_KEY[c.last_result])}</Badge>
-              <IconBtn
-                icon="Trash"
-                label={t("evalsTab.deleteAria", { name: c.name })}
-                danger
-                onClick={() => setPendingDelete({ id: c.id, name: c.name })}
-              />
-            </div>
-          ))}
-        </div>
+        <EvalCaseList
+          cases={cases.cases}
+          onEdit={setEditing}
+          onRun={(c) => caseRun.mutate({ caseId: c.id })}
+          onDelete={(c) => setPendingDelete({ id: c.id, name: c.name })}
+          runningCaseId={caseRun.isPending ? caseRun.variables?.caseId : null}
+        />
+      )}
+
+      {editing && (
+        <EvalCaseEditor
+          key={editingCase?.id ?? "new"}
+          owner={{ kind: "agent", id: agentId }}
+          initial={editingCase}
+          takenNames={(cases?.cases ?? []).filter((c) => c.id !== editingCase?.id).map((c) => c.name)}
+          onClose={() => setEditing(null)}
+          onRun={(caseId) => caseRun.mutate({ caseId })}
+        />
       )}
 
       {pendingDelete && (

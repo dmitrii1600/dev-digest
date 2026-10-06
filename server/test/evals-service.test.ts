@@ -4,6 +4,7 @@ import { reviewPullRequest, type ReviewInput } from '@devdigest/reviewer-core';
 import { EvalsService, type EvalsDeps } from '../src/modules/evals/service.js';
 import type {
   EvalAgent,
+  EvalOwner,
   EvalsStore,
   InsertRunResult,
   NewCaseResult,
@@ -69,6 +70,15 @@ class FakeStore implements EvalsStore {
   async insertCaseIfAbsent(): Promise<never> {
     throw new Error('not used');
   }
+  async insertCase(): Promise<never> {
+    throw new Error('not used');
+  }
+  async updateCase(): Promise<undefined> {
+    return undefined;
+  }
+  async caseNames(): Promise<string[]> {
+    return [];
+  }
   async listCases(): Promise<EvalCase[]> {
     return this.cases;
   }
@@ -79,13 +89,15 @@ class FakeStore implements EvalsStore {
     return true;
   }
   async insertRunningRun(row: NewRun): Promise<InsertRunResult> {
-    const active = this.runs.find((r) => r.agent_id === row.agentId && r.status === 'running');
-    if (active) return { ok: false, reason: 'already_running', runId: active.id };
+    const active = this.runs.find(
+      (r) => r.kind === row.kind && r.owner_id === row.ownerId && r.status === 'running',
+    );
+    if (active) return { ok: false, reason: 'already_running', kind: row.kind, runId: active.id };
     const run: EvalSuiteRun = {
       id: row.id,
-      kind: 'suite',
-      owner_kind: 'agent',
-      owner_id: row.agentId,
+      kind: row.kind,
+      owner_kind: row.ownerKind,
+      owner_id: row.ownerId,
       agent_id: row.agentId,
       agent_version: row.agentVersion,
       provider: row.provider,
@@ -122,27 +134,27 @@ class FakeStore implements EvalsStore {
       finished_at: patch.finishedAt.toISOString(),
     });
   }
-  async failStaleRunning(
-    _ws: string,
-    agentId: string | null,
-    activeIds: readonly string[],
-    reason: string,
-  ): Promise<void> {
+  async failStaleRunning(_ws: string, activeIds: readonly string[], reason: string): Promise<void> {
     this.sweepCalls.push({ activeIds: [...activeIds] });
     for (const r of this.runs) {
       if (r.status !== 'running' || activeIds.includes(r.id)) continue;
-      if (agentId && r.agent_id !== agentId) continue;
       r.status = 'failed';
       r.error = reason;
     }
   }
   async listRuns(
     _ws: string,
-    agentId: string,
+    owner: EvalOwner,
     opts: { limit: number; statuses?: readonly EvalSuiteRun['status'][]; order?: 'asc' | 'desc' },
   ): Promise<EvalSuiteRun[]> {
     const rows = this.runs
-      .filter((r) => r.agent_id === agentId && (!opts.statuses || opts.statuses.includes(r.status)))
+      .filter(
+        (r) =>
+          r.kind === 'suite' &&
+          r.owner_kind === owner.kind &&
+          r.owner_id === owner.id &&
+          (!opts.statuses || opts.statuses.includes(r.status)),
+      )
       .sort((a, b) => a.started_at.localeCompare(b.started_at));
     if (opts.order !== 'asc') rows.reverse();
     return rows.slice(0, opts.limit);
@@ -177,14 +189,23 @@ class FakeStore implements EvalsStore {
   async caseStatusesForRun(runId: string) {
     return this.results.filter((r) => r.runId === runId).map((r) => ({ caseId: r.caseId, status: r.status }));
   }
-  async latestCompletedRuns(ws: string, agentId: string, n: number) {
-    return this.listRuns(ws, agentId, { limit: n, statuses: ['completed', 'partial'] });
+  async latestCompletedRuns(ws: string, owner: EvalOwner, n: number) {
+    return this.listRuns(ws, owner, { limit: n, statuses: ['completed', 'partial'] });
   }
   async agentsWithCases() {
     return [];
   }
   async recentRuns(): Promise<EvalSuiteRun[]> {
     return [];
+  }
+  async latestSingleByCase() {
+    return new Map();
+  }
+  async latestCaseResult(): Promise<undefined> {
+    return undefined;
+  }
+  async runningSingle(): Promise<undefined> {
+    return undefined;
   }
 }
 
@@ -211,7 +232,7 @@ function harness(
   const service = new EvalsService({
     repo: store,
     agents: { getById: async (_ws, id) => (id === AGENT.id ? AGENT : undefined) },
-    skills: { blocksForAgent: async () => [] },
+    skills: { blocksForAgent: async () => [], getById: async () => undefined, linkedAgentIds: async () => [] },
     git: async () => ({
       diff: async (...args) => {
         gitCalls.push(args);

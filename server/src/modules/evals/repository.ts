@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, notInArray, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, ne, notInArray, sql } from 'drizzle-orm';
 import type {
   EvalCase,
   EvalCaseMeta,
@@ -14,11 +14,15 @@ import * as t from '../../db/schema.js';
 import type { EvalCaseRow, EvalRunCaseRow, EvalRunRow } from '../../db/rows.js';
 import type {
   AgentWithCases,
+  CasePatch,
+  EvalOwner,
   EvalsStore,
   FindingSource,
   InsertRunResult,
+  LatestSingle,
   NewCase,
   NewCaseResult,
+  NewFindingCase,
   NewRun,
   RunPatch,
 } from './types.js';
@@ -102,7 +106,24 @@ function pgErrorCode(err: unknown): string | undefined {
   return e?.code ?? e?.cause?.code;
 }
 
-const SUITE = (ws: string) => and(eq(t.evalRuns.workspaceId, ws), eq(t.evalRuns.kind, 'suite'));
+/**
+ * Every agent-facing run read goes through this: workspace + `kind = 'suite'` + agent-owned.
+ * A skill run hosted on agent H has `agent_id = H` but `owner_kind = 'skill'`, so it never
+ * shows in H's history, tiles, trend, Compare, banner or the workspace dashboard.
+ */
+const AGENT_SUITE = (ws: string) =>
+  and(eq(t.evalRuns.workspaceId, ws), eq(t.evalRuns.kind, 'suite'), eq(t.evalRuns.ownerKind, 'agent'));
+
+/** The suite runs of one owner: `AGENT_SUITE` for an agent, the skill's own runs for a skill. */
+const OWNER_SUITE = (ws: string, owner: EvalOwner) =>
+  owner.kind === 'agent'
+    ? and(AGENT_SUITE(ws), eq(t.evalRuns.ownerId, owner.id))
+    : and(
+        eq(t.evalRuns.workspaceId, ws),
+        eq(t.evalRuns.kind, 'suite'),
+        eq(t.evalRuns.ownerKind, 'skill'),
+        eq(t.evalRuns.ownerId, owner.id),
+      );
 
 /** Evals persistence (ring 3). Every read and write is scoped by workspace. */
 export class EvalsRepository implements EvalsStore {
@@ -166,21 +187,21 @@ export class EvalsRepository implements EvalsStore {
 
   // ---- cases ---------------------------------------------------------------
 
-  async countCases(workspaceId: string, agentId: string): Promise<number> {
+  async countCases(workspaceId: string, owner: EvalOwner): Promise<number> {
     const [row] = await this.db
       .select({ n: sql<number>`count(*)::int` })
       .from(t.evalCases)
-      .where(this.ownedBy(workspaceId, agentId));
+      .where(this.ownedBy(workspaceId, owner));
     return row?.n ?? 0;
   }
 
   /** Insert, or report the case that already exists for this source finding (EC-2). */
-  async insertCaseIfAbsent(row: NewCase): Promise<{ case: EvalCase; created: boolean }> {
+  async insertCaseIfAbsent(row: NewFindingCase): Promise<{ case: EvalCase; created: boolean }> {
     const inserted = await this.db
       .insert(t.evalCases)
       .values({
         workspaceId: row.workspaceId,
-        ownerKind: 'agent',
+        ownerKind: row.ownerKind,
         ownerId: row.ownerId,
         name: row.name,
         inputDiff: row.inputDiff,
@@ -213,11 +234,67 @@ export class EvalsRepository implements EvalsStore {
     return { case: caseRowToDto(existing), created: false };
   }
 
-  async listCases(workspaceId: string, agentId: string): Promise<EvalCase[]> {
+  /** A hand-written case: `source: 'manual'`, no source finding (so the per-finding unique index is free). */
+  async insertCase(row: NewCase): Promise<EvalCase> {
+    const [inserted] = await this.db
+      .insert(t.evalCases)
+      .values({
+        workspaceId: row.workspaceId,
+        ownerKind: row.ownerKind,
+        ownerId: row.ownerId,
+        name: row.name,
+        inputDiff: row.inputDiff,
+        inputMeta: row.inputMeta,
+        expectedOutput: row.expectedOutput,
+        source: 'manual',
+        sourceFindingId: null,
+        expectation: row.expectation,
+        targetFile: row.target.file,
+        targetStartLine: row.target.start_line,
+        targetEndLine: row.target.end_line,
+        fingerprint: row.fingerprint,
+      })
+      .returning();
+    return caseRowToDto(inserted!);
+  }
+
+  /**
+   * Edit in place. Never touches `source`, `source_finding_id`, the owner or `expected_output`
+   * (EC-12): a case made from a finding keeps its origin and its link.
+   */
+  async updateCase(workspaceId: string, id: string, patch: CasePatch): Promise<EvalCase | undefined> {
+    const [row] = await this.db
+      .update(t.evalCases)
+      .set({
+        name: patch.name,
+        inputDiff: patch.inputDiff,
+        inputMeta: patch.inputMeta,
+        expectation: patch.expectation,
+        targetFile: patch.target.file,
+        targetStartLine: patch.target.start_line,
+        targetEndLine: patch.target.end_line,
+        fingerprint: patch.fingerprint,
+      })
+      .where(and(eq(t.evalCases.workspaceId, workspaceId), eq(t.evalCases.id, id)))
+      .returning();
+    return row ? caseRowToDto(row) : undefined;
+  }
+
+  async caseNames(workspaceId: string, owner: EvalOwner, excludeId?: string): Promise<string[]> {
+    const conds = [this.ownedBy(workspaceId, owner)];
+    if (excludeId) conds.push(ne(t.evalCases.id, excludeId));
+    const rows = await this.db
+      .select({ name: t.evalCases.name })
+      .from(t.evalCases)
+      .where(and(...conds));
+    return rows.map((r) => r.name);
+  }
+
+  async listCases(workspaceId: string, owner: EvalOwner): Promise<EvalCase[]> {
     const rows = await this.db
       .select()
       .from(t.evalCases)
-      .where(this.ownedBy(workspaceId, agentId))
+      .where(this.ownedBy(workspaceId, owner))
       .orderBy(asc(t.evalCases.createdAt), asc(t.evalCases.id));
     return rows.map(caseRowToDto);
   }
@@ -241,7 +318,11 @@ export class EvalsRepository implements EvalsStore {
 
   // ---- runs ----------------------------------------------------------------
 
-  /** A second running suite for the agent is a typed result, never a thrown 500 (EC-6). */
+  /**
+   * A second running suite for the owner, or a second running single-case run of the same
+   * case, is a typed result, never a thrown 500 (EC-6, EC-8): the two partial unique indexes
+   * back it race-safely.
+   */
   async insertRunningRun(row: NewRun): Promise<InsertRunResult> {
     try {
       const [inserted] = await this.db
@@ -249,9 +330,10 @@ export class EvalsRepository implements EvalsStore {
         .values({
           id: row.id,
           workspaceId: row.workspaceId,
-          kind: 'suite',
-          ownerKind: 'agent',
-          ownerId: row.agentId,
+          kind: row.kind,
+          ownerKind: row.ownerKind,
+          ownerId: row.ownerId,
+          singleCaseId: row.singleCaseId,
           agentId: row.agentId,
           agentVersion: row.agentVersion,
           provider: row.provider,
@@ -265,17 +347,19 @@ export class EvalsRepository implements EvalsStore {
       return { ok: true, run: runRowToDto(inserted!) };
     } catch (err) {
       if (pgErrorCode(err) !== '23505') throw err;
+      const sameRun =
+        row.kind === 'single' && row.singleCaseId
+          ? and(eq(t.evalRuns.kind, 'single'), eq(t.evalRuns.singleCaseId, row.singleCaseId))
+          : and(
+              eq(t.evalRuns.kind, 'suite'),
+              eq(t.evalRuns.ownerKind, row.ownerKind),
+              eq(t.evalRuns.ownerId, row.ownerId),
+            );
       const [active] = await this.db
         .select({ id: t.evalRuns.id })
         .from(t.evalRuns)
-        .where(
-          and(
-            SUITE(row.workspaceId),
-            eq(t.evalRuns.agentId, row.agentId),
-            eq(t.evalRuns.status, 'running'),
-          ),
-        );
-      return { ok: false, reason: 'already_running', runId: active?.id ?? null };
+        .where(and(eq(t.evalRuns.workspaceId, row.workspaceId), sameRun, eq(t.evalRuns.status, 'running')));
+      return { ok: false, reason: 'already_running', kind: row.kind, runId: active?.id ?? null };
     }
   }
 
@@ -320,17 +404,12 @@ export class EvalsRepository implements EvalsStore {
   }
 
   /**
-   * Mark every `running` suite run whose id is not in `activeIds` as failed —
-   * the process that owned it is gone (an API restart). `agentId` null = all agents.
+   * Mark every `running` run of the workspace (suite or single, any owner) whose id is not in
+   * `activeIds` as failed: the process that owned it is gone (an API restart). An orphaned
+   * single run would otherwise block its case forever.
    */
-  async failStaleRunning(
-    workspaceId: string,
-    agentId: string | null,
-    activeIds: readonly string[],
-    reason: string,
-  ): Promise<void> {
-    const conds = [SUITE(workspaceId), eq(t.evalRuns.status, 'running')];
-    if (agentId) conds.push(eq(t.evalRuns.agentId, agentId));
+  async failStaleRunning(workspaceId: string, activeIds: readonly string[], reason: string): Promise<void> {
+    const conds = [eq(t.evalRuns.workspaceId, workspaceId), eq(t.evalRuns.status, 'running')];
     if (activeIds.length > 0) conds.push(notInArray(t.evalRuns.id, [...activeIds]));
     await this.db
       .update(t.evalRuns)
@@ -340,10 +419,10 @@ export class EvalsRepository implements EvalsStore {
 
   async listRuns(
     workspaceId: string,
-    agentId: string,
+    owner: EvalOwner,
     opts: { limit: number; statuses?: readonly EvalSuiteRun['status'][]; order?: 'asc' | 'desc' },
   ): Promise<EvalSuiteRun[]> {
-    const conds = [SUITE(workspaceId), eq(t.evalRuns.agentId, agentId)];
+    const conds = [OWNER_SUITE(workspaceId, owner)];
     if (opts.statuses && opts.statuses.length > 0) {
       conds.push(inArray(t.evalRuns.status, [...opts.statuses]));
     }
@@ -360,13 +439,18 @@ export class EvalsRepository implements EvalsStore {
     const [row] = await this.db
       .select()
       .from(t.evalRuns)
-      .where(and(SUITE(workspaceId), eq(t.evalRuns.id, id)));
+      .where(and(AGENT_SUITE(workspaceId), eq(t.evalRuns.id, id)));
     return row ? runRowToDto(row) : undefined;
   }
 
+  /** Any kind, any owner: a single-case or skill run is polled through here too. */
   async getRunWithResults(workspaceId: string, id: string): Promise<EvalSuiteRunDetail | undefined> {
-    const run = await this.getRun(workspaceId, id);
-    if (!run) return undefined;
+    const [runRow] = await this.db
+      .select()
+      .from(t.evalRuns)
+      .where(and(eq(t.evalRuns.workspaceId, workspaceId), eq(t.evalRuns.id, id)));
+    if (!runRow) return undefined;
+    const run = runRowToDto(runRow);
     const rows = await this.db
       .select()
       .from(t.evalRunCases)
@@ -386,8 +470,8 @@ export class EvalsRepository implements EvalsStore {
   }
 
   /** Newest first; `partial` runs have metrics, `failed` and `running` ones do not. */
-  async latestCompletedRuns(workspaceId: string, agentId: string, n: number): Promise<EvalSuiteRun[]> {
-    return this.listRuns(workspaceId, agentId, { limit: n, statuses: ['completed', 'partial'] });
+  async latestCompletedRuns(workspaceId: string, owner: EvalOwner, n: number): Promise<EvalSuiteRun[]> {
+    return this.listRuns(workspaceId, owner, { limit: n, statuses: ['completed', 'partial'] });
   }
 
   // ---- dashboard -----------------------------------------------------------
@@ -413,17 +497,77 @@ export class EvalsRepository implements EvalsStore {
     const rows = await this.db
       .select()
       .from(t.evalRuns)
-      .where(SUITE(workspaceId))
+      .where(AGENT_SUITE(workspaceId))
       .orderBy(desc(t.evalRuns.ranAt))
       .limit(limit);
     return rows.map(runRowToDto);
   }
 
-  private ownedBy(workspaceId: string, agentId: string) {
+  // ---- single-case runs ----------------------------------------------------
+
+  async latestSingleByCase(
+    workspaceId: string,
+    caseIds: readonly string[],
+  ): Promise<Map<string, LatestSingle>> {
+    if (caseIds.length === 0) return new Map();
+    const rows = await this.db
+      .selectDistinctOn([t.evalRunCases.caseId], {
+        caseId: t.evalRunCases.caseId,
+        runId: t.evalRuns.id,
+        status: t.evalRunCases.status,
+        startedAt: t.evalRuns.ranAt,
+      })
+      .from(t.evalRunCases)
+      .innerJoin(t.evalRuns, eq(t.evalRunCases.runId, t.evalRuns.id))
+      .where(
+        and(
+          eq(t.evalRuns.workspaceId, workspaceId),
+          eq(t.evalRuns.kind, 'single'),
+          inArray(t.evalRunCases.caseId, [...caseIds]),
+        ),
+      )
+      .orderBy(t.evalRunCases.caseId, desc(t.evalRuns.ranAt));
+    const out = new Map<string, LatestSingle>();
+    for (const r of rows) {
+      if (r.caseId) out.set(r.caseId, { runId: r.runId, status: r.status, startedAt: r.startedAt.toISOString() });
+    }
+    return out;
+  }
+
+  async latestCaseResult(
+    workspaceId: string,
+    caseId: string,
+  ): Promise<{ run: EvalSuiteRun; result: EvalCaseResult } | undefined> {
+    const [row] = await this.db
+      .select({ run: t.evalRuns, result: t.evalRunCases })
+      .from(t.evalRunCases)
+      .innerJoin(t.evalRuns, eq(t.evalRunCases.runId, t.evalRuns.id))
+      .where(and(eq(t.evalRuns.workspaceId, workspaceId), eq(t.evalRunCases.caseId, caseId)))
+      .orderBy(desc(t.evalRuns.ranAt))
+      .limit(1);
+    return row ? { run: runRowToDto(row.run), result: resultRowToDto(row.result) } : undefined;
+  }
+
+  async runningSingle(workspaceId: string, caseId: string): Promise<EvalSuiteRun | undefined> {
+    const [row] = await this.db
+      .select()
+      .from(t.evalRuns)
+      .where(
+        and(
+          eq(t.evalRuns.workspaceId, workspaceId),
+          eq(t.evalRuns.kind, 'single'),
+          eq(t.evalRuns.singleCaseId, caseId),
+          eq(t.evalRuns.status, 'running'),
+        ),
+      );
+    return row ? runRowToDto(row) : undefined;
+  }
+
+  private ownedBy(workspaceId: string, owner: EvalOwner) {
     return and(
       eq(t.evalCases.workspaceId, workspaceId),
-      eq(t.evalCases.ownerKind, 'agent'),
-      eq(t.evalCases.ownerId, agentId),
+      eq(t.evalCases.ownerKind, owner.kind),
+      eq(t.evalCases.ownerId, owner.id),
     );
   }
 }

@@ -8,16 +8,27 @@
      GET    /eval-runs/:id                   → EvalSuiteRunDetail
      GET    /eval/dashboard                  → EvalDashboard (workspace)
      GET    /agents/:id/eval-dashboard       → EvalDashboard (one agent)
+     POST   /agents|skills/:id/eval-cases    → 201 EvalCase (manual case)
+     PUT    /eval-cases/:id                  → EvalCase
+     GET    /skills/:id/eval-cases           → EvalCaseList
+     POST   /eval-cases/:id/runs             → 202 EvalSuiteRun (kind `single`)
+     GET    /eval-cases/:id/runs/latest      → EvalCaseRunState
+     POST   /skills/:id/eval-runs            → 202 EvalSuiteRun (skill suite on a host agent)
+     GET    /skills/:id/eval-dashboard       → EvalDashboard (one skill)
    A run executes on the server after the 202, so the run list and the agent
    dashboard poll while one is `running`. POST bodies are strict `{}` — an
-   empty body would 422 against `z.object({}).strict()`. */
+   empty body would 422 against `z.object({}).strict()`; a case or skill run
+   sends `{ host_agent_id }` only when a skill is being hosted. */
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../api";
 import type {
+  EvalCase,
   EvalCaseCreateResult,
+  EvalCaseInput,
   EvalCaseList,
+  EvalCaseRunState,
   EvalDashboard,
   EvalRunComparison,
   EvalSuiteRun,
@@ -32,6 +43,11 @@ export const evalRunKey = (id: string | null | undefined) => ["eval-run", id] as
 export const evalDashboardKey = () => ["eval-dashboard"] as const;
 export const agentEvalDashboardKey = (agentId: string | null | undefined) =>
   ["agent-eval-dashboard", agentId] as const;
+export const skillEvalCasesKey = (skillId: string | null | undefined) =>
+  ["eval-cases", "skill", skillId] as const;
+export const evalCaseRunStateKey = (caseId: string | null | undefined) => ["eval-case-runs", caseId] as const;
+export const skillEvalDashboardKey = (skillId: string | null | undefined) =>
+  ["skill-eval-dashboard", skillId] as const;
 export const evalCompareKey = (agentId: string | null | undefined, a: string | null, b: string | null) =>
   ["eval-compare", agentId, a, b] as const;
 
@@ -41,6 +57,8 @@ function invalidateEvals(qc: ReturnType<typeof useQueryClient>) {
   qc.invalidateQueries({ queryKey: ["eval-runs"] });
   qc.invalidateQueries({ queryKey: ["eval-dashboard"] });
   qc.invalidateQueries({ queryKey: ["agent-eval-dashboard"] });
+  qc.invalidateQueries({ queryKey: ["eval-case-runs"] });
+  qc.invalidateQueries({ queryKey: ["skill-eval-dashboard"] });
 }
 
 export function useAgentEvalCases(agentId: string | null | undefined) {
@@ -48,6 +66,58 @@ export function useAgentEvalCases(agentId: string | null | undefined) {
     queryKey: evalCasesKey(agentId),
     queryFn: () => api.get<EvalCaseList>(`/agents/${agentId}/eval-cases`),
     enabled: !!agentId,
+  });
+}
+
+export function useSkillEvalCases(skillId: string | null | undefined) {
+  return useQuery({
+    queryKey: skillEvalCasesKey(skillId),
+    queryFn: () => api.get<EvalCaseList>(`/skills/${skillId}/eval-cases`),
+    enabled: !!skillId,
+  });
+}
+
+/** Write a manual case into an owner's set. The body is the strict `EvalCaseInput`. */
+export function useCreateEvalCase(owner: { kind: "agent" | "skill"; id: string }) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: EvalCaseInput) =>
+      api.post<EvalCase>(`/${owner.kind === "agent" ? "agents" : "skills"}/${owner.id}/eval-cases`, input),
+    onSuccess: () => invalidateEvals(qc),
+  });
+}
+
+/** Edit a case in place; the server recomputes its fingerprint. */
+export function useUpdateEvalCase() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ caseId, input }: { caseId: string; input: EvalCaseInput }) =>
+      api.put<EvalCase>(`/eval-cases/${caseId}`, input),
+    onSuccess: () => invalidateEvals(qc),
+  });
+}
+
+/** Run one saved case. `hostAgentId` is for a skill-owned case only; an agent case sends `{}`. */
+export function useStartCaseRun() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ caseId, hostAgentId }: { caseId: string; hostAgentId?: string }) =>
+      api.post<EvalSuiteRun>(`/eval-cases/${caseId}/runs`, hostAgentId ? { host_agent_id: hostAgentId } : {}),
+    onSuccess: () => invalidateEvals(qc),
+    // A 409 means this case is already running; a refetch shows it.
+    onError: (err) => {
+      if (err instanceof ApiError && err.status === 409) invalidateEvals(qc);
+    },
+  });
+}
+
+/** The editor's last-run read; polls while a single run of this case is live. */
+export function useEvalCaseRunState(caseId: string | null | undefined) {
+  return useQuery({
+    queryKey: evalCaseRunStateKey(caseId),
+    queryFn: () => api.get<EvalCaseRunState>(`/eval-cases/${caseId}/runs/latest`),
+    enabled: !!caseId,
+    refetchInterval: (q) => (q.state.data?.running ? POLL_MS : false),
   });
 }
 
@@ -66,6 +136,7 @@ export function useDeleteEvalCase(agentId: string) {
     mutationFn: (caseId: string) => api.del<{ ok: boolean }>(`/eval-cases/${caseId}`),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: evalCasesKey(agentId) });
+      qc.invalidateQueries({ queryKey: ["eval-cases"] });
       qc.invalidateQueries({ queryKey: ["eval-dashboard"] });
       qc.invalidateQueries({ queryKey: ["agent-eval-dashboard"] });
     },
@@ -132,5 +203,28 @@ export function useAgentEvalDashboard(agentId: string | null | undefined) {
     queryFn: () => api.get<EvalDashboard>(`/agents/${agentId}/eval-dashboard`),
     enabled: !!agentId,
     refetchInterval: (q) => (q.state.data?.running ? POLL_MS : false),
+  });
+}
+
+/** One skill's dashboard (its hosted suite runs); polls while a run is in flight. */
+export function useSkillEvalDashboard(skillId: string | null | undefined) {
+  return useQuery({
+    queryKey: skillEvalDashboardKey(skillId),
+    queryFn: () => api.get<EvalDashboard>(`/skills/${skillId}/eval-dashboard`),
+    enabled: !!skillId,
+    refetchInterval: (q) => (q.state.data?.running ? POLL_MS : false),
+  });
+}
+
+/** Run a skill's whole case set on a chosen host agent. The response is the `running` run. */
+export function useStartSkillEvalRun(skillId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (hostAgentId: string) =>
+      api.post<EvalSuiteRun>(`/skills/${skillId}/eval-runs`, { host_agent_id: hostAgentId }),
+    onSuccess: () => invalidateEvals(qc),
+    onError: (err) => {
+      if (err instanceof ApiError && err.status === 409) invalidateEvals(qc);
+    },
   });
 }

@@ -899,6 +899,13 @@ this repo's `AGENTS.md` "Read when" rows and report format, never the agent to t
 (`evals/src/delta.ts:69`). The onion rule-10 break moved only the *citation* practice
 (100 → 50 → 100): the model finds the reach-in without the rule, and the skill adds the rule name.
 
+### 2026-10-06 — /run-plan on eval case authoring (multi-agent, 2 tracks)
+Step 0 → A ∥ B → Integration needed no fix loops; test-writer's only real add was the foreign-workspace
+404 sweep the ledger had flagged as unexercised. The orchestrator made the `pnpm exec`-in-a-junctioned-worktree
+mistake (What Doesn't Work, 2026-09-29) for the **third** time, again by baselining a red it-test before
+reading root INSIGHTS. pnpm 10 stopped at `ERR_PNPM_IGNORED_BUILDS` before relinking anything (no
+`server/node_modules` link pointed at the worktree afterwards). Read root INSIGHTS **before** any baseline run.
+
 ## Open Questions
 
 - 2026-09-18 — The pr-self-review PreToolUse hook matches on command text, so a

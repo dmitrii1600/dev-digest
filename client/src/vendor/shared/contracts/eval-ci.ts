@@ -24,18 +24,67 @@ import {
 // Eval — case input + persisted run record + dashboard
 // ===========================================================================
 
-/** Create/update payload for an eval case (id + owner resolved by the route). */
-export const EvalCaseInput = z.object({
-  owner_kind: EvalOwnerKind,
-  owner_id: z.string(),
-  name: z.string().min(1),
-  input_diff: z.string().default(''),
-  input_files: z.unknown().nullish(),
-  input_meta: z.unknown().nullish(),
-  expected_output: z.unknown(),
-  notes: z.string().nullish(),
-});
+/**
+ * Size caps for a hand-written eval case. One source for the API and the case editor, so
+ * the two cannot drift. Strings are counted in code points (`*Chars`) or UTF-8 bytes (`*Bytes`).
+ */
+export const EVAL_CASE_LIMITS = {
+  nameChars: 120,
+  diffBytes: 65_536,
+  prTitleChars: 300,
+  prBodyBytes: 16_384,
+  /** Editor-only: the API carries `expectation` and `target` as fields, not the JSON text. */
+  expectedJsonBytes: 8_192,
+} as const;
+
+const codePoints = (s: string): number => Array.from(s).length;
+const utf8Bytes = (s: string): number => new TextEncoder().encode(s).length;
+
+/**
+ * Create/update body for a manual eval case. `owner_kind` / `owner_id` come from the URL,
+ * never the body. The diff, title and body are stored exactly as entered.
+ */
+export const EvalCaseInput = z
+  .object({
+    name: z
+      .string()
+      .trim()
+      .min(1)
+      .refine((s) => codePoints(s) <= EVAL_CASE_LIMITS.nameChars, {
+        message: `name must be at most ${EVAL_CASE_LIMITS.nameChars} characters`,
+      }),
+    input_diff: z
+      .string()
+      .min(1)
+      .refine((s) => utf8Bytes(s) <= EVAL_CASE_LIMITS.diffBytes, {
+        message: `input_diff must be at most ${EVAL_CASE_LIMITS.diffBytes} bytes`,
+      }),
+    input_meta: z
+      .object({
+        pr_title: z.string().refine((s) => codePoints(s) <= EVAL_CASE_LIMITS.prTitleChars, {
+          message: `pr_title must be at most ${EVAL_CASE_LIMITS.prTitleChars} characters`,
+        }),
+        pr_body: z.string().refine((s) => utf8Bytes(s) <= EVAL_CASE_LIMITS.prBodyBytes, {
+          message: `pr_body must be at most ${EVAL_CASE_LIMITS.prBodyBytes} bytes`,
+        }),
+      })
+      .strict(),
+    expectation: EvalExpectation,
+    target: EvalTarget.refine((t) => t.start_line <= t.end_line, {
+      message: 'start_line must not be after end_line',
+      path: ['start_line'],
+    }),
+  })
+  .strict();
 export type EvalCaseInput = z.infer<typeof EvalCaseInput>;
+
+/** `POST /eval-cases/:id/runs` — a host agent is required for a skill-owned case, refused for an agent-owned one. */
+export const EvalCaseRunRequest = z.object({ host_agent_id: z.string().uuid().optional() }).strict();
+export type EvalCaseRunRequest = z.infer<typeof EvalCaseRunRequest>;
+
+/** `POST /skills/:id/eval-runs` — the agent whose prompt, model and strategy the skill is evaluated on. */
+export const EvalSkillRunRequest = z.object({ host_agent_id: z.string().uuid() }).strict();
+export type EvalSkillRunRequest = z.infer<typeof EvalSkillRunRequest>;
 
 /**
  * Eval cases are made from decided findings (`EvalCase`, `knowledge.ts`); a suite
@@ -44,7 +93,7 @@ export type EvalCaseInput = z.infer<typeof EvalCaseInput>;
  * never 0 or 1.
  */
 
-/** Whether a run covered the whole set (`suite`) or one case (`single`, run-controls sibling). */
+/** Whether a run covered the whole set (`suite`) or one case (`single`, case-authoring). */
 export const EvalRunKind = z.enum(['suite', 'single']);
 export type EvalRunKind = z.infer<typeof EvalRunKind>;
 
@@ -134,11 +183,32 @@ export const EvalSuiteRunDetail = EvalSuiteRun.extend({
 });
 export type EvalSuiteRunDetail = z.infer<typeof EvalSuiteRunDetail>;
 
-/** A case in the Evals tab list, with its result in the latest completed run. */
+/**
+ * A case in the Evals tab list, with its result in the latest completed suite run.
+ * `latest_single` is the secondary marker: non-null only when a single-case run of this case
+ * is newer than that suite run (or there is no completed suite run).
+ */
 export const EvalCaseListItem = EvalCase.extend({
   last_result: z.enum(['passed', 'failed', 'errored', 'never_run']),
+  latest_single: z
+    .object({
+      run_id: z.string(),
+      status: EvalCaseResultStatus,
+      started_at: z.string(),
+    })
+    .nullable(),
 });
 export type EvalCaseListItem = z.infer<typeof EvalCaseListItem>;
+
+/**
+ * `GET /eval-cases/:id/runs/latest` — the case editor's read. `latest` is the newest finished
+ * result of this case from a run of either kind; `running` is a running single run of it.
+ */
+export const EvalCaseRunState = z.object({
+  latest: z.object({ run: EvalSuiteRun, result: EvalCaseResult }).nullable(),
+  running: EvalSuiteRun.nullable(),
+});
+export type EvalCaseRunState = z.infer<typeof EvalCaseRunState>;
 
 /** `GET /agents/:id/eval-cases` — `passing` / `total` cover the current cases only. */
 export const EvalCaseList = z.object({

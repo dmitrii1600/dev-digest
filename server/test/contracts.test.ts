@@ -12,6 +12,9 @@ import {
   Onboarding,
   EvalRun,
   EvalSuiteRun,
+  EvalCaseInput,
+  EvalCaseRunRequest,
+  EvalSkillRunRequest,
   MemoryItem,
   RunTrace,
   Settings,
@@ -238,6 +241,60 @@ describe('AI contracts parse fixtures', () => {
       log: [{ t: '00.00', kind: 'info', msg: 'started' }],
     });
     expect(trace.tool_calls).toHaveLength(1);
+  });
+});
+
+describe('EvalCaseInput boundaries', () => {
+  const valid = {
+    name: 'stripe-key',
+    input_diff: 'diff --git a/a.ts b/a.ts\n',
+    input_meta: { pr_title: 't', pr_body: 'b' },
+    expectation: 'must_find',
+    target: { file: 'a.ts', start_line: 4, end_line: 4 },
+  };
+  const parse = (over: Record<string, unknown>) => EvalCaseInput.safeParse({ ...valid, ...over });
+  const meta = (over: Record<string, unknown>) =>
+    parse({ input_meta: { ...valid.input_meta, ...over } });
+
+  it('accepts the base fixture', () => {
+    expect(EvalCaseInput.safeParse(valid).success).toBe(true);
+  });
+
+  it('name: blank rejected, 120 code points accepted (astral counts as one), 121 rejected', () => {
+    expect(parse({ name: '  ' }).success).toBe(false);
+    expect(parse({ name: 'a'.repeat(119) + '😀' }).success).toBe(true);
+    expect(parse({ name: 'a'.repeat(120) + '😀' }).success).toBe(false);
+    expect(parse({ name: 'a'.repeat(121) }).success).toBe(false);
+  });
+
+  it('input_diff: counted in UTF-8 bytes', () => {
+    expect(parse({ input_diff: 'a'.repeat(65_536) }).success).toBe(true);
+    expect(parse({ input_diff: 'a'.repeat(65_537) }).success).toBe(false);
+    expect(parse({ input_diff: 'a'.repeat(65_535) + 'é' }).success).toBe(false);
+  });
+
+  it('pr_title 300 / 301 code points, pr_body 16 384 / 16 385 bytes', () => {
+    expect(meta({ pr_title: 'a'.repeat(300) }).success).toBe(true);
+    expect(meta({ pr_title: 'a'.repeat(301) }).success).toBe(false);
+    expect(meta({ pr_body: 'a'.repeat(16_384) }).success).toBe(true);
+    expect(meta({ pr_body: 'a'.repeat(16_385) }).success).toBe(false);
+  });
+
+  it('target: start_line 0 rejected, start > end rejected at target.start_line, 4/4 accepted', () => {
+    expect(parse({ target: { file: 'a.ts', start_line: 0, end_line: 4 } }).success).toBe(false);
+    const bad = parse({ target: { file: 'a.ts', start_line: 5, end_line: 4 } });
+    expect(bad.success).toBe(false);
+    if (!bad.success) expect(bad.error.issues[0]?.path).toEqual(['target', 'start_line']);
+    expect(parse({ target: { file: 'a.ts', start_line: 4, end_line: 4 } }).success).toBe(true);
+  });
+
+  it('rejects an extra key (owner_id)', () => {
+    expect(parse({ owner_id: 'x' }).success).toBe(false);
+  });
+
+  it('run requests: skill needs a host, case does not', () => {
+    expect(EvalSkillRunRequest.safeParse({}).success).toBe(false);
+    expect(EvalCaseRunRequest.safeParse({}).success).toBe(true);
   });
 });
 

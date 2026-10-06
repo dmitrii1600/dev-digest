@@ -85,6 +85,121 @@ export function freezeDiff(
   return { ok: true, diff, trimmed: true };
 }
 
+// ---------------------------------------------------------------------------
+// Manual cases: a pasted diff
+// ---------------------------------------------------------------------------
+
+export interface PastedFile {
+  path: string;
+  /** Maximal runs of consecutive new-side line numbers of `+` lines, inclusive. */
+  ranges: [number, number][];
+}
+
+export type PastedDiffResult =
+  | { ok: true; files: PastedFile[] }
+  | { ok: false; reason: 'diff_unparseable' | 'diff_needs_git_headers' };
+
+const HUNK_START = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/;
+
+/**
+ * The files of a pasted unified diff and the line runs each one changes (the `+` lines).
+ * File rules follow `parseUnifiedDiff` exactly: a file starts at `diff --git` or, without
+ * one, at the first `+++ `; the `b/` prefix is stripped and the path trimmed; a
+ * `+++ /dev/null` file is dropped. That parser merges a header-less multi-file diff into one
+ * file, so such a diff is rejected here instead (`diff_needs_git_headers`).
+ */
+export function pastedDiffFiles(raw: string): PastedDiffResult {
+  const files: PastedFile[] = [];
+  let current: PastedFile | null = null;
+  let sawGit = false;
+  let sawHunk = false;
+  let inHunk = false;
+  let cursor = 0;
+  let run: [number, number] | null = null;
+  let prevWasOld = false;
+  let headerPairs = 0;
+
+  const flushRun = () => {
+    if (current && run) current.ranges.push(run);
+    run = null;
+  };
+  const flushFile = () => {
+    flushRun();
+    if (current) files.push(current);
+    current = null;
+    inHunk = false;
+  };
+
+  for (const line of raw.split('\n')) {
+    const isNewHeader = line.startsWith('+++ ');
+    if (isNewHeader && prevWasOld) headerPairs++;
+    prevWasOld = line.startsWith('--- ');
+
+    if (line.startsWith('diff --git')) {
+      flushFile();
+      sawGit = true;
+      current = { path: '', ranges: [] };
+      continue;
+    }
+    if (isNewHeader) {
+      if (!current) current = { path: '', ranges: [] };
+      const p = line.slice(4).replace(/^b\//, '').trim();
+      current.path = p === '/dev/null' ? current.path : p;
+      continue;
+    }
+    if (prevWasOld) continue;
+    const hh = HUNK_START.exec(line);
+    if (hh) {
+      flushRun();
+      sawHunk = true;
+      inHunk = true;
+      cursor = Number(hh[1]);
+      continue;
+    }
+    if (!current || !inHunk) continue;
+    if (line.startsWith('+')) {
+      if (run && run[1] === cursor - 1) run[1] = cursor;
+      else {
+        flushRun();
+        run = [cursor, cursor];
+      }
+      cursor++;
+    } else if (line.startsWith('-') || line.startsWith('\\')) {
+      // a deletion consumes no new-side line; a "\ No newline" marker is not a line
+    } else {
+      flushRun();
+      cursor++;
+    }
+  }
+  flushFile();
+
+  if (!sawGit && headerPairs > 1) return { ok: false, reason: 'diff_needs_git_headers' };
+  const named = files.filter((f) => f.path);
+  if (named.length === 0 || !sawHunk) return { ok: false, reason: 'diff_unparseable' };
+  return { ok: true, files: named };
+}
+
+export type TargetCheck =
+  | null
+  | { reason: 'target_file_not_in_diff'; field: 'target.file' }
+  | { reason: 'target_outside_changes'; field: 'target' };
+
+/**
+ * Is the target a file of the pasted diff, and does its range overlap a changed line?
+ * The path is compared exactly and case-sensitively, like `findingMatches`; overlap is inclusive.
+ */
+export function checkManualTarget(files: readonly PastedFile[], target: EvalTarget): TargetCheck {
+  const file = files.find((f) => f.path === target.file);
+  if (!file) return { reason: 'target_file_not_in_diff', field: 'target.file' };
+  const overlaps = file.ranges.some(([a, b]) => a <= target.end_line && target.start_line <= b);
+  return overlaps ? null : { reason: 'target_outside_changes', field: 'target' };
+}
+
+/** The key two case names are compared by: trimmed and case-insensitive (Q3). */
+export function caseNameKey(name: string): string {
+  return name.trim().toLowerCase();
+}
+
 /** First `n` characters (code points, so a surrogate pair is never split). */
 export function truncateChars(s: string, n: number): string {
   const chars = Array.from(s);

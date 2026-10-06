@@ -1,4 +1,4 @@
-import type { EvalCaseListItem, EvalExpectation, EvalTarget } from "@devdigest/shared";
+import type { EvalCaseListItem, EvalCaseSource, EvalExpectation, EvalTarget } from "@devdigest/shared";
 
 /** `file:start` for a one-line target, `file:start–end` for a range. */
 export function targetLabel(target: EvalTarget): string {
@@ -25,4 +25,10 @@ export const RESULT_COLOR: Record<EvalCaseListItem["last_result"], string> = {
   failed: "var(--crit)",
   errored: "var(--warn)",
   never_run: "var(--text-muted)",
+};
+
+/** Where a case came from (AC-7). */
+export const ORIGIN_KEY: Record<EvalCaseSource, string> = {
+  finding: "evalsTab.originFinding",
+  manual: "evalsTab.originManual",
 };

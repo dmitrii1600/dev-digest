@@ -4,6 +4,7 @@ import { NextIntlClientProvider } from "next-intl";
 import type { EvalCaseList, EvalCaseListItem, EvalDashboard, EvalSuiteRun } from "@devdigest/shared";
 import { ApiError } from "@/lib/api";
 import messages from "../../../../../../../../messages/en/eval.json";
+import shell from "../../../../../../../../messages/en/shell.json";
 
 const state = vi.hoisted(() => ({
   cases: undefined as unknown,
@@ -11,6 +12,8 @@ const state = vi.hoisted(() => ({
   start: vi.fn(),
   startError: null as Error | null,
   del: vi.fn(),
+  caseRun: vi.fn(),
+  caseRunError: null as Error | null,
 }));
 
 vi.mock("@/lib/hooks/evals", () => ({
@@ -23,6 +26,16 @@ vi.mock("@/lib/hooks/evals", () => ({
     error: state.startError,
   }),
   useDeleteEvalCase: () => ({ mutate: state.del, isPending: false }),
+  useStartCaseRun: () => ({
+    mutate: state.caseRun,
+    isPending: false,
+    variables: undefined,
+    isError: state.caseRunError !== null,
+    error: state.caseRunError,
+  }),
+  useCreateEvalCase: () => ({ mutate: vi.fn(), isPending: false, isError: false, error: null }),
+  useUpdateEvalCase: () => ({ mutate: vi.fn(), isPending: false, isError: false, error: null }),
+  useEvalCaseRunState: () => ({ data: undefined }),
 }));
 
 import { EvalsTab } from "./EvalsTab";
@@ -46,6 +59,7 @@ function caseItem(id: string, name: string, over: Partial<EvalCaseListItem> = {}
     expected_output: { title: name, severity: "HIGH", category: "bug" },
     created_at: "2026-10-05T10:00:00Z",
     last_result: "passed",
+    latest_single: null,
     ...over,
   };
 }
@@ -107,7 +121,7 @@ function dashboard(over: Partial<EvalDashboard> = {}): EvalDashboard {
 
 function renderTab() {
   return render(
-    <NextIntlClientProvider locale="en" messages={{ eval: messages }}>
+    <NextIntlClientProvider locale="en" messages={{ eval: messages, shell }}>
       <EvalsTab agentId="ag1" />
     </NextIntlClientProvider>,
   );
@@ -117,6 +131,8 @@ beforeEach(() => {
   state.start.mockReset();
   state.startError = null;
   state.del.mockReset();
+  state.caseRun.mockReset();
+  state.caseRunError = null;
 });
 
 describe("EvalsTab", () => {
@@ -224,5 +240,55 @@ describe("EvalsTab", () => {
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(screen.queryByText("Delete eval case?")).not.toBeInTheDocument();
     expect(state.del).not.toHaveBeenCalled();
+  });
+
+  it("AC-6/AC-7/AC-13: rows carry an origin badge and a single-run marker beside the unchanged suite result", () => {
+    state.cases = caseList(
+      [
+        caseItem("c1", "From a finding"),
+        caseItem("c2", "Hand written", {
+          source: "manual",
+          source_finding_id: null,
+          last_result: "failed",
+          latest_single: { run_id: "r9", status: "passed", started_at: "2026-10-06T10:00:00Z" },
+        }),
+      ],
+      1,
+    );
+    state.dashboard = dashboard();
+    renderTab();
+    expect(screen.getByText("from finding")).toBeInTheDocument();
+    expect(screen.getByText("manual")).toBeInTheDocument();
+    expect(screen.getByText("single run: passed")).toBeInTheDocument();
+    expect(screen.getByText("failed")).toBeInTheDocument();
+  });
+
+  it("New eval case opens the shared editor; Edit opens it with the case; closing a clean editor closes it", () => {
+    state.cases = caseList([caseItem("c1", "Leaked key")], 1);
+    state.dashboard = dashboard();
+    renderTab();
+
+    fireEvent.click(screen.getByRole("button", { name: "New eval case" }));
+    expect(screen.getByRole("dialog")).toHaveTextContent("New eval case");
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit eval case Leaked key" }));
+    expect(screen.getByRole("dialog")).toHaveTextContent("Eval case · Leaked key");
+    expect(screen.getByLabelText("Name")).toHaveValue("Leaked key");
+  });
+
+  it("AC-9: a row's Run starts a single-case run of that case; a 409 says the case is already running", () => {
+    state.cases = caseList([caseItem("c1", "Leaked key")], 1);
+    state.dashboard = dashboard();
+    renderTab();
+    fireEvent.click(screen.getByRole("button", { name: "Run eval case Leaked key" }));
+    expect(state.caseRun).toHaveBeenCalledWith({ caseId: "c1" });
+    expect(state.start).not.toHaveBeenCalled();
+    cleanup();
+
+    state.caseRunError = new ApiError("already running", 409, "eval_case_run_in_progress");
+    renderTab();
+    expect(screen.getByRole("alert")).toHaveTextContent("This case is already running.");
   });
 });

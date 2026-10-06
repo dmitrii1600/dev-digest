@@ -98,6 +98,15 @@ class Store implements EvalsStore {
     const c = { id: 'case-new', name: row.name } as unknown as EvalCase;
     return { case: c, created: true };
   }
+  async insertCase(): Promise<never> {
+    throw new Error('not used');
+  }
+  async updateCase(): Promise<undefined> {
+    return undefined;
+  }
+  async caseNames(): Promise<string[]> {
+    return [];
+  }
   async listCases() {
     return this.cases;
   }
@@ -115,11 +124,11 @@ class Store implements EvalsStore {
   async failStaleRunning() {}
   async listRuns(
     _ws: string,
-    agentId: string,
+    owner: { kind: 'agent' | 'skill'; id: string },
     opts: { limit: number; statuses?: readonly EvalSuiteRun['status'][]; order?: 'asc' | 'desc' },
   ) {
     const rows = this.runs
-      .filter((r) => r.agent_id === agentId && (!opts.statuses || opts.statuses.includes(r.status)))
+      .filter((r) => r.agent_id === owner.id && (!opts.statuses || opts.statuses.includes(r.status)))
       .sort((a, b) => a.started_at.localeCompare(b.started_at));
     if (opts.order !== 'asc') rows.reverse();
     return rows.slice(0, opts.limit);
@@ -133,8 +142,17 @@ class Store implements EvalsStore {
   async caseStatusesForRun() {
     return this.statuses;
   }
-  async latestCompletedRuns(ws: string, agentId: string, n: number) {
-    return this.listRuns(ws, agentId, { limit: n, statuses: ['completed', 'partial'] });
+  async latestCompletedRuns(ws: string, owner: { kind: 'agent' | 'skill'; id: string }, n: number) {
+    return this.listRuns(ws, owner, { limit: n, statuses: ['completed', 'partial'] });
+  }
+  async latestSingleByCase() {
+    return new Map();
+  }
+  async latestCaseResult(): Promise<undefined> {
+    return undefined;
+  }
+  async runningSingle(): Promise<undefined> {
+    return undefined;
   }
   async agentsWithCases() {
     return this.withCases;
@@ -155,7 +173,7 @@ function harness(over: Partial<EvalsDeps> = {}) {
   const service = new EvalsService({
     repo: store,
     agents: { getById: async (_ws, id) => (id === AGENT.id ? AGENT : undefined) },
-    skills: { blocksForAgent: async () => [] },
+    skills: { blocksForAgent: async () => [], getById: async () => undefined, linkedAgentIds: async () => [] },
     git: async () => ({
       diff: async (...args: unknown[]) => {
         git.calls.push(args);

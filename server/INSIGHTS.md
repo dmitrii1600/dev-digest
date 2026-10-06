@@ -321,6 +321,14 @@ append-only. Empty sections are expected — append under the one that fits.
   not available: `no-cross-module-reach-in` forbids `agents` importing
   `modules/evals`. When skill-owned cases ship, `skills/repository.ts` needs the
   same cleanup, or move both behind a helper in `modules/_shared/`.
+  (2026-10-06: skill-owned cases shipped; `SkillsRepository.deleteById` now deletes
+  skill-owned runs, then cases, then the skill in one transaction —
+  `src/modules/skills/repository.ts:76`. A third owner kind should move both into one helper.)
+- 2026-10-06 — A skill eval run stores its **host** agent's id in `eval_runs.agent_id`
+  (owner is the skill). Any agent-facing run read must filter through `AGENT_SUITE`
+  (`owner_kind = 'agent'`, `src/modules/evals/repository.ts:114`), never on `agent_id`
+  alone, or skill runs leak into that agent's history, dashboard and Compare; skill reads use
+  `OWNER_SUITE` (`:118`). The running-suite unique index is keyed on `owner_id` for the same reason.
 
 
 
@@ -428,7 +436,10 @@ append-only. Empty sections are expected — append under the one that fits.
 - 2026-09-26 — `conventions.it.test.ts:474` (`trace.prompt_assembly` undefined)
   failed once inside a full `pnpm test` run and passed alone (7/7). It drives a
   whole review run under parallel Testcontainers; re-run the file alone before
-  blaming a change outside `modules/reviews`.
+  blaming a change outside `modules/reviews`. (2026-10-06: it also failed 3 runs in a
+  row *alone*, once on a clean `b6c1529` worktree, then passed in the next full `--it`
+  run ~20 min later — "fails alone" is not proof of a regression either; prove a
+  clean-HEAD baseline.)
 
 - 2026-09-26 — Blast radius shows N symbols and 0 callers on a `full` index.
   Check `repo_index_state.stats->>'edgesWritten'`: if it is `0`, the depgraph

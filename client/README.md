@@ -28,7 +28,7 @@ flowchart TD
   PULLS --> PR["/pulls/:number<br/>review detail<br/>(overview · diff · findings)"]
 
   AGENTS["/agents"] --> AGENT["/agents/:id<br/>editor (config · skills · context · evals)"]
-  SKILLS["/skills<br/>Skills Lab"] --> SKILL["/skills/:id<br/>editor (config · preview · versions · stats)"]
+  SKILLS["/skills<br/>Skills Lab"] --> SKILL["/skills/:id<br/>editor (config · preview · versions · stats · context · evals)"]
   CONV["/repos/:repoId/conventions<br/>Conventions (scan · accept/reject/edit · create skill)"]
   CTX["/repos/:repoId/context<br/>Project Context (clone Markdown; author under .devdigest/specs/)"]
   SETTINGS["/settings/:section<br/>API keys · models"]
@@ -44,7 +44,8 @@ flowchart TD
   SKILL -->|"Context tab: GET|PUT /skills/:id/context?repoId="| API
   SETTINGS -->|"/settings · /providers"| API
   PR -->|"POST /findings/:id/eval-case"| API
-  AGENT -->|"Evals tab: GET /agents/:id/eval-cases · /eval-dashboard · POST …/eval-runs · DELETE /eval-cases/:id"| API
+  AGENT -->|"Evals tab: GET /agents/:id/eval-cases · /eval-dashboard · POST …/eval-runs · POST /agents/:id/eval-cases · PUT·DELETE /eval-cases/:id · POST /eval-cases/:id/runs · GET /eval-cases/:id/runs/latest"| API
+  SKILL -->|"Evals tab: GET /skills/:id/eval-cases · /eval-dashboard · POST /skills/:id/eval-cases · POST …/eval-runs · the case routes above"| API
   EVAL -->|"GET /eval/dashboard"| API
   EVALAGENT -->|"GET /agents/:id/eval-dashboard · /eval-runs · /eval-runs/compare?a=&b="| API
 ```
@@ -151,6 +152,10 @@ client shows what the server computes; it scores nothing. All data goes through
 flowchart LR
   CARD["FindingCard<br/>Turn into eval case"] -->|"POST /findings/:id/eval-case"| API[("Fastify API")]
   TAB["agents/:id Evals tab<br/>case list · Run all evals"] -->|"cases · dashboard · POST eval-runs"| API
+  STAB["skills/:id Evals tab<br/>host picker · case list · Run all evals"] -->|"skill cases · skill dashboard · POST eval-runs"| API
+  CASEUI["components/eval-cases<br/>EvalCaseList · EvalCaseEditor"] -.->|"one editor, two tabs"| TAB
+  CASEUI -.-> STAB
+  CASEUI -->|"POST·PUT eval-cases · POST eval-cases/:id/runs · GET runs/latest"| API
   DASH["/eval<br/>one card per agent"] -->|"GET /eval/dashboard"| API
   PAGE["/eval/:agentId<br/>tiles · banner · trend · runs"] -->|"GET eval-dashboard · eval-runs"| API
   PAGE --> CMP["CompareRunsModal<br/>two selected runs"]
@@ -165,9 +170,42 @@ flowchart LR
   the action. The button is enabled only for an accepted or dismissed finding; a 422 with
   `details.reason === 'diff_too_large'` gets its own message, any other failure a generic one
   (`FindingsPanel/helpers.ts`, `evalStatusForError`).
+- **A case can also be written by hand.** `EvalCaseEditor` (`src/components/eval-cases/`) is a
+  modal with the name, a Diff / Files / PR meta tab group, and on the right the expectation,
+  file, line range and an expected-output JSON box. `EvalCaseList` renders the rows, each with
+  an origin badge (`from finding` / `manual`), the suite `last_result`, and, when the server
+  sends `latest_single`, a secondary `single run: <result>` marker. Both are shared by the agent
+  and the skill Evals tabs, so they live in `src/components`, not under either route.
+  - *The form is the source of truth.* The JSON text is derived from the fields
+    (`{ type, file, start_line, end_line }`) until the user types in it. A JSON edit that
+    parses and fits the shape updates the fields; one that does not leaves the fields at their
+    last valid values, shows the reason and disables Save (`expectation-json.ts`).
+  - *Validation is the server's.* The shape and size rules come from `EvalCaseInput.safeParse`
+    and `EVAL_CASE_LIMITS` in `@devdigest/shared`. The diff rules are `parsePastedDiff`
+    (`case-diff.ts`), which mirrors the server's `pastedDiffFiles` rule for rule and is pinned by
+    the same fixtures: a "changed line" is the new-side number of a `+` line, and a multi-file
+    diff without `diff --git` lines is rejected. The Files tab lists each file's changed ranges,
+    read only; the file field offers only those files, and **Finding skeleton** fills the first
+    file's first range. The name-clash check reads the other cases' names from the list.
+  - *Running.* **Run case** is disabled until the case is saved and while its run is live. **Run on
+    save** is a toggle, off by default. The editor only reports the saved case id (`onRun`); the
+    tab decides how the run starts. `useEvalCaseRunState` polls while a single run is live and
+    feeds the editor's last-run panel (kind, agent version, result, expected vs got, duration,
+    cost, error).
+  - *Closing.* The X, the backdrop, Cancel and Escape ask before discarding unsaved changes.
+    Editing the expectation or target of a case made from a finding shows a warning; the case
+    keeps its origin and its source-finding link.
+- **The skill Evals tab** (`skills/[id]` → `evals`) has the same list, editor and tiles. A skill
+  has no model, so **Run all evals** and each row's Run first open `HostPickerModal`, listing the
+  agents the skill is linked to (`useSkillAgents`); it preselects the host of the latest run
+  while that agent is still linked, otherwise the first. With no linked agent, Run is disabled
+  and the tab says a host agent is needed. The tiles come from `useSkillEvalDashboard`. Skill
+  runs appear on this tab only, never on the agent's tab or the Eval Dashboard.
 - **A run is a poll.** `POST …/eval-runs` returns the `running` run at once; the run list and the
   agent dashboard refetch every 2 s while one is `running`. The Run button stays disabled until
-  it ends, and a 409 only triggers a refetch, with no error text.
+  it ends, and on the agent tab a 409 on a suite run only triggers a refetch, with no error text
+  (the skill tab shows `evals.runConflict`). A 409 on a single-case run shows "This case is
+  already running." (`caseEditor.runConflict`) on both tabs.
 - **"Not available" is "—", never 0.** Metrics are nullable in the contract. `MetricTrendChart`
   is feature-local and uses `recharts` directly with `connectNulls={false}`, because the
   vendored `LineChart` plots a missing value as 0.
