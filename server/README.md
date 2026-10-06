@@ -107,7 +107,7 @@ flowchart TB
     smartDiff["smart-diff<br/>/pulls/:id/smart-diff"]
   end
   subgraph Agents["Agents"]
-    agents["agents<br/>/agents · /agents/:id · /agents/:id/skills/:skillId"]
+    agents["agents<br/>/agents · /agents/:id · /agents/:id/skills/:skillId · POST /agents/:id/promote"]
   end
   subgraph SkillsMod["Skills"]
     skills["skills<br/>/skills · /skills/:id/(versions|restore|agents|stats)<br/>/skills/import(/preview) · /skills/import/url(/preview)"]
@@ -132,6 +132,16 @@ flowchart TB
 
 The evals routes, status codes and scoring are documented in
 [`modules/evals/README.md`](src/modules/evals/README.md).
+
+`POST /agents/:id/promote` (body `AgentPromoteInput`: `from_version`, `eval_run_id`, `expected_version`; no model
+call) restores the configuration an eval run used as a **new** version (current + 1), in one transaction that
+locks the agent row. The run must be this agent's own suite run (`owner_kind = 'agent'`); the skill set
+recorded on the run is re-linked in order and any other linked skill is kept but disabled. Errors: 404 (agent,
+run or snapshot not found) · 409 `agent_version_conflict` (`expected_version` is stale; `details.current_version`) ·
+422 `promotion_invalid` (`from_version` is not the run's version) · 422 `agent_version_unreadable`. Existing
+`agent_versions` and `eval_runs` rows are never changed; the new version carries a nullable
+`agent_versions.origin` (`{ kind: 'promotion', from_version, eval_run_id, missing_skills }`), returned on
+`GET /agents/:id/versions`.
 
 ## Environment
 

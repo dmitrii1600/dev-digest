@@ -3,7 +3,8 @@
      GET    /agents/:id/eval-cases           → EvalCaseList
      DELETE /eval-cases/:id
      POST   /agents/:id/eval-runs            → 202 EvalSuiteRun (status `running`)
-     GET    /agents/:id/eval-runs            → EvalSuiteRun[]
+     GET    /agents/:id/eval-runs[?since=]   → EvalSuiteRun[]
+     POST   /eval/run-all                    → EvalRunAllResult (one outcome per agent)
      GET    /agents/:id/eval-runs/compare    → EvalRunComparison
      GET    /eval-runs/:id                   → EvalSuiteRunDetail
      GET    /eval/dashboard                  → EvalDashboard (workspace)
@@ -30,6 +31,7 @@ import type {
   EvalCaseList,
   EvalCaseRunState,
   EvalDashboard,
+  EvalRunAllResult,
   EvalRunComparison,
   EvalSuiteRun,
   EvalSuiteRunDetail,
@@ -38,7 +40,8 @@ import type {
 const POLL_MS = 2000;
 
 export const evalCasesKey = (agentId: string | null | undefined) => ["eval-cases", agentId] as const;
-export const evalRunsKey = (agentId: string | null | undefined) => ["eval-runs", agentId] as const;
+export const evalRunsKey = (agentId: string | null | undefined, since?: string) =>
+  ["eval-runs", agentId, since ?? "all"] as const;
 export const evalRunKey = (id: string | null | undefined) => ["eval-run", id] as const;
 export const evalDashboardKey = () => ["eval-dashboard"] as const;
 export const agentEvalDashboardKey = (agentId: string | null | undefined) =>
@@ -143,10 +146,15 @@ export function useDeleteEvalCase(agentId: string) {
   });
 }
 
-export function useAgentEvalRuns(agentId: string | null | undefined) {
+/** The agent's newest suite runs; `since` (ISO datetime) limits them to a time window. */
+export function useAgentEvalRuns(agentId: string | null | undefined, opts?: { since?: string }) {
+  const since = opts?.since;
   return useQuery({
-    queryKey: evalRunsKey(agentId),
-    queryFn: () => api.get<EvalSuiteRun[]>(`/agents/${agentId}/eval-runs`),
+    queryKey: evalRunsKey(agentId, since),
+    queryFn: () =>
+      api.get<EvalSuiteRun[]>(
+        `/agents/${agentId}/eval-runs${since ? `?since=${encodeURIComponent(since)}` : ""}`,
+      ),
     enabled: !!agentId,
     refetchInterval: (q) => (q.state.data?.some((r) => r.status === "running") ? POLL_MS : false),
   });
@@ -162,6 +170,15 @@ export function useStartEvalRun(agentId: string) {
     onError: (err) => {
       if (err instanceof ApiError && err.status === 409) invalidateEvals(qc);
     },
+  });
+}
+
+/** Start one suite run per eligible agent. The strict body is `{}`; the result lists every agent's outcome. */
+export function useRunAllAgents() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.post<EvalRunAllResult>("/eval/run-all", {}),
+    onSettled: () => invalidateEvals(qc),
   });
 }
 
@@ -192,7 +209,10 @@ export function useEvalDashboard() {
   return useQuery({
     queryKey: evalDashboardKey(),
     queryFn: () => api.get<EvalDashboard>("/eval/dashboard"),
-    refetchInterval: (q) => (q.state.data?.recent_runs.some((r) => r.status === "running") ? POLL_MS : false),
+    refetchInterval: (q) =>
+      q.state.data?.agents.some((a) => a.running) || q.state.data?.recent_runs.some((r) => r.status === "running")
+        ? POLL_MS
+        : false,
   });
 }
 

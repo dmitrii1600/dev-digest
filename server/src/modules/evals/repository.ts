@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, ne, notInArray, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, ne, notInArray, sql } from 'drizzle-orm';
 import type {
   EvalCase,
   EvalCaseMeta,
@@ -420,12 +420,18 @@ export class EvalsRepository implements EvalsStore {
   async listRuns(
     workspaceId: string,
     owner: EvalOwner,
-    opts: { limit: number; statuses?: readonly EvalSuiteRun['status'][]; order?: 'asc' | 'desc' },
+    opts: {
+      limit: number;
+      statuses?: readonly EvalSuiteRun['status'][];
+      order?: 'asc' | 'desc';
+      since?: Date;
+    },
   ): Promise<EvalSuiteRun[]> {
     const conds = [OWNER_SUITE(workspaceId, owner)];
     if (opts.statuses && opts.statuses.length > 0) {
       conds.push(inArray(t.evalRuns.status, [...opts.statuses]));
     }
+    if (opts.since) conds.push(gte(t.evalRuns.ranAt, opts.since));
     const rows = await this.db
       .select()
       .from(t.evalRuns)
@@ -483,12 +489,13 @@ export class EvalsRepository implements EvalsStore {
         name: t.agents.name,
         provider: t.agents.provider,
         model: t.agents.model,
+        enabled: t.agents.enabled,
         casesTotal: sql<number>`count(${t.evalCases.id})::int`,
       })
       .from(t.evalCases)
       .innerJoin(t.agents, eq(t.evalCases.ownerId, t.agents.id))
       .where(and(eq(t.evalCases.workspaceId, workspaceId), eq(t.evalCases.ownerKind, 'agent')))
-      .groupBy(t.agents.id, t.agents.name, t.agents.provider, t.agents.model)
+      .groupBy(t.agents.id, t.agents.name, t.agents.provider, t.agents.model, t.agents.enabled)
       .orderBy(asc(t.agents.name));
     return rows;
   }

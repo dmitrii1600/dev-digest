@@ -241,8 +241,28 @@ export const EvalAgentCard = z.object({
   model: z.string(),
   cases_total: z.number().int(),
   latest: EvalSuiteRun.nullable(),
+  /** Whether the agent is enabled (a disabled agent is skipped by "Run all agents"). */
+  enabled: z.boolean(),
+  /** An agent-owned suite run is running now. */
+  running: z.boolean(),
 });
 export type EvalAgentCard = z.infer<typeof EvalAgentCard>;
+
+/** One agent's outcome in `POST /eval/run-all`. */
+export const EvalRunAllOutcome = z.object({
+  agent_id: z.string(),
+  agent_name: z.string(),
+  status: z.enum(['started', 'skipped']),
+  reason: z.enum(['already_running', 'no_cases', 'disabled']).nullable(),
+  run_id: z.string().nullable(),
+});
+export type EvalRunAllOutcome = z.infer<typeof EvalRunAllOutcome>;
+
+/** `POST /eval/run-all` — one outcome per agent; a skipped agent never stops the others. */
+export const EvalRunAllResult = z.object({
+  outcomes: z.array(EvalRunAllOutcome),
+});
+export type EvalRunAllResult = z.infer<typeof EvalRunAllResult>;
 
 /** `GET /agents/:id/eval-runs/compare?a=&b=` — values older → newer, deltas newer − older. */
 export const EvalRunComparison = z.object({

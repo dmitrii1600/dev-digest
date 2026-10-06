@@ -22,9 +22,12 @@ import {
   useAgentEvalDashboard,
   useCreateEvalCase,
   useCreateEvalCaseFromFinding,
+  useAgentEvalRuns,
   useDeleteEvalCase,
   useEvalCaseRunState,
+  useEvalDashboard,
   useEvalRunComparison,
+  useRunAllAgents,
   useSkillEvalCases,
   useSkillEvalDashboard,
   useStartCaseRun,
@@ -153,6 +156,74 @@ describe("useEvalRunComparison", () => {
 
     rerender({ a: "r1", b: "r2" });
     await waitFor(() => expect(api.get).toHaveBeenCalledWith("/agents/ag1/eval-runs/compare?a=r1&b=r2"));
+  });
+});
+
+describe("useAgentEvalRuns", () => {
+  it("adds ?since= only for a window, and keys the cache per window", async () => {
+    api.get.mockResolvedValue([]);
+    const { result, rerender } = renderHook(({ since }) => useAgentEvalRuns("ag1", { since }), {
+      wrapper,
+      initialProps: { since: undefined as string | undefined },
+    });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(api.get).toHaveBeenLastCalledWith("/agents/ag1/eval-runs");
+
+    rerender({ since: "2026-09-06T10:00:00.000Z" });
+    await waitFor(() =>
+      expect(api.get).toHaveBeenLastCalledWith("/agents/ag1/eval-runs?since=2026-09-06T10%3A00%3A00.000Z"),
+    );
+    expect(qc.getQueryData(["eval-runs", "ag1", "all"])).toEqual([]);
+  });
+});
+
+describe("useRunAllAgents", () => {
+  it("POSTs the strict {} and refetches the dashboards on success and on failure", async () => {
+    api.get.mockResolvedValue(dash(false));
+    const { result } = renderHook(() => ({ q: useAgentEvalDashboard("ag1"), m: useRunAllAgents() }), { wrapper });
+    await waitFor(() => expect(result.current.q.isSuccess).toBe(true));
+
+    api.post.mockResolvedValueOnce({ outcomes: [] });
+    api.get.mockClear();
+    act(() => result.current.m.mutate());
+    await waitFor(() => expect(result.current.m.isSuccess).toBe(true));
+    expect(api.post).toHaveBeenCalledWith("/eval/run-all", {});
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith("/agents/ag1/eval-dashboard"));
+
+    api.post.mockRejectedValueOnce(new ApiError("busy", 409, "eval_run_all_in_progress"));
+    api.get.mockClear();
+    act(() => result.current.m.mutate());
+    await waitFor(() => expect(result.current.m.isError).toBe(true));
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith("/agents/ag1/eval-dashboard"));
+  });
+});
+
+describe("useEvalDashboard", () => {
+  it("AC-9: polls while a card is running even when every recent run is completed", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const board = (running: boolean) => ({
+      agents: [{ agent_id: "ag1", running }],
+      recent_runs: [{ id: "r1", status: "completed" }],
+    });
+    api.get.mockResolvedValue(board(true));
+    const { result } = renderHook(() => useEvalDashboard(), { wrapper });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2100);
+    });
+    expect(api.get.mock.calls.length).toBeGreaterThanOrEqual(2);
+
+    api.get.mockResolvedValue(board(false));
+    for (let i = 0; i < 3 && result.current.data?.agents[0]?.running; i += 1) {
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2100);
+      });
+    }
+    const settled = api.get.mock.calls.length;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_000);
+    });
+    expect(api.get.mock.calls.length).toBe(settled);
   });
 });
 

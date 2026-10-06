@@ -15,6 +15,8 @@ import {
   EvalCaseInput,
   EvalCaseRunRequest,
   EvalSkillRunRequest,
+  AgentPromoteInput,
+  AgentVersion,
   MemoryItem,
   RunTrace,
   Settings,
@@ -295,6 +297,52 @@ describe('EvalCaseInput boundaries', () => {
   it('run requests: skill needs a host, case does not', () => {
     expect(EvalSkillRunRequest.safeParse({}).success).toBe(false);
     expect(EvalCaseRunRequest.safeParse({}).success).toBe(true);
+  });
+});
+
+describe('AgentPromoteInput / AgentVersion.origin', () => {
+  const valid = {
+    from_version: 1,
+    eval_run_id: '3f2b8a52-7c1e-4d0a-9f3b-0a1b2c3d4e5f',
+    expected_version: 3,
+  };
+
+  it('accepts the boundary from_version: 1', () => {
+    expect(AgentPromoteInput.safeParse(valid).success).toBe(true);
+  });
+
+  it('rejects an extra key, from_version 0 and a non-uuid run id', () => {
+    expect(AgentPromoteInput.safeParse({ ...valid, extra: 1 }).success).toBe(false);
+    expect(AgentPromoteInput.safeParse({ ...valid, from_version: 0 }).success).toBe(false);
+    expect(AgentPromoteInput.safeParse({ ...valid, eval_run_id: 'nope' }).success).toBe(false);
+  });
+
+  it('AgentVersion parses with and without origin', () => {
+    const base = {
+      agent_id: 'a1',
+      version: 4,
+      config: {
+        provider: 'anthropic',
+        model: 'claude-sonnet-4-5',
+        system_prompt: 'p',
+        strategy: 'single-pass',
+        ci_fail_on: 'never',
+        repo_intel: true,
+        skills: [],
+      },
+      created_at: '2026-10-06T00:00:00.000Z',
+    };
+    expect(AgentVersion.safeParse(base).success).toBe(true);
+    const withOrigin = AgentVersion.parse({
+      ...base,
+      origin: {
+        kind: 'promotion',
+        from_version: 1,
+        eval_run_id: valid.eval_run_id,
+        missing_skills: [{ skill_id: 's1', name: 'Gone' }],
+      },
+    });
+    expect(withOrigin.origin?.missing_skills).toHaveLength(1);
   });
 });
 

@@ -444,3 +444,35 @@ export function skillsChanged(
 export function evalTaskLine(meta: { pr_title: string }): string {
   return `Review pull request "${meta.pr_title}". ` + REVIEW_TASK_RULES;
 }
+
+/** A counting limiter: at most `n` tasks run at once, the rest wait in arrival order. */
+export interface Limiter {
+  run<T>(fn: () => Promise<T>): Promise<T>;
+}
+
+/**
+ * No timers: a slot is held from the moment `fn` starts until it settles, and is released on
+ * resolve and on reject alike. A waiting task takes over the slot directly, so the count never
+ * dips below `n` while anything is queued.
+ */
+export function createLimiter(n: number): Limiter {
+  const max = Math.max(1, Math.floor(n));
+  let active = 0;
+  const waiting: (() => void)[] = [];
+  const release = (): void => {
+    const next = waiting.shift();
+    if (next) next();
+    else active--;
+  };
+  return {
+    async run<T>(fn: () => Promise<T>): Promise<T> {
+      if (active >= max) await new Promise<void>((resolve) => waiting.push(resolve));
+      else active++;
+      try {
+        return await fn();
+      } finally {
+        release();
+      }
+    },
+  };
+}

@@ -10,6 +10,7 @@ import {
   EvalCaseRunRequest,
   EvalCaseRunState,
   EvalDashboard,
+  EvalRunAllResult,
   EvalRunComparison,
   EvalSkillRunRequest,
   EvalSuiteRun,
@@ -29,6 +30,8 @@ import { EvalsService } from './service.js';
 
 const EmptyBody = z.object({}).strict();
 const RunsQuery = z.object({ limit: z.coerce.number().int().min(1).max(100).default(RUNS_PAGE_SIZE) });
+/** The agent run list also takes a window start; `datetime()` requires a zone, so a naive time is a 422. */
+const AgentRunsQuery = RunsQuery.extend({ since: z.string().datetime().optional() });
 const CompareQuery = z.object({ a: z.string().uuid(), b: z.string().uuid() }).strict();
 const OkBody = z.object({ ok: z.literal(true) });
 
@@ -59,8 +62,11 @@ const OkBody = z.object({ ok: z.literal(true) });
  *   POST   /agents/:id/eval-runs              → EvalSuiteRun         body `{}`; 202, the run is `running`
  *                                                                     409 eval_run_in_progress  details.run_id
  *                                                                     422 eval_set_empty
- *   GET    /agents/:id/eval-runs?limit=       → EvalSuiteRun[]
+ *   GET    /agents/:id/eval-runs?limit=&since= → EvalSuiteRun[]    `since`: ISO datetime with a zone; runs started at or after it
  *   GET    /agents/:id/eval-runs/compare?a=&b= → EvalRunComparison   422 eval_compare_invalid
+ *   POST   /eval/run-all                      → EvalRunAllResult     body `{}`; one outcome per agent (started | skipped:
+ *                                                                     already_running | no_cases | disabled); 6 review calls in flight
+ *                                                                     at most across the batch; 409 eval_run_all_in_progress
  *   POST   /skills/:id/eval-runs              → EvalSuiteRun         body `{ host_agent_id }`; 202, the run is `running`
  *                                                                     409 eval_run_in_progress · 422 eval_set_empty | eval_host_invalid
  *   GET    /skills/:id/eval-runs?limit=       → EvalSuiteRun[]
@@ -214,6 +220,15 @@ export default async function evalsRoutes(appBase: FastifyInstance) {
   );
 
   app.post(
+    '/eval/run-all',
+    { schema: { body: EmptyBody, response: { 200: EvalRunAllResult } } },
+    async (req) => {
+      const { workspaceId } = await getContext(container, req);
+      return service.runAll(workspaceId);
+    },
+  );
+
+  app.post(
     '/skills/:id/eval-runs',
     { schema: { params: IdParams, body: EvalSkillRunRequest, response: { 202: EvalSuiteRun } } },
     async (req, reply) => {
@@ -254,10 +269,11 @@ export default async function evalsRoutes(appBase: FastifyInstance) {
 
   app.get(
     '/agents/:id/eval-runs',
-    { schema: { params: IdParams, querystring: RunsQuery, response: { 200: z.array(EvalSuiteRun) } } },
+    { schema: { params: IdParams, querystring: AgentRunsQuery, response: { 200: z.array(EvalSuiteRun) } } },
     async (req) => {
       const { workspaceId } = await getContext(container, req);
-      return service.listRuns(workspaceId, req.params.id, req.query.limit);
+      const since = req.query.since ? new Date(req.query.since) : undefined;
+      return service.listRuns(workspaceId, req.params.id, req.query.limit, since);
     },
   );
 

@@ -3,4 +3,5 @@
 export { MetricDelta } from "./MetricDelta";
 export type { MetricDeltaUnit } from "./MetricDelta";
 export { MetricTiles } from "./MetricTiles";
+export { MetricTrendChart } from "./MetricTrendChart";
 export { NOT_AVAILABLE, formatCost, formatCostDelta, formatDeltaCases, formatDeltaPoints, formatMetric, formatRunDate } from "./format";

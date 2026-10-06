@@ -3,7 +3,7 @@
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
-import type { Agent, AgentSkillLink, AgentVersion, ModelInfo, Provider, ReviewStrategy } from "@devdigest/shared";
+import type { Agent, AgentPromoteInput, AgentSkillLink, AgentVersion, ModelInfo, Provider, ReviewStrategy } from "@devdigest/shared";
 
 export function useAgents() {
   return useQuery({
@@ -88,6 +88,23 @@ export function useAgentVersion(agentId: string | null | undefined, version: num
     queryFn: () => api.get<AgentVersion>(`/agents/${agentId}/versions/${version}`),
     enabled: !!agentId && version != null,
     retry: false,
+  });
+}
+
+/** Promote a recorded version to a new current version (`POST /agents/:id/promote`). The agent row,
+    its skill links and the eval dashboards (the card's provider/model) all change, so all are refetched. */
+export function usePromoteAgent(agentId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: AgentPromoteInput) => api.post<Agent>(`/agents/${agentId}/promote`, input),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["agents"] });
+      qc.invalidateQueries({ queryKey: ["agent", agentId] });
+      qc.invalidateQueries({ queryKey: ["agent-version", agentId] });
+      qc.invalidateQueries({ queryKey: ["agent-skills", agentId] });
+      qc.invalidateQueries({ queryKey: ["eval-dashboard"] });
+      qc.invalidateQueries({ queryKey: ["agent-eval-dashboard"] });
+    },
   });
 }
 

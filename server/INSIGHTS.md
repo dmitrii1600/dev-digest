@@ -339,6 +339,13 @@ append-only. Empty sections are expected — append under the one that fits.
   and a glob may turn lint red. Mirror every `RING_2` addition in `.claude/skills/onion-architecture/layers.md`,
   which as of this date still lacks `_shared/review-inputs.ts` and `evals/types.ts`.
 
+- 2026-10-06 — A multi-check write that must be atomic (promote: lock, validate, 409, rewrite) keeps the
+  *transaction* in the repository but the *decisions* in the service: the repo exposes
+  `inPromotionTx(fn)` handing `fn` single-purpose primitives (`PromotionTx`, `modules/agents/repository.ts:69,310`)
+  and `AgentsService.promote` runs the ordered checks inside the callback (`modules/agents/service.ts:129`).
+  The first build put all of it in `repository.promote()`; architecture review flagged it WARNING —
+  policy in ring 3, untestable without Postgres, plus a ring-3 → ring-2 `helpers.js` import.
+
 ## Tool & Library Notes
 
 - 2026-09-20 — `drizzle-kit generate` asks interactively ("is `scan_id`
@@ -439,7 +446,11 @@ append-only. Empty sections are expected — append under the one that fits.
   blaming a change outside `modules/reviews`. (2026-10-06: it also failed 3 runs in a
   row *alone*, once on a clean `b6c1529` worktree, then passed in the next full `--it`
   run ~20 min later — "fails alone" is not proof of a regression either; prove a
-  clean-HEAD baseline.)
+  clean-HEAD baseline.) Superseded later on 2026-10-06 — root cause found, not a flake:
+  `run-executor.ts` set `agent_runs.status = 'done'` *before* `saveRunTrace`, so a reader that
+  polls the status and then GETs `/runs/:id/trace` raced a 404 (`prompt_assembly` of the error
+  body). Trace is now written first on all three paths (`modules/reviews/run-executor.ts`), and
+  `waitForPrRuns` throws on timeout instead of returning non-terminal rows (`test/helpers/runs.ts`).
 
 - 2026-09-26 — Blast radius shows N symbols and 0 callers on a `full` index.
   Check `repo_index_state.stats->>'edgesWritten'`: if it is `0`, the depgraph

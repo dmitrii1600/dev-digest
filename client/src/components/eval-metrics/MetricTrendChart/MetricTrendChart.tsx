@@ -1,13 +1,16 @@
 /* MetricTrendChart — recall / precision / citation per completed run, on
    recharts directly. The vendored LineChart turns a missing value into 0, which
-   would plot "not available" as 0 % (EC-8); here a null point is a gap. */
+   would plot "not available" as 0 % (EC-12); here a null point is a gap. Every
+   point is plotted — the caller picks the range. Points are keyboard-focusable
+   (`accessibilityLayer`) and show the same tooltip as hover. */
 "use client";
 
 import React from "react";
 import { useTranslations } from "next-intl";
-import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, XAxis, YAxis } from "recharts";
+import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type { EvalTrendPoint } from "@devdigest/shared";
 import { toChartRows } from "./helpers";
+import { TrendTooltip } from "./TrendTooltip";
 
 const SERIES = [
   { key: "recall", legendKey: "dashboard.legend.recall", color: "var(--accent)" },
@@ -24,7 +27,7 @@ export function MetricTrendChart({ trend }: { trend: EvalTrendPoint[] }) {
   return (
     <div style={{ width: "100%", height: 220 }}>
       <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={rows} margin={{ top: 14, right: 14, bottom: 8, left: -10 }}>
+        <LineChart accessibilityLayer data={rows} margin={{ top: 14, right: 14, bottom: 8, left: -10 }}>
           <CartesianGrid stroke="var(--border)" vertical={false} />
           <XAxis dataKey="i" hide />
           <YAxis
@@ -35,6 +38,7 @@ export function MetricTrendChart({ trend }: { trend: EvalTrendPoint[] }) {
             tickLine={false}
             width={44}
           />
+          <Tooltip content={<TrendTooltip />} />
           <Legend />
           {SERIES.map((sr) => (
             <Line

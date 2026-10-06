@@ -2,7 +2,9 @@
    the metric deltas, the case-set diff and the model / skill-set flags; the
    system-prompt diff is computed here from each run's agent-version snapshot.
    A snapshot that cannot be read costs only the diff: the deltas still show
-   (EC-11). A "not available" metric reads "—" (EC-8). */
+   (EC-11). A "not available" metric reads "—" (EC-8). Each run also has a
+   "Promote vX" action that restores that run's configuration as a new agent
+   version, after a confirmation that lists what would change. */
 "use client";
 
 import React from "react";
@@ -13,7 +15,9 @@ import { diffLines, isUnchanged, lineRowFor, lineSignFor } from "@/components/di
 import { MetricDelta, formatCost, formatCostDelta, formatMetric, formatRunDate } from "@/components/eval-metrics";
 import { useAgentVersion } from "@/lib/hooks/agents";
 import { useEvalRunComparison } from "@/lib/hooks/evals";
+import { PromoteConfirm } from "./_components/PromoteConfirm";
 import { s } from "./styles";
+import { usePromotion } from "./usePromotion";
 
 const METRIC_ROWS = [
   { key: "recall", legendKey: "dashboard.legend.recall" },
@@ -32,33 +36,60 @@ export function CompareRunsModal({
 }) {
   const t = useTranslations("eval");
   const { data, isLoading, isError } = useEvalRunComparison(agentId, runIds[0], runIds[1]);
+  const promotion = usePromotion(agentId, data, onClose);
 
   return (
-    <Modal
-      width={760}
-      title={t("compare.title")}
-      subtitle={data ? t("compare.olderNewer", { older: formatRunDate(data.older.started_at), newer: formatRunDate(data.newer.started_at) }) : undefined}
-      onClose={onClose}
-      footer={
-        <div style={{ display: "flex", justifyContent: "flex-end" }}>
-          <Button kind="ghost" onClick={onClose}>
-            {t("compare.close")}
-          </Button>
-        </div>
-      }
-    >
-      <div style={s.body}>
-        {isLoading ? (
-          <Skeleton height={160} />
-        ) : isError || !data ? (
-          <div role="alert" style={s.error}>
-            {t("compare.loadError")}
+    <>
+      <Modal
+        width={760}
+        title={t("compare.title")}
+        subtitle={data ? t("compare.olderNewer", { older: formatRunDate(data.older.started_at), newer: formatRunDate(data.newer.started_at) }) : undefined}
+        onClose={onClose}
+        footer={
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, flexWrap: "wrap" }}>
+            {promotion.targets.map(({ run, status }) => (
+              <Button
+                key={run.id}
+                kind="secondary"
+                disabled={status !== "ready"}
+                onClick={() => promotion.open(run.id)}
+              >
+                {status === "current"
+                  ? t("compare.promoteCurrent")
+                  : status === "unreadable"
+                    ? t("compare.promoteUnreadable", { version: run.agent_version })
+                    : t("compare.promote", { version: run.agent_version })}
+              </Button>
+            ))}
+            <Button kind="ghost" onClick={onClose}>
+              {t("compare.close")}
+            </Button>
           </div>
-        ) : (
-          <ComparisonBody agentId={agentId} cmp={data} />
-        )}
-      </div>
-    </Modal>
+        }
+      >
+        <div style={s.body}>
+          {isLoading ? (
+            <Skeleton height={160} />
+          ) : isError || !data ? (
+            <div role="alert" style={s.error}>
+              {t("compare.loadError")}
+            </div>
+          ) : (
+            <ComparisonBody agentId={agentId} cmp={data} />
+          )}
+        </div>
+      </Modal>
+      {promotion.target?.diff && (
+        <PromoteConfirm
+          version={promotion.target.run.agent_version}
+          diff={promotion.target.diff}
+          pending={promotion.pending}
+          error={promotion.error}
+          onConfirm={promotion.confirm}
+          onCancel={promotion.cancel}
+        />
+      )}
+    </>
   );
 }
 

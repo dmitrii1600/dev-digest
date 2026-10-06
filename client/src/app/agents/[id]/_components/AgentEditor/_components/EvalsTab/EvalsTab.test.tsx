@@ -16,6 +16,14 @@ const state = vi.hoisted(() => ({
   caseRunError: null as Error | null,
 }));
 
+// recharts needs layout jsdom does not have; the chart's own tests live with the component.
+vi.mock("@/components/eval-metrics", async (orig) => ({
+  ...(await orig<typeof import("@/components/eval-metrics")>()),
+  MetricTrendChart: (p: { trend: { ran_at: string }[] }) => (
+    <div data-testid="trend" data-count={p.trend.length} data-order={p.trend.map((x) => x.ran_at).join(",")} />
+  ),
+}));
+
 vi.mock("@/lib/hooks/evals", () => ({
   useAgentEvalCases: () => ({ data: state.cases, isLoading: false, isError: false }),
   useAgentEvalDashboard: () => ({ data: state.dashboard }),
@@ -176,6 +184,29 @@ describe("EvalsTab", () => {
     // precision is null: value and change both read "—", never 0 %
     expect(screen.getAllByText("—").length).toBeGreaterThanOrEqual(2);
     expect(screen.queryByText("0.0%")).not.toBeInTheDocument();
+  });
+
+  it("AC-14: the trend gets every suite run the dashboard returns (25), oldest first", () => {
+    state.cases = caseList([caseItem("c1", "Leaked key")], 1);
+    const trend = Array.from({ length: 25 }, (_, i) => ({
+      run_id: `r${i}`,
+      ran_at: new Date(Date.UTC(2026, 8, 1 + i)).toISOString(),
+      agent_version: 1,
+      recall: 0.5,
+      precision: null,
+      citation_accuracy: 1,
+      pass_rate: 0.5,
+      cases_passed: 1,
+      cases_total: 2,
+      cost_usd: null,
+    }));
+    state.dashboard = dashboard({ trend });
+    renderTab();
+
+    expect(screen.getByText("Metric trend")).toBeInTheDocument();
+    const chart = screen.getByTestId("trend");
+    expect(chart).toHaveAttribute("data-count", "25");
+    expect(chart).toHaveAttribute("data-order", trend.map((p) => p.ran_at).join(","));
   });
 
   it("disables Run with no cases and says why", () => {

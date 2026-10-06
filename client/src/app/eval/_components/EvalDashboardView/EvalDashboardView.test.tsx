@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
 import type { ReactNode } from "react";
-import { render, screen, cleanup, within } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent, within } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
 import type { EvalDashboard, EvalSuiteRun } from "@devdigest/shared";
 import messages from "../../../../../messages/en/eval.json";
@@ -10,6 +10,7 @@ vi.mock("@/components/app-shell", () => ({ AppShell: ({ children }: { children: 
 const state = vi.hoisted(() => ({ data: undefined as unknown }));
 vi.mock("@/lib/hooks/evals", () => ({
   useEvalDashboard: () => ({ data: state.data, isLoading: false, isError: false, refetch: vi.fn() }),
+  useRunAllAgents: () => ({ mutate: vi.fn(), isPending: false, data: undefined, isError: false, error: null }),
 }));
 
 import { EvalDashboardView } from "./EvalDashboardView";
@@ -60,10 +61,10 @@ function dashboard(over: Partial<EvalDashboard> = {}): EvalDashboard {
   };
 }
 
-function renderView() {
+function renderView(notice?: string) {
   return render(
     <NextIntlClientProvider locale="en" messages={{ eval: messages }}>
-      <EvalDashboardView />
+      <EvalDashboardView notice={notice} />
     </NextIntlClientProvider>,
   );
 }
@@ -75,8 +76,8 @@ describe("EvalDashboardView", () => {
     state.data = dashboard({
       cases_total: 6,
       agents: [
-        { agent_id: "ag1", agent_name: "Security Reviewer", provider: "openai", model: "gpt-4.1", cases_total: 4, latest: a1 },
-        { agent_id: "ag2", agent_name: "Style Reviewer", provider: "anthropic", model: "claude-x", cases_total: 2, latest: a2 },
+        { agent_id: "ag1", agent_name: "Security Reviewer", provider: "openai", model: "gpt-4.1", enabled: true, running: false, cases_total: 4, latest: a1 },
+        { agent_id: "ag2", agent_name: "Style Reviewer", provider: "anthropic", model: "claude-x", enabled: true, running: false, cases_total: 2, latest: a2 },
       ],
       recent_runs: [a1, a2],
     });
@@ -99,6 +100,48 @@ describe("EvalDashboardView", () => {
     expect(within(rows[2]!).getByText("Style Reviewer")).toBeInTheDocument();
     expect(within(rows[2]!).getByText("partial")).toBeInTheDocument();
     expect(within(rows[2]!).getByText("1/2")).toBeInTheDocument();
+  });
+
+  it("EC-11: shows the not-found notice for notice=agent_not_found, and ignores any other value", () => {
+    state.data = dashboard();
+    renderView("agent_not_found");
+    expect(screen.getByRole("status")).toHaveTextContent("That agent was not found or has no eval cases.");
+    cleanup();
+
+    renderView("other");
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(screen.queryByText("That agent was not found or has no eval cases.")).not.toBeInTheDocument();
+  });
+
+  it("EC-8: with no enabled agent that has cases, Run all agents is disabled and says why", () => {
+    const a1 = run("r1", "ag1");
+    state.data = dashboard({
+      cases_total: 4,
+      agents: [
+        { agent_id: "ag1", agent_name: "Security Reviewer", provider: "openai", model: "gpt-4.1", enabled: false, running: false, cases_total: 4, latest: a1 },
+      ],
+      recent_runs: [a1],
+    });
+    renderView();
+    expect(screen.getByRole("button", { name: "Run all agents" })).toBeDisabled();
+    expect(screen.getByText("No enabled agent has eval cases.")).toBeInTheDocument();
+  });
+
+  it("AC-7: Run all agents opens the confirmation for the eligible agents", () => {
+    const a1 = run("r1", "ag1");
+    state.data = dashboard({
+      cases_total: 4,
+      agents: [
+        { agent_id: "ag1", agent_name: "Security Reviewer", provider: "openai", model: "gpt-4.1", enabled: true, running: false, cases_total: 4, latest: a1 },
+      ],
+      recent_runs: [a1],
+    });
+    renderView();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Run all agents" }));
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByText("4 cases")).toBeInTheDocument();
+    expect(within(dialog).getByText("4 paid review calls · estimated $0.012")).toBeInTheDocument();
   });
 
   it("explains where eval cases come from when no agent has one", () => {

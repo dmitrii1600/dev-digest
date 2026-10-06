@@ -38,6 +38,10 @@ const rejected: [string, Req][] = [
   ['start-run: a run start carries no body fields', { method: 'POST', url: `/agents/${UUID}/eval-runs`, payload: { model: 'x' } }],
   ['list-runs: limit above 100', { method: 'GET', url: `/agents/${UUID}/eval-runs?limit=101` }],
   ['list-runs: limit below 1', { method: 'GET', url: `/agents/${UUID}/eval-runs?limit=0` }],
+  ['list-runs: since is not a datetime', { method: 'GET', url: `/agents/${UUID}/eval-runs?since=yesterday` }],
+  // Near-miss: `z.string().datetime()` requires a zone by default.
+  ['list-runs: since without a time zone', { method: 'GET', url: `/agents/${UUID}/eval-runs?since=2026-10-01T00:00:00` }],
+  ['run-all: extra body key', { method: 'POST', url: '/eval/run-all', payload: { agent_id: UUID } }],
   ['compare: a is not a uuid', { method: 'GET', url: `/agents/${UUID}/eval-runs/compare?a=nope&b=${UUID}` }],
   ['compare: b is missing', { method: 'GET', url: `/agents/${UUID}/eval-runs/compare?a=${UUID}` }],
   ['compare: unknown query key', { method: 'GET', url: `/agents/${UUID}/eval-runs/compare?a=${UUID}&b=${UUID}&c=1` }],

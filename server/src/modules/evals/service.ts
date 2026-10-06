@@ -7,6 +7,8 @@ import type {
   EvalCaseList,
   EvalCaseRunState,
   EvalDashboard,
+  EvalRunAllOutcome,
+  EvalRunAllResult,
   EvalRunComparison,
   EvalSuiteRun,
   EvalSuiteRunDetail,
@@ -19,7 +21,7 @@ import type {
 import type { ReviewInput, ReviewOutcome } from '@devdigest/reviewer-core';
 import { AppError, NotFoundError } from '../../platform/errors.js';
 import { skillBlockBody } from '../_shared/review-inputs.js';
-import { INTERRUPTED_REASON, MAX_CASE_NAME_CHARS, MAX_CASES_PER_AGENT, MAX_PR_BODY_BYTES, MAX_PR_TITLE_CHARS, RUNS_PAGE_SIZE } from './constants.js';
+import { DASHBOARD_RUN_CAP, INTERRUPTED_REASON, MAX_CASE_NAME_CHARS, MAX_CASES_PER_AGENT, MAX_PR_BODY_BYTES, MAX_PR_TITLE_CHARS, RUN_ALL_CONCURRENCY, RUNS_PAGE_SIZE } from './constants.js';
 import {
   aggregateRun,
   alertLine,
@@ -28,6 +30,7 @@ import {
   checkManualTarget,
   compactFindings,
   compareCaseSets,
+  createLimiter,
   evalTaskLine,
   extractFileDiff,
   freezeDiff,
@@ -41,6 +44,7 @@ import {
   truncateChars,
   truncateUtf8,
   type CaseOutcome,
+  type Limiter,
 } from './helpers.js';
 import type { EvalAgent, EvalOwner, EvalSkill, EvalsStore } from './types.js';
 
@@ -107,6 +111,8 @@ const fmtTimeout = (ms: number): string => (ms % 1000 === 0 ? `${ms / 1000} s` :
 export class EvalsService {
   /** Ids of runs executing in THIS process; a `running` row outside it is orphaned. */
   private readonly active = new Set<string>();
+  /** True while a "Run all agents" batch is still starting its runs (the loop, not the runs). */
+  private runAllStarting = false;
   private readonly now: () => Date;
 
   constructor(private readonly deps: EvalsDeps) {
@@ -303,7 +309,7 @@ export class EvalsService {
   // ---- runs ----------------------------------------------------------------
 
   /** Start a suite run and return it as `running` at once; the cases run in the background. */
-  async startRun(workspaceId: string, agentId: string): Promise<EvalSuiteRun> {
+  async startRun(workspaceId: string, agentId: string, opts: { limiter?: Limiter } = {}): Promise<EvalSuiteRun> {
     const { repo, skills } = this.deps;
     const agent = await this.requireAgent(workspaceId, agentId);
     await this.sweep(workspaceId);
@@ -328,7 +334,55 @@ export class EvalsService {
         code: 'eval_run_in_progress',
         message: `An eval run for "${agent.name}" is already running`,
       },
+      limiter: opts.limiter,
     });
+  }
+
+  /**
+   * Start a suite run for every enabled agent that has cases, one outcome per agent. A skipped
+   * agent (disabled, already running, no cases) never stops the others. The runs share one
+   * limiter, so the whole batch has at most `RUN_ALL_CONCURRENCY` review calls in flight; a
+   * second batch while this one is still starting is a 409.
+   */
+  async runAll(workspaceId: string): Promise<EvalRunAllResult> {
+    if (this.runAllStarting) {
+      throw new AppError('eval_run_all_in_progress', 'A run of all agents is still starting', 409);
+    }
+    this.runAllStarting = true;
+    try {
+      const limiter = createLimiter(RUN_ALL_CONCURRENCY);
+      const outcomes: EvalRunAllOutcome[] = [];
+      for (const a of await this.deps.repo.agentsWithCases(workspaceId)) {
+        const skipped = (reason: 'already_running' | 'no_cases' | 'disabled'): EvalRunAllOutcome => ({
+          agent_id: a.agentId,
+          agent_name: a.name,
+          status: 'skipped',
+          reason,
+          run_id: null,
+        });
+        let outcome: EvalRunAllOutcome;
+        if (!a.enabled) {
+          outcome = skipped('disabled');
+        } else {
+          try {
+            const run = await this.startRun(workspaceId, a.agentId, { limiter });
+            outcome = { agent_id: a.agentId, agent_name: a.name, status: 'started', reason: null, run_id: run.id };
+          } catch (err) {
+            if (err instanceof AppError && err.code === 'eval_run_in_progress') outcome = skipped('already_running');
+            else if (err instanceof AppError && err.code === 'eval_set_empty') outcome = skipped('no_cases');
+            else throw err;
+          }
+        }
+        this.deps.log.info(
+          { agentId: a.agentId, status: outcome.status, reason: outcome.reason, runId: outcome.run_id },
+          'eval run-all outcome',
+        );
+        outcomes.push(outcome);
+      }
+      return { outcomes };
+    } finally {
+      this.runAllStarting = false;
+    }
   }
 
   /**
@@ -417,6 +471,8 @@ export class EvalsService {
     cases: EvalCase[];
     singleCaseId: string | null;
     conflict: { code: string; message: string };
+    /** Shared by the runs of one "Run all agents" batch; no other path passes one. */
+    limiter?: Limiter;
   }): Promise<EvalSuiteRun> {
     const { workspaceId, kind, owner, agent, skills, cases, singleCaseId } = spec;
     const { repo } = this.deps;
@@ -469,6 +525,7 @@ export class EvalsService {
       skillBodies: skills.map(skillBlockBody),
       startedAt,
       logCtx,
+      limiter: spec.limiter,
     })
       .catch(async (err) => {
         this.deps.log.error({ ...logCtx, err: errMessage(err) }, 'eval run crashed');
@@ -501,6 +558,7 @@ export class EvalsService {
     startedAt: number;
     /** What every log line of this run carries: kind, owner, case, agent version, skills (NFR-7). */
     logCtx: Record<string, unknown>;
+    limiter?: Limiter;
   }): Promise<void> {
     const { runId, agent, cases } = ctx;
     const { repo, log } = this.deps;
@@ -562,13 +620,14 @@ export class EvalsService {
 
   /** One case: review the frozen diff, score it, persist exactly one result row. */
   private async runCase(
-    ctx: { runId: string; agent: EvalAgent; skillBodies: string[] },
+    ctx: { runId: string; agent: EvalAgent; skillBodies: string[]; limiter?: Limiter },
     c: EvalCase,
     llm: LLMProvider | null,
     llmError: string | null,
   ): Promise<{ score: CaseOutcome; error: string | null }> {
     const { runId, agent } = ctx;
-    const started = this.now().getTime();
+    // Re-read once a limiter slot is held, so `duration_ms` excludes the queue wait.
+    let started = this.now().getTime();
     const base = {
       runId,
       caseId: c.id,
@@ -583,7 +642,7 @@ export class EvalsService {
     let error: string | null = null;
     try {
       if (!llm) throw new Error(llmError ?? 'LLM provider unavailable');
-      const outcome = await this.reviewWithTimeout({
+      const reviewInput: ReviewInput = {
         systemPrompt: agent.systemPrompt,
         model: agent.model,
         diff: this.deps.parseDiff(c.input_diff),
@@ -594,7 +653,14 @@ export class EvalsService {
         task: evalTaskLine(c.input_meta),
         maxRetries: 0,
         sessionId: `eval:${runId}:${c.id}`,
-      });
+      };
+      // The 120 s timer is armed only once the slot is held: a case waiting for a slot is
+      // queued, not slow, and must not be recorded as a timeout.
+      const call = (): Promise<ReviewOutcome> => {
+        started = this.now().getTime();
+        return this.reviewWithTimeout(reviewInput);
+      };
+      const outcome = await (ctx.limiter ? ctx.limiter.run(call) : call());
       const kept = outcome.review.findings;
       const s = scoreCase(c.expectation, c.target, kept, outcome.dropped.length);
       result = {
@@ -679,10 +745,15 @@ export class EvalsService {
 
   // ---- reads ---------------------------------------------------------------
 
-  async listRuns(workspaceId: string, agentId: string, limit = RUNS_PAGE_SIZE): Promise<EvalSuiteRun[]> {
+  async listRuns(
+    workspaceId: string,
+    agentId: string,
+    limit = RUNS_PAGE_SIZE,
+    since?: Date,
+  ): Promise<EvalSuiteRun[]> {
     await this.requireAgent(workspaceId, agentId);
     await this.sweep(workspaceId);
-    return this.deps.repo.listRuns(workspaceId, { kind: 'agent', id: agentId }, { limit });
+    return this.deps.repo.listRuns(workspaceId, { kind: 'agent', id: agentId }, { limit, since });
   }
 
   async listSkillRuns(workspaceId: string, skillId: string, limit = RUNS_PAGE_SIZE): Promise<EvalSuiteRun[]> {
@@ -741,11 +812,7 @@ export class EvalsService {
     await this.sweep(workspaceId);
     const { repo } = this.deps;
     const owner: EvalOwner = { kind: 'agent', id: agentId };
-    const completed = await repo.listRuns(workspaceId, owner, {
-      limit: 500,
-      statuses: ['completed', 'partial'],
-      order: 'asc',
-    });
+    const completed = await this.completedChronological(workspaceId, owner);
     const latest = completed[completed.length - 1] ?? null;
     const previous = completed[completed.length - 2] ?? null;
     const [recent, running, casesTotal] = await Promise.all([
@@ -795,11 +862,7 @@ export class EvalsService {
     await this.sweep(workspaceId);
     const { repo } = this.deps;
     const owner: EvalOwner = { kind: 'skill', id: skillId };
-    const completed = await repo.listRuns(workspaceId, owner, {
-      limit: 500,
-      statuses: ['completed', 'partial'],
-      order: 'asc',
-    });
+    const completed = await this.completedChronological(workspaceId, owner);
     const latest = completed[completed.length - 1] ?? null;
     const previous = latest
       ? ([...completed.slice(0, -1)].reverse().find((r) => r.agent_id === latest.agent_id) ?? null)
@@ -846,14 +909,24 @@ export class EvalsService {
     const { repo } = this.deps;
     const withCases = await repo.agentsWithCases(workspaceId);
     const agents: EvalAgentCard[] = await Promise.all(
-      withCases.map(async (a) => ({
-        agent_id: a.agentId,
-        agent_name: a.name,
-        provider: a.provider,
-        model: a.model,
-        cases_total: a.casesTotal,
-        latest: (await repo.latestCompletedRuns(workspaceId, { kind: 'agent', id: a.agentId }, 1))[0] ?? null,
-      })),
+      withCases.map(async (a) => {
+        const owner: EvalOwner = { kind: 'agent', id: a.agentId };
+        const [latest, running] = await Promise.all([
+          repo.latestCompletedRuns(workspaceId, owner, 1),
+          // Agent-owned suite runs only (`AGENT_SUITE`): a skill run hosted on this agent never counts.
+          repo.listRuns(workspaceId, owner, { limit: 1, statuses: ['running'] }),
+        ]);
+        return {
+          agent_id: a.agentId,
+          agent_name: a.name,
+          provider: a.provider,
+          model: a.model,
+          cases_total: a.casesTotal,
+          latest: latest[0] ?? null,
+          enabled: a.enabled,
+          running: running.length > 0,
+        };
+      }),
     );
     const recent = await repo.recentRuns(workspaceId, RUNS_PAGE_SIZE);
     return {
@@ -873,6 +946,19 @@ export class EvalsService {
   }
 
   // ---- internals -----------------------------------------------------------
+
+  /**
+   * The owner's newest `DASHBOARD_RUN_CAP` completed runs, oldest first. Reading newest-first
+   * and reversing keeps the latest pair correct past the cap (an ascending read would keep the
+   * OLDEST rows).
+   */
+  private async completedChronological(workspaceId: string, owner: EvalOwner): Promise<EvalSuiteRun[]> {
+    const newestFirst = await this.deps.repo.listRuns(workspaceId, owner, {
+      limit: DASHBOARD_RUN_CAP,
+      statuses: ['completed', 'partial'],
+    });
+    return [...newestFirst].reverse();
+  }
 
   private async requireAgent(workspaceId: string, agentId: string): Promise<EvalAgent> {
     const agent = await this.deps.agents.getById(workspaceId, agentId);

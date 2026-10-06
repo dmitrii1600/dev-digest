@@ -104,13 +104,14 @@ removes columns, `server/INSIGHTS.md`).
 | `POST /eval-cases/:id/runs` | `202` with a `single` run as `running`. Body `{}` for an agent's case, `{ host_agent_id }` for a skill's. |
 | `GET /eval-cases/:id/runs/latest` | `EvalCaseRunState`: the case's newest result from a run of either kind, and its running single run if any. |
 | `POST /agents/:id/eval-runs` | `202` with the run as `running`; the cases execute in the background. |
-| `GET /agents/:id/eval-runs?limit=` | `EvalSuiteRun[]`, newest first; `limit` 1-100, default 20. |
+| `GET /agents/:id/eval-runs?limit=&since=` | `EvalSuiteRun[]`, newest first; `limit` 1-100, default 20. `since` is an ISO datetime **with a zone** (`z.string().datetime()`; `2026-10-01T00:00:00` is a 422) and keeps runs that **started** at or after it (`ran_at >= since`); the skill run list takes no `since`. |
+| `POST /eval/run-all` | `200` `EvalRunAllResult`: one outcome per agent that has a case, `started` or `skipped` (`already_running` · `no_cases` · `disabled`) with the run id when started. Body `{}`. A skipped agent never stops the next one. |
 | `GET /agents/:id/eval-runs/compare?a=&b=` | `EvalRunComparison`. Registered before the `/:id` family so `compare` is never read as an id. |
 | `POST /skills/:id/eval-runs` | `202` with a skill suite run as `running`. Body `{ host_agent_id }`. |
 | `GET /skills/:id/eval-runs?limit=` | `EvalSuiteRun[]`: the skill's suite runs, newest first. |
 | `GET /skills/:id/eval-dashboard` | `EvalDashboard` for one skill: tiles, deltas, trend. |
 | `GET /eval-runs/:id` | `EvalSuiteRunDetail`: the run plus every case result. Any kind and any owner, so a single run is polled here. |
-| `GET /eval/dashboard` | `EvalDashboard` for the workspace: one card per agent that has a case, and the 20 newest runs. |
+| `GET /eval/dashboard` | `EvalDashboard` for the workspace: one card per agent that has a case (each with `enabled`, and `running` while an agent-owned suite run is in progress; a skill run hosted on the agent does not set it), and the 20 newest runs. |
 | `GET /agents/:id/eval-dashboard` | `EvalDashboard` for one agent: tiles, deltas, trend, regressions. |
 
 The POST bodies that carry nothing are `z.object({}).strict()`: an empty body still 422s, so
@@ -123,6 +124,7 @@ scoped by `workspace_id`).
 |---|---|---|---|
 | 404 | `not_found` | | unknown finding, agent, skill, case, run or host agent; a finding whose review has no `agent_id`; an agent that was deleted |
 | 409 | `eval_run_in_progress` | `run_id` | a suite run of this agent, or of this skill, is already running |
+| 409 | `eval_run_all_in_progress` | | a `POST /eval/run-all` is still inside its start loop (in-process flag; once it returns, the per-agent 409 covers the running phase) |
 | 409 | `eval_case_run_in_progress` | `run_id` | a single-case run of this case is already running |
 | 422 | `eval_case_rejected` | `reason`, `field` (manual cases) | from a finding: `finding_undecided` · `case_limit` · `diff_unavailable` · `diff_too_large` · `target_outside_diff`. From a manual create or edit: `case_limit` · `diff_unparseable` · `diff_needs_git_headers` · `target_file_not_in_diff` · `target_outside_changes` · `name_taken` |
 | 422 | `eval_host_invalid` | `reason`, `host_agent_id` (`host_not_linked` only) | `host_required` (a skill's case, no host) · `host_not_allowed` (an agent's case, host given) · `host_not_linked` (the host is not linked to the skill) |
@@ -214,10 +216,17 @@ row. `launch` is the one path every run takes; `startRun` is the agent-suite wra
   `completeStructured` request. `reviewPullRequest` itself gets `maxRetries: 0`, so there is no
   schema re-ask. The reason is the one in [`brief`'s README](../brief/README.md#one-call-no-retry):
   a hidden retry would score a different prompt than the one recorded.
-- **Time and width.** At most 3 cases are in flight (`EVAL_CONCURRENCY`). Each is raced
+- **Time and width.** At most 3 cases are in flight per run (`EVAL_CONCURRENCY`). Each case is raced
   against a 120 s timer (`EVAL_CASE_TIMEOUT_MS`); the provider's own timeout is 125 s, so the
   service timer always wins. A result that arrives after the timer is discarded and the case
   stays `errored`. As in `brief`, the timer does not cancel the request.
+- **Batch width (`POST /eval/run-all`).** `runAll` creates one limiter (`createLimiter`,
+  `RUN_ALL_CONCURRENCY` = 6) and passes it to `launch` for every agent it starts, so a batch has at
+  most 6 review calls in flight across all its runs. The limiter is an optional field of the
+  `launch` spec: single-case and skill runs never pass one and are never throttled by a batch. A
+  case takes its limiter slot **before** its timer is armed (`runCase`), so time spent queued is not
+  counted against the 120 s and never records `errored: timeout` without a call. `duration_ms` also
+  starts once the slot is held.
 - **Failure per case.** A throw, a timeout or a missing provider key (`ConfigError` from
   `container.llm`, resolved once per run) becomes an `errored` row with `err.message`. A
   missing-key message names the variable (`OPENAI_API_KEY is not configured`,
@@ -350,9 +359,10 @@ keywords. A
 
 ## Known limits
 
-- The agent dashboard reads at most 500 completed runs, oldest first
-  (`service.ts`, `agentDashboard`). Past 500, the "latest" pair, the tiles and the
-  regressions describe an old pair of runs.
+- The agent and skill dashboards read the **newest** 500 completed runs (`completedChronological`,
+  `DASHBOARD_RUN_CAP`) and show them oldest first. The trend therefore shows at most those 500;
+  an older run is not plotted, and the "latest" pair, the tiles and the regressions always
+  describe the newest runs.
 - The stale-run sweep is workspace-wide and keyed on the per-process `active` set, so it is
   unsafe with two API processes on one database: each would mark the other's live runs
   interrupted.

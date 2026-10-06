@@ -141,6 +141,13 @@
       "when": 1791285098397,
       "tag": "0019_absent_king_bedlam",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1791297919704,
+      "tag": "0020_keen_luckman",
+      "breakpoints": true
     }
   ]
 }

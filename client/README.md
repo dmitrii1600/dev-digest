@@ -151,16 +151,17 @@ client shows what the server computes; it scores nothing. All data goes through
 ```mermaid
 flowchart LR
   CARD["FindingCard<br/>Turn into eval case"] -->|"POST /findings/:id/eval-case"| API[("Fastify API")]
-  TAB["agents/:id Evals tab<br/>case list · Run all evals"] -->|"cases · dashboard · POST eval-runs"| API
+  TAB["agents/:id Evals tab<br/>case list · tiles · trend · Run all evals"] -->|"cases · dashboard · POST eval-runs"| API
   STAB["skills/:id Evals tab<br/>host picker · case list · Run all evals"] -->|"skill cases · skill dashboard · POST eval-runs"| API
   CASEUI["components/eval-cases<br/>EvalCaseList · EvalCaseEditor"] -.->|"one editor, two tabs"| TAB
   CASEUI -.-> STAB
   CASEUI -->|"POST·PUT eval-cases · POST eval-cases/:id/runs · GET runs/latest"| API
   DASH["/eval<br/>one card per agent"] -->|"GET /eval/dashboard"| API
-  PAGE["/eval/:agentId<br/>tiles · banner · trend · runs"] -->|"GET eval-dashboard · eval-runs"| API
-  PAGE --> CMP["CompareRunsModal<br/>two selected runs"]
-  CMP -->|"GET eval-runs/compare + agent versions"| API
-  TILES["components/eval-metrics<br/>MetricTiles · MetricDelta"] -.->|"shared by tab and page"| TAB
+  DASH -->|"POST /eval/run-all"| API
+  PAGE["/eval/:agentId<br/>window · switcher · tiles · banner · trend · runs"] -->|"GET eval-dashboard · eval-runs?since= · POST eval-runs"| API
+  PAGE --> CMP["CompareRunsModal<br/>two selected runs · Promote vX"]
+  CMP -->|"GET eval-runs/compare + agent versions · POST /agents/:id/promote"| API
+  TILES["components/eval-metrics<br/>MetricTiles · MetricDelta · MetricTrendChart"] -.->|"shared by tab and page"| TAB
   TILES -.-> PAGE
 ```
 
@@ -207,8 +208,34 @@ flowchart LR
   (the skill tab shows `evals.runConflict`). A 409 on a single-case run shows "This case is
   already running." (`caseEditor.runConflict`) on both tabs.
 - **"Not available" is "—", never 0.** Metrics are nullable in the contract. `MetricTrendChart`
-  is feature-local and uses `recharts` directly with `connectNulls={false}`, because the
-  vendored `LineChart` plots a missing value as 0.
+  (`src/components/eval-metrics/`, shared by the agent page and the agent Evals tab) uses
+  `recharts` directly with `connectNulls={false}`, because the vendored `LineChart` plots a
+  missing value as 0. It draws every point it is given (no cap), is keyboard-focusable
+  (`accessibilityLayer`), and its tooltip shows the run date, agent version and cost ("—" when
+  unknown). The agent Evals tab renders it under the tiles with the whole `dashboard.trend`
+  (every completed agent-owned suite run, at most the newest 500; single-case and skill runs are
+  not in it); the agent page passes it the same list filtered by the window.
+- **Time window and agent switcher** (`/eval/:agentId`). The window (`7d`, `30d`, `90d`, `all`;
+  default `30d`, anything else falls back to it) and the agent live in the URL: picking a window
+  `replace`s `?window=` (`WindowSelect`), `AgentSwitcher` `push`es `/eval/<id>?window=<w>` so Back
+  returns to the previous agent, and a reload restores both. The runs table reads `eval-runs?since=`; the trend is
+  `dashboard.trend` filtered by `ran_at` on the client; the tiles and the regression banner always
+  read the unfiltered dashboard (the latest two runs). An empty window shows one empty state with
+  **Show all runs**. An agent id that is unknown or has no case redirects to
+  `/eval?notice=agent_not_found`, which the landing page renders as a status notice (any other
+  `notice` value is ignored). The page header also has **Run eval** and the agent's current version.
+- **Run all agents** (`/eval`). The button opens `RunAllAgentsModal`: every eligible agent (enabled,
+  at least one case) with its case count and latest cost, the paid-call total and an estimate ("—"
+  for an agent never run; the total is "—" only when no cost is known). Confirming posts
+  `/eval/run-all` and the modal lists one text line per agent, `started` or `skipped` with its
+  reason. With no eligible agent the button is disabled and says why. A card shows a **Running**
+  badge while the server reports `running`, and the landing page polls while any card is running.
+- **Promote vX** (Compare). Each compared run has a **Promote v{n}** button, disabled with
+  "Current configuration" when its recorded configuration equals the agent's, or with a reason when
+  its snapshot cannot be read (the metric rows stay). The confirmation lists each changed field and
+  skill change, the skills that no longer exist, and a skill whose version moved (only the link is
+  restored). It posts `expected_version`, captured when Compare opened; a 409 shows a reload
+  message and nothing changes. On success Compare closes and a toast names the new version.
 - **Change is text, not colour.** `MetricDelta` renders a sign glyph and a unit (`▲ +3.0 pts`,
   `+2 cases`); the vendored `MetricCard.delta` is not used because it is unsigned and icon-only.
 - **Compare** is enabled for exactly two selected runs, and only `completed` and `partial` runs

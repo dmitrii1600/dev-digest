@@ -523,10 +523,35 @@ export const AgentVersionConfig = z.object({
 });
 export type AgentVersionConfig = z.infer<typeof AgentVersionConfig>;
 
+/**
+ * `POST /agents/:id/promote` — restore the configuration a past eval run used as a
+ * NEW version. `from_version` is that run's recorded version, `expected_version` the
+ * agent's current version when the Compare modal was opened (409 on a mismatch).
+ */
+export const AgentPromoteInput = z
+  .object({
+    from_version: z.number().int().positive(),
+    eval_run_id: z.string().uuid(),
+    expected_version: z.number().int().positive(),
+  })
+  .strict();
+export type AgentPromoteInput = z.infer<typeof AgentPromoteInput>;
+
+/** Where a version came from when it was not an edit: a promotion of a past eval run. */
+export const AgentVersionOrigin = z.object({
+  kind: z.literal('promotion'),
+  from_version: z.number().int(),
+  eval_run_id: z.string(),
+  /** Skills in the run's set that no longer exist, so were not re-linked. */
+  missing_skills: z.array(z.object({ skill_id: z.string(), name: z.string() })),
+});
+export type AgentVersionOrigin = z.infer<typeof AgentVersionOrigin>;
+
 export const AgentVersion = z.object({
   agent_id: z.string(),
   version: z.number().int(),
   config: AgentVersionConfig,
   created_at: z.string(),
+  origin: AgentVersionOrigin.nullish(),
 });
 export type AgentVersion = z.infer<typeof AgentVersion>;

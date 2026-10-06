@@ -1,6 +1,7 @@
 /* AgentEvalCard — one agent that has eval cases: name, model, the version and
    date of its latest completed run, pass count and the three metrics. The whole
-   card links to that agent's eval page. A metric that is not available reads
+   card links to that agent's eval page, and shows a "Running" badge while a suite
+   run of the agent is in flight. A metric that is not available reads
    "—" (EC-8). */
 "use client";
 
@@ -33,6 +34,7 @@ export function AgentEvalCard({ card }: { card: EvalAgentCard }) {
     <Link href={`/eval/${card.agent_id}`} style={CARD_STYLE}>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <span style={{ fontSize: 15, fontWeight: 700, flex: 1 }}>{card.agent_name}</span>
+        {card.running && <Badge color="var(--accent)">{t("dashboard.cardRunning")}</Badge>}
         <Badge color="var(--text-secondary)" mono>
           {card.model}
         </Badge>

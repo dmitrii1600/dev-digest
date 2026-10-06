@@ -1,18 +1,37 @@
 import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
-import { render, screen, cleanup } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent, within } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
 import type { EvalRunComparison, EvalSuiteRun } from "@devdigest/shared";
+import { ApiError } from "@/lib/api";
 import messages from "../../../../../../messages/en/eval.json";
+import agentsMessages from "../../../../../../messages/en/agents.json";
 
 const state = vi.hoisted(() => ({
   comparison: undefined as unknown,
   versions: {} as Record<number, { data?: unknown; isError?: boolean }>,
+  agent: undefined as unknown,
+  links: [] as unknown[],
+  skills: [] as unknown[],
+  promote: vi.fn(),
+  promoteError: null as Error | null,
+  toast: vi.fn(),
 }));
 
 vi.mock("@/lib/hooks/evals", () => ({
   useEvalRunComparison: () => ({ data: state.comparison, isLoading: false, isError: false }),
 }));
+vi.mock("@/lib/hooks/skills", () => ({ useSkills: () => ({ data: state.skills }) }));
+vi.mock("@/providers/toast", () => ({ useToast: () => ({ success: state.toast }) }));
 vi.mock("@/lib/hooks/agents", () => ({
+  useAgent: () => ({ data: state.agent }),
+  useAgentSkillLinks: () => ({ data: state.links }),
+  usePromoteAgent: () => ({
+    mutate: state.promote,
+    reset: vi.fn(),
+    isPending: false,
+    isError: state.promoteError !== null,
+    error: state.promoteError,
+  }),
   useAgentVersion: (_agentId: string, version: number) => {
     const v = state.versions[version] ?? {};
     return { data: v.data, isError: !!v.isError };
@@ -70,15 +89,21 @@ function version(n: number, prompt: string) {
   };
 }
 
-function renderModal() {
+function renderModal(onClose: () => void = () => {}) {
   return render(
-    <NextIntlClientProvider locale="en" messages={{ eval: messages }}>
-      <CompareRunsModal agentId="ag1" runIds={["a", "b"]} onClose={() => {}} />
+    <NextIntlClientProvider locale="en" messages={{ eval: messages, agents: agentsMessages }}>
+      <CompareRunsModal agentId="ag1" runIds={["a", "b"]} onClose={onClose} />
     </NextIntlClientProvider>,
   );
 }
 
 beforeEach(() => {
+  state.agent = undefined;
+  state.links = [];
+  state.skills = [];
+  state.promote.mockReset();
+  state.promoteError = null;
+  state.toast.mockReset();
   state.comparison = comparison();
   state.versions = {
     1: { data: version(1, "Be strict.\nReport bugs.") },
@@ -134,5 +159,98 @@ describe("CompareRunsModal", () => {
       screen.getByText("The system-prompt diff is unavailable: an agent-version snapshot could not be read."),
     ).toBeInTheDocument();
     expect(screen.getByText("▲ +10.0 pts")).toBeInTheDocument();
+  });
+});
+
+/* Promote vX - runs of v2 and v4, the agent is at v5 with a prompt of its own. The v4 snapshot IS
+   the agent's current configuration; the v2 snapshot differs in its prompt. */
+const CURRENT = {
+  provider: "openai",
+  model: "gpt-4.1",
+  system_prompt: "Current prompt",
+  output_schema: null,
+  strategy: "single-pass",
+  ci_fail_on: "critical",
+  repo_intel: true,
+};
+const full = (n: number, over: Record<string, unknown> = {}) => ({
+  agent_id: "ag1",
+  version: n,
+  created_at: "2026-10-05T10:00:00Z",
+  config: { ...CURRENT, skills: [], ...over },
+});
+
+describe("CompareRunsModal - Promote", () => {
+  beforeEach(() => {
+    state.comparison = comparison({ older: run("a", 2), newer: run("b", 4) });
+    state.agent = { id: "ag1", name: "A", version: 5, ...CURRENT };
+    state.versions = { 2: { data: full(2, { system_prompt: "Old prompt" }) }, 4: { data: full(4) } };
+  });
+
+  it("AC-1/EC-1: one Promote button per run; the run that equals the current configuration is disabled as such", () => {
+    renderModal();
+    expect(screen.getByRole("button", { name: "Promote v2" })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: "Promote v4" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Current configuration" })).toBeDisabled();
+
+    state.versions = { 2: { data: full(2, { system_prompt: "Old prompt" }) }, 4: { data: full(4, { model: "gpt-5" }) } };
+    cleanup();
+    renderModal();
+    expect(screen.getByRole("button", { name: "Promote v2" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Promote v4" })).toBeEnabled();
+  });
+
+  it("EC-5: an unreadable snapshot disables its Promote with a reason, and the metric deltas stay", () => {
+    state.versions = { 2: { isError: true }, 4: { data: full(4) } };
+    renderModal();
+    expect(screen.getByRole("button", { name: "Version v2 cannot be read" })).toBeDisabled();
+    expect(screen.getByText("▲ +10.0 pts")).toBeInTheDocument();
+    expect(screen.getAllByText(/→/).length).toBeGreaterThan(0);
+  });
+
+  it("AC-2/AC-3: the confirmation lists the change; confirming sends the expected version captured when the modal opened", () => {
+    const { rerender } = renderModal();
+    fireEvent.click(screen.getByRole("button", { name: "Promote v2" }));
+    const dialogs = screen.getAllByRole("dialog");
+    const confirm = dialogs[dialogs.length - 1]!;
+    expect(within(confirm).getByText("System prompt")).toBeInTheDocument();
+
+    // the agent moves on to v6 while the confirmation is open: the captured v5 is still what is sent
+    state.agent = { id: "ag1", name: "A", version: 6, ...CURRENT };
+    rerender(
+      <NextIntlClientProvider locale="en" messages={{ eval: messages, agents: agentsMessages }}>
+        <CompareRunsModal agentId="ag1" runIds={["a", "b"]} onClose={() => {}} />
+      </NextIntlClientProvider>,
+    );
+    fireEvent.click(within(confirm).getByRole("button", { name: "Promote" }));
+    expect(state.promote).toHaveBeenCalledWith(
+      { from_version: 2, eval_run_id: "a", expected_version: 5 },
+      expect.anything(),
+    );
+  });
+
+  it("AC-5: a successful promotion closes Compare and toasts the new version", () => {
+    state.promote.mockImplementation((_input: unknown, opts: { onSuccess?: (a: { version: number }) => void }) =>
+      opts.onSuccess?.({ version: 6 }),
+    );
+    const onClose = vi.fn();
+    renderModal(onClose);
+    fireEvent.click(screen.getByRole("button", { name: "Promote v2" }));
+    const dialogs = screen.getAllByRole("dialog");
+    fireEvent.click(within(dialogs[dialogs.length - 1]!).getByRole("button", { name: "Promote" }));
+    expect(state.toast).toHaveBeenCalledWith("Promoted — now v6");
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("EC-4: a 409 shows the reload message inline and nothing else changes", () => {
+    state.promoteError = new ApiError("conflict", 409, "agent_version_conflict");
+    const onClose = vi.fn();
+    renderModal(onClose);
+    fireEvent.click(screen.getByRole("button", { name: "Promote v2" }));
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "This agent changed since you opened Compare. Reload to see its current version.",
+    );
+    expect(onClose).not.toHaveBeenCalled();
+    expect(state.toast).not.toHaveBeenCalled();
   });
 });

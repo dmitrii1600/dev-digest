@@ -72,6 +72,12 @@ append-only. Empty sections are expected — append under the one that fits.
   children (`…/_components/BlastRadiusPanel/BlastRadiusPanel.tsx:168`); the RTL
   query is then `getByRole("button", { name: /symbol/ })`.
 
+- 2026-10-06 — Do not render a confirm dialog *inside* a `@devdigest/ui` `Modal`: its panel
+  animates (`ddpop`, `src/vendor/ui/kit/Modal.tsx:40`), and a transformed ancestor becomes
+  the containing block for a nested `position: fixed` overlay, which then lays out inside
+  the panel. Render it as a sibling of the `Modal` — `PromoteConfirm` sits next to Compare
+  (`src/app/eval/[agentId]/_components/CompareRunsModal/CompareRunsModal.tsx:83`).
+
 ## Codebase Patterns
 
 - 2026-09-20 — `Checkbox` in `src/vendor/ui/kit` is a `<button role="checkbox"
@@ -285,6 +291,14 @@ b")` never matches a multi-line
 
 
 ## Recurring Errors & Fixes
+
+- 2026-10-06 — `Module not found: Can't resolve './contracts/findings.js'` from `next dev` /
+  `next build` means a *value* import of `@devdigest/shared` reached webpack: the vendored barrel
+  is the server's ESM source (`src/vendor/shared/index.ts:17` imports `.js` for `.ts`), which tsc
+  and vitest map but webpack does not. Every import of the barrel was `import type` (erased) until
+  `EVAL_CASE_LIMITS` (`src/components/eval-cases/case-diff.ts:9`). Fixed once with
+  `resolve.extensionAlias` `.js → .ts/.tsx/.js` in `next.config.mjs`; the dev server then 500s
+  every later route, so the symptom was e2e flows 09–16 red, not a flow regression.
 
 ## Session Notes
 

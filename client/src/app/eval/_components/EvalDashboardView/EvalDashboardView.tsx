@@ -5,16 +5,18 @@
 
 import React from "react";
 import { useTranslations } from "next-intl";
-import { EmptyState, ErrorState, Skeleton } from "@devdigest/ui";
+import { Button, EmptyState, ErrorState, Skeleton } from "@devdigest/ui";
 import { AppShell } from "@/components/app-shell";
 import { formatCost, formatMetric, formatRunDate } from "@/components/eval-metrics";
 import { useEvalDashboard } from "@/lib/hooks/evals";
 import { AgentEvalCard } from "./_components/AgentEvalCard";
+import { RunAllAgentsModal, runAllSummary } from "./_components/RunAllAgentsModal";
 import { s } from "./styles";
 
-export function EvalDashboardView() {
+export function EvalDashboardView({ notice }: { notice?: string }) {
   const t = useTranslations("eval");
   const { data, isLoading, isError, refetch } = useEvalDashboard();
+  const [confirmingRunAll, setConfirmingRunAll] = React.useState(false);
   const crumb = [{ label: t("page.crumbSkillsLab") }, { label: t("page.crumbEvalDashboard") }];
 
   if (isError) {
@@ -25,12 +27,34 @@ export function EvalDashboardView() {
     );
   }
 
+  const canRunAll = runAllSummary(data?.agents ?? []).eligible.length > 0;
   const agentName = new Map((data?.agents ?? []).map((a) => [a.agent_id, a.agent_name]));
 
   return (
     <AppShell crumb={crumb}>
       <div style={s.page}>
-        <h1 style={s.h1}>{t("dashboard.defaultTitle")}</h1>
+        <div style={s.head}>
+          <h1 style={s.h1}>{t("dashboard.defaultTitle")}</h1>
+          {data && (
+            <div style={s.headActions}>
+              <Button
+                kind="primary"
+                size="sm"
+                icon="Play"
+                disabled={!canRunAll}
+                onClick={() => setConfirmingRunAll(true)}
+              >
+                {t("dashboard.runAllAgents")}
+              </Button>
+              {!canRunAll && <span style={s.helper}>{t("dashboard.runAllNone")}</span>}
+            </div>
+          )}
+        </div>
+        {notice === "agent_not_found" && (
+          <div role="status" style={s.notice}>
+            {t("dashboard.notFoundNotice")}
+          </div>
+        )}
         {isLoading || !data ? (
           <Skeleton height={160} />
         ) : data.agents.length === 0 ? (
@@ -96,6 +120,9 @@ export function EvalDashboardView() {
           </>
         )}
       </div>
+      {confirmingRunAll && data && (
+        <RunAllAgentsModal cards={data.agents} onClose={() => setConfirmingRunAll(false)} />
+      )}
     </AppShell>
   );
 }

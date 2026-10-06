@@ -5,7 +5,9 @@
    written here by hand in the shared case editor. A run executes on the server
    after the POST returns, so the dashboard poll shows it `running` and the
    button stays disabled until it ends. A single-case run never touches the
-   suite numbers; its result shows beside the row. */
+   suite numbers; its result shows beside the row. The trend plots every
+   completed suite run of the agent (single-case and skill runs are excluded
+   by the server). */
 "use client";
 
 import React from "react";
@@ -14,7 +16,7 @@ import { Button, Skeleton } from "@devdigest/ui";
 import type { EvalCaseListItem } from "@devdigest/shared";
 import { ConfirmModal } from "@/components/confirm-modal";
 import { EvalCaseEditor, EvalCaseList } from "@/components/eval-cases";
-import { MetricTiles } from "@/components/eval-metrics";
+import { MetricTiles, MetricTrendChart } from "@/components/eval-metrics";
 import { ApiError } from "@/lib/api";
 import {
   useAgentEvalCases,
@@ -84,6 +86,11 @@ export function EvalsTab({ agentId }: { agentId: string }) {
       )}
 
       <MetricTiles dashboard={dashboard} />
+
+      <div>
+        <div style={s.title}>{t("dashboard.metricTrend")}</div>
+        <MetricTrendChart trend={dashboard?.trend ?? []} />
+      </div>
 
       <div style={s.head}>
         <div style={s.title}>{t("evalsTab.casesHeading")}</div>

@@ -150,6 +150,7 @@ export interface AgentWithCases {
   name: string;
   provider: string;
   model: string;
+  enabled: boolean;
   casesTotal: number;
 }
 
@@ -183,7 +184,13 @@ export interface EvalsStore {
   listRuns(
     workspaceId: string,
     owner: EvalOwner,
-    opts: { limit: number; statuses?: readonly EvalSuiteRun['status'][]; order?: 'asc' | 'desc' },
+    opts: {
+      limit: number;
+      statuses?: readonly EvalSuiteRun['status'][];
+      order?: 'asc' | 'desc';
+      /** Only runs started at or after this instant. */
+      since?: Date;
+    },
   ): Promise<EvalSuiteRun[]>;
   /** An agent-owned suite run (Compare). Single and skill runs are not found. */
   getRun(workspaceId: string, id: string): Promise<EvalSuiteRun | undefined>;
