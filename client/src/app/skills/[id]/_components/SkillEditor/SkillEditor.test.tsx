@@ -14,6 +14,7 @@ vi.mock("@/lib/hooks/skills", () => ({
 }));
 
 import { SkillEditor } from "./SkillEditor";
+import { VALID_TABS } from "./constants";
 
 const SKILL: Skill = {
   id: "sk1",
@@ -68,5 +69,11 @@ describe("SkillEditor (smoke)", () => {
     expect(screen.getByText("Preview")).toBeInTheDocument();
     expect(screen.getByText("Versions")).toBeInTheDocument();
     expect(screen.getByText("Stats")).toBeInTheDocument();
+  });
+
+  it("AC-14: has an Evals tab, and ?tab=evals is a valid tab", () => {
+    renderWithIntl(<SkillEditor skill={SKILL} tab="config" onTab={() => {}} />);
+    expect(screen.getByText("Evals")).toBeInTheDocument();
+    expect(VALID_TABS).toContain("evals");
   });
 });

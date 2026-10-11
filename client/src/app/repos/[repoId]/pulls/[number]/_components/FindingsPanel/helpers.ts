@@ -1,4 +1,6 @@
 import type { FindingRecord, Severity } from "@devdigest/shared";
+import { ApiError } from "@/lib/api";
+import type { EvalCaseStatus } from "../FindingCard";
 import { LOW_CONFIDENCE_THRESHOLD, SEVERITY_ORDER } from "./constants";
 
 /**
@@ -19,4 +21,13 @@ export function visibleFindings(
   return [...shown].sort(
     (a, b) => (SEVERITY_ORDER[a.severity] ?? 9) - (SEVERITY_ORDER[b.severity] ?? 9),
   );
+}
+
+/** What the card says after a failed "Turn into eval case": a diff over the 64 KB
+ *  freeze cap (422 `diff_too_large`, EC-12) is named; every other failure is generic. */
+export function evalStatusForError(err: unknown): EvalCaseStatus {
+  const details = err instanceof ApiError ? (err.details as { reason?: string } | undefined) : undefined;
+  return err instanceof ApiError && err.status === 422 && details?.reason === "diff_too_large"
+    ? "too_large"
+    : "error";
 }

@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
-import { CiFailOn, Provider, ReviewStrategy } from '@devdigest/shared';
+import { Agent, AgentPromoteInput, CiFailOn, Provider, ReviewStrategy } from '@devdigest/shared';
 import { getContext } from '../_shared/context.js';
 import { IdParams } from '../_shared/schemas.js';
 import { NotFoundError } from '../../platform/errors.js';
@@ -33,6 +33,9 @@ const PatchSkillLinkBody = z.object({
  *   GET    /agents/:id              → one agent
  *   POST   /agents                  → create
  *   PUT    /agents/:id              → update / toggle enabled (versions config)
+ *   POST   /agents/:id/promote      → Agent  restore a past eval run's config as version current+1
+ *                                    body AgentPromoteInput; 404 · 409 agent_version_conflict ·
+ *                                    422 promotion_invalid | agent_version_unreadable; no model call
  *   GET    /agents/:id/versions     → config history (newest first)
  *   GET    /agents/:id/versions/:version → one config snapshot
  *   GET    /agents/:id/skills       → linked skills (ordered)
@@ -136,6 +139,15 @@ export default async function agentsRoutes(appBase: FastifyInstance) {
     if (!ok) throw new NotFoundError('Agent not found');
     return { ok: true };
   });
+
+  app.post(
+    '/agents/:id/promote',
+    { schema: { params: IdParams, body: AgentPromoteInput, response: { 200: Agent } } },
+    async (req) => {
+      const { workspaceId } = await getContext(app.container, req);
+      return service.promote(workspaceId, req.params.id, req.body);
+    },
+  );
 
   app.get('/agents/:id/versions', { schema: { params: IdParams } }, async (req) => {
     const { workspaceId } = await getContext(app.container, req);

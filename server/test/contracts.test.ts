@@ -11,6 +11,12 @@ import {
   Conformance,
   Onboarding,
   EvalRun,
+  EvalSuiteRun,
+  EvalCaseInput,
+  EvalCaseRunRequest,
+  EvalSkillRunRequest,
+  AgentPromoteInput,
+  AgentVersion,
   MemoryItem,
   RunTrace,
   Settings,
@@ -176,6 +182,44 @@ describe('AI contracts parse fixtures', () => {
         per_trace: [{ name: 't01', pass: true, expected: 'x', actual: 'x' }],
       }),
     ).not.toThrow();
+    // EC-8: an empty denominator is "not available" (null), never 0 or 1.
+    expect(() =>
+      EvalRun.parse({
+        recall: null,
+        precision: null,
+        citation_accuracy: null,
+        traces_passed: 0,
+        traces_total: 0,
+        duration_ms: 0,
+        cost_usd: null,
+        per_trace: [],
+      }),
+    ).not.toThrow();
+    const suiteRun = {
+      id: 'run1',
+      kind: 'suite',
+      owner_kind: 'agent',
+      owner_id: 'a1',
+      agent_id: 'a1',
+      agent_version: 3,
+      provider: 'openai',
+      model: 'gpt-4.1',
+      status: 'partial',
+      error: null,
+      skills: [{ skill_id: 's1', name: 'Security', version: 2 }],
+      cases: [{ case_id: 'c1', fingerprint: 'abc' }],
+      cases_total: 2,
+      cases_passed: 1,
+      cases_errored: 1,
+      metrics: { recall: 1, precision: null, citation_accuracy: 0.5 },
+      duration_ms: 1200,
+      cost_usd: null,
+      started_at: '2026-10-05T00:00:00.000Z',
+      finished_at: '2026-10-05T00:00:01.200Z',
+    };
+    const parsed = EvalSuiteRun.parse(suiteRun);
+    expect(EvalSuiteRun.parse(JSON.parse(JSON.stringify(parsed)))).toEqual(parsed);
+    expect(parsed.metrics.precision).toBeNull();
     expect(() =>
       MemoryItem.parse({
         content: 'c',
@@ -199,6 +243,106 @@ describe('AI contracts parse fixtures', () => {
       log: [{ t: '00.00', kind: 'info', msg: 'started' }],
     });
     expect(trace.tool_calls).toHaveLength(1);
+  });
+});
+
+describe('EvalCaseInput boundaries', () => {
+  const valid = {
+    name: 'stripe-key',
+    input_diff: 'diff --git a/a.ts b/a.ts\n',
+    input_meta: { pr_title: 't', pr_body: 'b' },
+    expectation: 'must_find',
+    target: { file: 'a.ts', start_line: 4, end_line: 4 },
+  };
+  const parse = (over: Record<string, unknown>) => EvalCaseInput.safeParse({ ...valid, ...over });
+  const meta = (over: Record<string, unknown>) =>
+    parse({ input_meta: { ...valid.input_meta, ...over } });
+
+  it('accepts the base fixture', () => {
+    expect(EvalCaseInput.safeParse(valid).success).toBe(true);
+  });
+
+  it('name: blank rejected, 120 code points accepted (astral counts as one), 121 rejected', () => {
+    expect(parse({ name: '  ' }).success).toBe(false);
+    expect(parse({ name: 'a'.repeat(119) + '😀' }).success).toBe(true);
+    expect(parse({ name: 'a'.repeat(120) + '😀' }).success).toBe(false);
+    expect(parse({ name: 'a'.repeat(121) }).success).toBe(false);
+  });
+
+  it('input_diff: counted in UTF-8 bytes', () => {
+    expect(parse({ input_diff: 'a'.repeat(65_536) }).success).toBe(true);
+    expect(parse({ input_diff: 'a'.repeat(65_537) }).success).toBe(false);
+    expect(parse({ input_diff: 'a'.repeat(65_535) + 'é' }).success).toBe(false);
+  });
+
+  it('pr_title 300 / 301 code points, pr_body 16 384 / 16 385 bytes', () => {
+    expect(meta({ pr_title: 'a'.repeat(300) }).success).toBe(true);
+    expect(meta({ pr_title: 'a'.repeat(301) }).success).toBe(false);
+    expect(meta({ pr_body: 'a'.repeat(16_384) }).success).toBe(true);
+    expect(meta({ pr_body: 'a'.repeat(16_385) }).success).toBe(false);
+  });
+
+  it('target: start_line 0 rejected, start > end rejected at target.start_line, 4/4 accepted', () => {
+    expect(parse({ target: { file: 'a.ts', start_line: 0, end_line: 4 } }).success).toBe(false);
+    const bad = parse({ target: { file: 'a.ts', start_line: 5, end_line: 4 } });
+    expect(bad.success).toBe(false);
+    if (!bad.success) expect(bad.error.issues[0]?.path).toEqual(['target', 'start_line']);
+    expect(parse({ target: { file: 'a.ts', start_line: 4, end_line: 4 } }).success).toBe(true);
+  });
+
+  it('rejects an extra key (owner_id)', () => {
+    expect(parse({ owner_id: 'x' }).success).toBe(false);
+  });
+
+  it('run requests: skill needs a host, case does not', () => {
+    expect(EvalSkillRunRequest.safeParse({}).success).toBe(false);
+    expect(EvalCaseRunRequest.safeParse({}).success).toBe(true);
+  });
+});
+
+describe('AgentPromoteInput / AgentVersion.origin', () => {
+  const valid = {
+    from_version: 1,
+    eval_run_id: '3f2b8a52-7c1e-4d0a-9f3b-0a1b2c3d4e5f',
+    expected_version: 3,
+  };
+
+  it('accepts the boundary from_version: 1', () => {
+    expect(AgentPromoteInput.safeParse(valid).success).toBe(true);
+  });
+
+  it('rejects an extra key, from_version 0 and a non-uuid run id', () => {
+    expect(AgentPromoteInput.safeParse({ ...valid, extra: 1 }).success).toBe(false);
+    expect(AgentPromoteInput.safeParse({ ...valid, from_version: 0 }).success).toBe(false);
+    expect(AgentPromoteInput.safeParse({ ...valid, eval_run_id: 'nope' }).success).toBe(false);
+  });
+
+  it('AgentVersion parses with and without origin', () => {
+    const base = {
+      agent_id: 'a1',
+      version: 4,
+      config: {
+        provider: 'anthropic',
+        model: 'claude-sonnet-4-5',
+        system_prompt: 'p',
+        strategy: 'single-pass',
+        ci_fail_on: 'never',
+        repo_intel: true,
+        skills: [],
+      },
+      created_at: '2026-10-06T00:00:00.000Z',
+    };
+    expect(AgentVersion.safeParse(base).success).toBe(true);
+    const withOrigin = AgentVersion.parse({
+      ...base,
+      origin: {
+        kind: 'promotion',
+        from_version: 1,
+        eval_run_id: valid.eval_run_id,
+        missing_skills: [{ skill_id: 's1', name: 'Gone' }],
+      },
+    });
+    expect(withOrigin.origin?.missing_skills).toHaveLength(1);
   });
 });
 

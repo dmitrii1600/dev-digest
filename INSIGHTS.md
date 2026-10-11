@@ -229,6 +229,19 @@ append-only. Empty sections are expected — append under the one that fits.
   `platform.ts` is `w/crlf`, client `w/lf`, both `i/lf`. A raw `diff` printed 776 lines on identical
   content, and two verify passes held the rows PARTIAL. Use `diff --strip-trailing-cr` or compare
   `git ls-files --eol`.
+- 2026-10-05 — In the Agent SDK, `allowedTools` only **pre-approves** tools; under
+  `permissionMode: "bypassPermissions"` every other tool stays usable. An eval workflow session
+  used `Edit` on `server/INSIGHTS.md`, and others reached the logged-in account's claude.ai
+  connectors and created private artifacts. Restrict with `tools` + `disallowedTools` +
+  `strictMcpConfig: true, mcpServers: {}` (`evals/src/runtime/run-claude.ts:74`).
+- 2026-10-05 — An `eval:benchmark` where every session shows `tok_out 0` and the output files say
+  `Not logged in · Please run /login` is not a 0% → 0% result. The desktop app's login does not
+  reach the Agent SDK subprocess; run `claude` → `/login` once in a terminal, then re-run.
+- 2026-10-06 — Do not switch the workflow tier to Sonnet with `EVAL_MODEL` and read the reds as a
+  routing regression. The cases are budgeted on Haiku. On `claude-sonnet-5` the API-route trace read
+  the `reviews` module code instead of `server/README.md`, and the contrast case hit `maxTurns: 6`
+  (`evals/workflow/review-workflow.cases.ts:66`). The same tree on Haiku was 5/5. Re-budget the
+  cases first if Sonnet becomes the workflow model.
 
 ## Codebase Patterns
 
@@ -433,7 +446,20 @@ append-only. Empty sections are expected — append under the one that fits.
 - 2026-09-18 — `spawnSync('pnpm', …)` fails with ENOENT on Windows because the
   binary is `pnpm.cmd`; pass `shell: process.platform === 'win32'`
   (`pr-self-review-gate.mjs:1002`). `git` and `node` are real executables and
-  do not need it.
+  do not need it. Same trap in `evals/`: there vitest is spawned as
+  `process.execPath node_modules/vitest/vitest.mjs`, with no shell at all
+  (`evals/src/run-vitest.ts:39`).
+- 2026-10-05 — Agent SDK `Read` tool inputs carry Windows paths
+  (`D:\…\reviewer-core\INSIGHTS.md`), so an eval asserting `reviewer-core/INSIGHTS.md` failed
+  although the file was read, and the trace `stopWhen` never fired (the dispatch case hit the
+  240 s timeout). Recorded reads are normalized to `/` (`evals/src/runtime/run-claude.ts:126`).
+- 2026-10-05 — `eval:repeat` attributes records to a series by line offset in
+  `results/records.jsonl` (`evals/src/repeat.ts:95`). Never run two repeat/benchmark commands
+  at once, or their series swallow each other's records. Chain them in one shell.
+- 2026-10-06 — `eval:repeat` silently caps `-n` at 2 (`evals/src/repeat.ts:75`). A case that
+  passes the vitest `testTimeout` of 480 s (`evals/vitest.config.ts:10`) writes **no record**, so the
+  repeat prints `2/3 cases` for a 4-case file and `eval:delta` shows `—%`. A missing row is a timeout,
+  not a skipped case. Re-run it alone with `pnpm exec vitest run <dir>/ -t "<case>"` to see the error.
 
 - 2026-09-18 — `client/pnpm-workspace.yaml` and `server/pnpm-workspace.yaml`
   ship pnpm's own unanswered prompt as their contents
@@ -873,6 +899,35 @@ it is a stale plan line rather than a code gap.
 **Review and counts.** The "cross-model" plan review ran on Claude Fable 5.1, the same family; the
 person accepted that. The plan said "17 fact pairs" but listed 16, which step 0 caught.
 
+### 2026-10-05 — L06 harness evals on this repo
+`upstream/l06-evals` cases were written against the template repo: workflow paths
+(`server/docs/api-contracts.md`, …) do not exist here, and the agent practices expected a rule
+catalogue (`reviewer-core-zero-io`) that our `architecture-reviewer` does not have. Adapt cases to
+this repo's `AGENTS.md` "Read when" rows and report format, never the agent to the cases.
+`eval:delta` paired by full nodeid, so strict vs lite never lined up; it now pairs by case name
+(`evals/src/delta.ts:69`). The onion rule-10 break moved only the *citation* practice
+(100 → 50 → 100): the model finds the reach-in without the rule, and the skill adds the rule name.
+
+### 2026-10-06 — /run-plan on eval case authoring (multi-agent, 2 tracks)
+Step 0 → A ∥ B → Integration needed no fix loops; test-writer's only real add was the foreign-workspace
+404 sweep the ledger had flagged as unexercised. The orchestrator made the `pnpm exec`-in-a-junctioned-worktree
+mistake (What Doesn't Work, 2026-09-29) for the **third** time, again by baselining a red it-test before
+reading root INSIGHTS. pnpm 10 stopped at `ERR_PNPM_IGNORED_BUILDS` before relinking anything (no
+`server/node_modules` link pointed at the worktree afterwards). Read root INSIGHTS **before** any baseline run.
+
+### 2026-10-06 — architecture-reviewer before/after on Sonnet (strict vs lite)
+Edit under test: `architecture-reviewer-lite.md` drops the required `Rule:` line and softens step 5
+from "a finding is a boundary break with a named rule, or it is not a finding" to "prefer findings
+that trace back to a rule". Model and judge `claude-sonnet-5`, subscription, `-n 2`, sha `0397565`.
+Scores, strict → lite: checkout diff 2/2 → 2/2; benign rename **2/2 → 1/2**; reviewer-core citation
+1/1 → 2/2 (strict also timed out 3 times, see Tool & Library Notes); out-of-scope security diff
+0/2 → 0/2. The one real delta is the benign rename. Without the citation rule the agent invented a
+WARNING-or-higher finding on a diff that breaks no rule. The rule buys precision, at a cost: strict
+used ~40% more output tokens on the checkout case and about 2× wall time on reviewer-core. The n=2
+Haiku series of 2026-10-05 was 4/8 vs 4/8, which is noise. Keep the strict definition.
+Both variants fail "does not comment on naming, style or test coverage" on every run, so that
+practice measures the case, not the edit.
+
 ## Open Questions
 
 - 2026-09-18 — The pr-self-review PreToolUse hook matches on command text, so a
@@ -897,3 +952,8 @@ person accepted that. The plan said "17 fact pairs" but listed 16, which step 0 
   whether tsx's watcher misses files created after start on a Windows worktree
   path with spaces; if it recurs, restart `pnpm dev` after adding a module.
 
+- 2026-10-05 — `architecture-reviewer` (strict) flagged the skipped `groundFindings()` gate in only
+  1/2 runs and never named a rule for it, while the lite variant flagged it 2/2. The grounding
+  gate has no named rule in `.claude/skills/pr-self-review/routing.md` (only `do-not-touch` on
+  `grounding.ts`), so the citation requirement may push the strict agent to drop what it cannot
+  cite. Undecided: add a named judgement rule for "findings bypass the grounding gate".

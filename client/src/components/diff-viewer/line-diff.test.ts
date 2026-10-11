@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { diffLines, isUnchanged } from "./diff";
+import { diffLines, isUnchanged } from "./line-diff";
 
 describe("diffLines", () => {
   it("marks an added line and keeps the surrounding context", () => {

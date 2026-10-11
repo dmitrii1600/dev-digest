@@ -1,0 +1,42 @@
+diff --git a/server/src/modules/reviews/service.ts b/server/src/modules/reviews/service.ts
+index 5a1c2e0..8d4f7b1 100644
+--- a/server/src/modules/reviews/service.ts
++++ b/server/src/modules/reviews/service.ts
+@@ -1,12 +1,20 @@
+ import type { ReviewRepository } from "./repository.js";
+ import type { LLMProvider } from "@devdigest/shared";
++import { BriefRepository } from "../brief/repository.js";
++import { summarizeBrief } from "../brief/helpers.js";
+
+ export class ReviewsService {
+   constructor(
+     private readonly reviews: ReviewRepository,
+     private readonly llm: LLMProvider,
++    private readonly briefs: BriefRepository,
+   ) {}
+
+   async get(id: string) {
+-    return this.reviews.findById(id);
++    const review = await this.reviews.findById(id);
++    if (!review) return null;
++    const brief = await this.briefs.findByPull(review.pullId);
++    return { ...review, brief: brief ? summarizeBrief(brief) : null };
+   }
+ }
+diff --git a/server/src/modules/reviews/routes.ts b/server/src/modules/reviews/routes.ts
+index 2b7e9a4..c03d11f 100644
+--- a/server/src/modules/reviews/routes.ts
++++ b/server/src/modules/reviews/routes.ts
+@@ -1,6 +1,8 @@
+ import type { FastifyInstance } from "fastify";
++import { db } from "../../db/client.js";
++import { reviews } from "../../db/schema/reviews.js";
+ import { ReviewIdParams } from "@devdigest/shared";
+
+ export default async function reviewsRoutes(app: FastifyInstance) {
+   app.get("/reviews/:id", { schema: { params: ReviewIdParams } }, async (req) => {
+     return app.container.reviews.get(req.params.id);
+   });
++
++  app.get("/reviews", async () => db.select().from(reviews).limit(50));
+ }

@@ -67,13 +67,38 @@ export class SkillsRepository {
     return new Map(rows.map((r) => [r.skillId, r.n]));
   }
 
-  /** Delete a skill (scoped to workspace). Versions/agent-links cascade. */
+  /**
+   * Delete a skill (scoped to workspace). Versions/agent-links cascade. The skill's eval
+   * cases and eval runs carry no FK to it (`owner_id` is polymorphic, and a skill-owned run's
+   * only FK is to its host agent), so they are deleted here in the same transaction; a run's
+   * per-case rows go by FK cascade (the agents repository does the same for an agent).
+   */
   async deleteById(workspaceId: string, id: string): Promise<boolean> {
-    const rows = await this.db
-      .delete(t.skills)
-      .where(and(eq(t.skills.workspaceId, workspaceId), eq(t.skills.id, id)))
-      .returning({ id: t.skills.id });
-    return rows.length > 0;
+    return this.db.transaction(async (tx) => {
+      await tx
+        .delete(t.evalRuns)
+        .where(
+          and(
+            eq(t.evalRuns.workspaceId, workspaceId),
+            eq(t.evalRuns.ownerKind, 'skill'),
+            eq(t.evalRuns.ownerId, id),
+          ),
+        );
+      await tx
+        .delete(t.evalCases)
+        .where(
+          and(
+            eq(t.evalCases.workspaceId, workspaceId),
+            eq(t.evalCases.ownerKind, 'skill'),
+            eq(t.evalCases.ownerId, id),
+          ),
+        );
+      const rows = await tx
+        .delete(t.skills)
+        .where(and(eq(t.skills.workspaceId, workspaceId), eq(t.skills.id, id)))
+        .returning({ id: t.skills.id });
+      return rows.length > 0;
+    });
   }
 
   /** Insert a skill AND record version 1 in skill_versions (immutable snapshot). */
@@ -204,9 +229,17 @@ export class SkillsRepository {
    * unfiltered view is `AgentsRepository.linkedSkills`, which stays unfiltered
    * because it still needs to show disabled links.
    */
-  async blocksForAgent(agentId: string): Promise<{ id: string; source: string; body: string }[]> {
+  async blocksForAgent(
+    agentId: string,
+  ): Promise<{ id: string; source: string; body: string; name: string; version: number }[]> {
     return this.db
-      .select({ id: t.skills.id, source: t.skills.source, body: t.skills.body })
+      .select({
+        id: t.skills.id,
+        source: t.skills.source,
+        body: t.skills.body,
+        name: t.skills.name,
+        version: t.skills.version,
+      })
       .from(t.agentSkills)
       .innerJoin(t.skills, eq(t.agentSkills.skillId, t.skills.id))
       .where(

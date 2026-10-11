@@ -3,7 +3,7 @@
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
-import type { Agent, AgentSkillLink, ModelInfo, Provider, ReviewStrategy } from "@devdigest/shared";
+import type { Agent, AgentPromoteInput, AgentSkillLink, AgentVersion, ModelInfo, Provider, ReviewStrategy } from "@devdigest/shared";
 
 export function useAgents() {
   return useQuery({
@@ -76,6 +76,34 @@ export function useDeleteAgent() {
     onSuccess: (_d, id) => {
       qc.invalidateQueries({ queryKey: ["agents"] });
       qc.removeQueries({ queryKey: ["agent", id] });
+    },
+  });
+}
+
+/** One config snapshot (`GET /agents/:id/versions/:version`) — the eval Compare modal reads each
+    run's system prompt from here. No retry: a missing snapshot is an answer (EC-11), not a blip. */
+export function useAgentVersion(agentId: string | null | undefined, version: number | null | undefined) {
+  return useQuery({
+    queryKey: ["agent-version", agentId, version],
+    queryFn: () => api.get<AgentVersion>(`/agents/${agentId}/versions/${version}`),
+    enabled: !!agentId && version != null,
+    retry: false,
+  });
+}
+
+/** Promote a recorded version to a new current version (`POST /agents/:id/promote`). The agent row,
+    its skill links and the eval dashboards (the card's provider/model) all change, so all are refetched. */
+export function usePromoteAgent(agentId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: AgentPromoteInput) => api.post<Agent>(`/agents/${agentId}/promote`, input),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["agents"] });
+      qc.invalidateQueries({ queryKey: ["agent", agentId] });
+      qc.invalidateQueries({ queryKey: ["agent-version", agentId] });
+      qc.invalidateQueries({ queryKey: ["agent-skills", agentId] });
+      qc.invalidateQueries({ queryKey: ["eval-dashboard"] });
+      qc.invalidateQueries({ queryKey: ["agent-eval-dashboard"] });
     },
   });
 }

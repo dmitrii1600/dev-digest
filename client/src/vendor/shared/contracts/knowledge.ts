@@ -154,10 +154,11 @@ export const EvalPerTrace = z.object({
 });
 export type EvalPerTrace = z.infer<typeof EvalPerTrace>;
 
+/** A metric is `null` ("not available") when its denominator is empty — never 0 or 1. */
 export const EvalRun = z.object({
-  recall: z.number().min(0).max(1),
-  precision: z.number().min(0).max(1),
-  citation_accuracy: z.number().min(0).max(1),
+  recall: z.number().min(0).max(1).nullable(),
+  precision: z.number().min(0).max(1).nullable(),
+  citation_accuracy: z.number().min(0).max(1).nullable(),
   traces_passed: z.number().int(),
   traces_total: z.number().int(),
   duration_ms: z.number().int(),
@@ -169,16 +170,53 @@ export type EvalRun = z.infer<typeof EvalRun>;
 export const EvalOwnerKind = z.enum(['skill', 'agent']);
 export type EvalOwnerKind = z.infer<typeof EvalOwnerKind>;
 
+/** What a case asserts about the agent's output for its frozen diff. */
+export const EvalExpectation = z.enum(['must_find', 'must_not_flag']);
+export type EvalExpectation = z.infer<typeof EvalExpectation>;
+
+/** `manual` is used by the case-authoring sibling; `finding` = made from a decided finding. */
+export const EvalCaseSource = z.enum(['finding', 'manual']);
+export type EvalCaseSource = z.infer<typeof EvalCaseSource>;
+
+/** The file and inclusive line range a case is about. */
+export const EvalTarget = z.object({
+  file: z.string(),
+  start_line: z.number().int().min(1),
+  end_line: z.number().int().min(1),
+});
+export type EvalTarget = z.infer<typeof EvalTarget>;
+
+/** The frozen PR text a case reviews alongside its diff. */
+export const EvalCaseMeta = z.object({
+  pr_title: z.string(),
+  pr_body: z.string(),
+});
+export type EvalCaseMeta = z.infer<typeof EvalCaseMeta>;
+
+/** What the source finding looked like — for display only; scoring uses the target. */
+export const EvalExpectedFinding = z.object({
+  title: z.string().nullable(),
+  severity: z.string().nullable(),
+  category: z.string().nullable(),
+});
+export type EvalExpectedFinding = z.infer<typeof EvalExpectedFinding>;
+
 export const EvalCase = z.object({
   id: z.string(),
   owner_kind: EvalOwnerKind,
   owner_id: z.string(),
   name: z.string(),
+  expectation: EvalExpectation,
+  target: EvalTarget,
+  source: EvalCaseSource,
+  source_finding_id: z.string().nullable(),
+  fingerprint: z.string(),
   input_diff: z.string(),
   input_files: z.unknown(),
-  input_meta: z.unknown(),
-  expected_output: z.unknown(),
+  input_meta: EvalCaseMeta,
+  expected_output: EvalExpectedFinding,
   notes: z.string().nullish(),
+  created_at: z.string(),
 });
 export type EvalCase = z.infer<typeof EvalCase>;
 
@@ -485,10 +523,35 @@ export const AgentVersionConfig = z.object({
 });
 export type AgentVersionConfig = z.infer<typeof AgentVersionConfig>;
 
+/**
+ * `POST /agents/:id/promote` — restore the configuration a past eval run used as a
+ * NEW version. `from_version` is that run's recorded version, `expected_version` the
+ * agent's current version when the Compare modal was opened (409 on a mismatch).
+ */
+export const AgentPromoteInput = z
+  .object({
+    from_version: z.number().int().positive(),
+    eval_run_id: z.string().uuid(),
+    expected_version: z.number().int().positive(),
+  })
+  .strict();
+export type AgentPromoteInput = z.infer<typeof AgentPromoteInput>;
+
+/** Where a version came from when it was not an edit: a promotion of a past eval run. */
+export const AgentVersionOrigin = z.object({
+  kind: z.literal('promotion'),
+  from_version: z.number().int(),
+  eval_run_id: z.string(),
+  /** Skills in the run's set that no longer exist, so were not re-linked. */
+  missing_skills: z.array(z.object({ skill_id: z.string(), name: z.string() })),
+});
+export type AgentVersionOrigin = z.infer<typeof AgentVersionOrigin>;
+
 export const AgentVersion = z.object({
   agent_id: z.string(),
   version: z.number().int(),
   config: AgentVersionConfig,
   created_at: z.string(),
+  origin: AgentVersionOrigin.nullish(),
 });
 export type AgentVersion = z.infer<typeof AgentVersion>;

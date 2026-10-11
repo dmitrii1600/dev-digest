@@ -41,3 +41,9 @@ append-only. Empty sections are expected — append under the one that fits.
 ## Session Notes
 
 ## Open Questions
+
+- 2026-10-05 — The PR title reaches the model unwrapped: `assemblePrompt` pushes `parts.task` as trusted text
+  (`src/prompt.ts:134`), and both callers interpolate the author-written title into it
+  (`server/src/modules/reviews/helpers.ts:84`, `server/src/modules/evals/helpers.ts:330`). Only the PR body is
+  wrapped with `wrapUntrusted`. SPEC-2026-10-05-eval-pipeline UI-5 says the title is untrusted. Wrapping it changes
+  the live prompt and every eval baseline, so it needs a decision, not a drive-by fix.

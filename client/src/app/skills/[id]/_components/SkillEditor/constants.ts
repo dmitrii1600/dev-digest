@@ -1,7 +1,7 @@
 import type { IconName } from "@devdigest/ui";
 
 /** Tabs valid in the `?tab=` query string — anything else falls back to "config". */
-export const VALID_TABS: string[] = ["config", "preview", "versions", "stats", "context"];
+export const VALID_TABS: string[] = ["config", "preview", "versions", "stats", "context", "evals"];
 
 /** Editor tab descriptor. `labelKey` resolves under the `skills` namespace. */
 export interface EditorTab {
@@ -16,4 +16,5 @@ export const TABS: readonly EditorTab[] = [
   { key: "versions", labelKey: "editor.tabs.versions", icon: "History" },
   { key: "stats", labelKey: "editor.tabs.stats", icon: "BarChart" },
   { key: "context", labelKey: "editor.tabs.context", icon: "FileText" },
+  { key: "evals", labelKey: "editor.tabs.evals", icon: "FlaskConical" },
 ];

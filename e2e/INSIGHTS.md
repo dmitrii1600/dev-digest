@@ -122,6 +122,11 @@ append-only. Empty sections are expected — append under the one that fits.
   (`--exact` for exact); `wait --text` polls slowly, so probing a string with a
   short `timeout 8` gives false MISSes — use ≥ 30 s when checking a locator by
   hand.
+- 2026-10-06 — A native `<select>` cannot be driven through `find label` (it has no `select`
+  action), and a bare `select` CSS locator hits the first of two on the page. Address each
+  by its options — `select:has(option[value="7d"])` and its `:not(...)` complement — and
+  assert the value with `wait --fn "document.querySelector(...).value === '7d'"`
+  (`specs/17-eval-run-controls.flow.json:13,19`).
 
 
 ## Recurring Errors & Fixes

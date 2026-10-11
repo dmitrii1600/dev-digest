@@ -1,0 +1,31 @@
+{
+  "name": "Eval run controls — time window, agent switcher, URL state and the not-found notice",
+  "description": "Walks the agent eval page (L06) on the seeded eval history (server/src/db/seed-eval.ts: two manual cases and four completed suite runs, 60 / 20 / 3 and 1 days old, for General Reviewer and Security Reviewer): opens General Reviewer from the /eval landing cards, picks the 7-day window (it lands in the URL), reloads and finds the window and its 2 runs restored from the URL (AC-13), switches to Security Reviewer (a pushed history entry that keeps window=7d) and goes Back to General Reviewer with the window intact (AC-13), then opens an agent id that does not exist and lands on /eval with the 'agent not found' notice (EC-11). Never clicks Run eval, Run all agents, Compare or Promote — each starts a paid review call or needs a second version. The two <select>s are addressed by their option values (the window's carry 7d, the agent switcher's do not) because a bare `select` matches both. Read-only seeded data, no model call. Assumes a freshly-seeded DB — guaranteed by e2e-web.yml.",
+  "steps": [
+    { "cmd": ["open", "{BASE}/eval"], "label": "open the eval dashboard landing" },
+    { "cmd": ["set", "viewport", "1280", "1800"], "label": "tall viewport so every later click target is inside it (agent-browser does not scroll before a click on Linux; see flow 13)" },
+    { "cmd": ["wait", "--load", "networkidle"], "label": "landing data settles" },
+    { "cmd": ["wait", "--text", "Security Reviewer"], "label": "the seeded agents' cards have rendered" },
+    { "cmd": ["find", "text", "General Reviewer", "click", "--exact"], "label": "open the General Reviewer card (exact: the name must not match another card)" },
+    { "cmd": ["wait", "--url", "/eval/"], "label": "navigate to the agent eval page" },
+    { "cmd": ["wait", "--text", "Time window"], "label": "the window selector renders" },
+    { "cmd": ["wait", "--load", "networkidle"], "label": "agent eval data settles" },
+    { "cmd": ["select", "select:has(option[value=\"7d\"])", "7d"], "label": "pick the 7-day window" },
+    { "cmd": ["wait", "--url", "window=7d"], "label": "the window is in the URL" },
+    { "cmd": ["wait", "--load", "networkidle"], "label": "the windowed runs settle" },
+    { "cmd": ["get", "count", "tbody tr"], "label": "the 7-day table shows the two newest runs (3 and 1 days old)", "assert": { "stdoutIncludes": "2" } },
+    { "cmd": ["reload"], "label": "reload on the windowed URL (AC-13)" },
+    { "cmd": ["wait", "--text", "Time window"], "label": "the page renders again after the reload" },
+    { "cmd": ["wait", "--fn", "document.querySelector('select:has(option[value=\"7d\"])').value === '7d'"], "label": "the window selector shows 7 days, restored from the URL" },
+    { "cmd": ["wait", "--fn", "document.querySelectorAll('tbody tr').length === 2"], "label": "the table still shows 2 runs after the reload" },
+    { "cmd": ["select", "select:not(:has(option[value=\"7d\"]))", "Security Reviewer"], "label": "switch the agent to Security Reviewer" },
+    { "cmd": ["wait", "--fn", "document.querySelector('select:not(:has(option[value=\"7d\"]))').selectedOptions[0].textContent === 'Security Reviewer'"], "label": "the switcher shows Security Reviewer once the new route has rendered" },
+    { "cmd": ["wait", "--url", "window=7d"], "label": "the window survives the switch" },
+    { "cmd": ["back"], "label": "Back to the previous agent (the switch pushed a history entry)" },
+    { "cmd": ["wait", "--fn", "document.querySelector('select:not(:has(option[value=\"7d\"]))').selectedOptions[0].textContent === 'General Reviewer'"], "label": "General Reviewer is selected again" },
+    { "cmd": ["wait", "--url", "window=7d"], "label": "the window is still in the URL after Back" },
+    { "cmd": ["open", "{BASE}/eval/00000000-0000-4000-8000-000000000000"], "label": "open an agent id that does not exist" },
+    { "cmd": ["wait", "--url", "notice=agent_not_found"], "label": "the page redirects to the landing with the notice (EC-11)" },
+    { "cmd": ["wait", "--text", "That agent was not found or has no eval cases."], "label": "the notice text is visible" }
+  ]
+}

@@ -101,6 +101,11 @@ per domain · `src/vendor/shared/` canonical Zod contracts.
   grounding, the `brief`/`history` key split in `pr_brief.json`) →
   `src/modules/brief/README.md` — **read before changing how a brief is generated,
   stored or which files it cites**
+- Evals (cases frozen from decided findings or written by hand, suite, single-case and
+  skill runs, how pass/fail and the three metrics are scored, the 409/422 codes, the
+  `eval_runs` / `eval_run_cases` shape) → `src/modules/evals/README.md` — **read before
+  changing how a case is frozen or authored, how a run is executed, read or scored, or the
+  eval tables**
 - How a schema-mismatch from a provider is signalled (`StructuredOutputError`,
   `SchemaFailureTagger`) → `README.md#structured-output-failures-are-typed` —
   **read before branching on an LLM adapter error**

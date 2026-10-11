@@ -57,6 +57,8 @@ export const agentVersions = pgTable(
       .references(() => agents.id, { onDelete: 'cascade' }),
     version: integer('version').notNull(),
     configJson: jsonb('config_json').notNull(),
+    /** Where the version came from when it was not an edit (a promotion); null for an edit. */
+    origin: jsonb('origin'),
     createdAt: now(),
   },
   (t) => ({ pk: primaryKey({ columns: [t.agentId, t.version] }) }),

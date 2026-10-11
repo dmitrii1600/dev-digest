@@ -1,0 +1,126 @@
+# eval-agents - harness evals for .claude/agents
+#
+#   agents   eval:agents for each changed agent that has evals - tool tier, Agent SDK through
+#            the bundled LiteLLM translating proxy (evals/proxy/).
+#
+# Triggers on pull_request and on push to main, only when one of the paths below changes,
+# and then runs only the artifacts that changed AND have an evals/<tier>/<name>/*.eval.ts
+# (evals/scripts/ci-detect.mjs). A changed artifact without evals is logged as SKIP.
+# Model jobs are REPORT-ONLY (continue-on-error) until their baseline is calibrated on CI.
+# Secrets: OPENROUTER_API_KEY is an Actions secret; a fork PR never reaches the model jobs.
+
+name: eval-agents
+
+on:
+  pull_request:
+    paths:
+      - '.claude/agents/**'
+      - 'evals/agents/**'
+      - 'evals/src/**'
+      - 'evals/package.json'
+      - '.github/workflows/eval-agents.yml'
+  push:
+    branches: [main]
+    paths:
+      - '.claude/agents/**'
+      - 'evals/agents/**'
+      - 'evals/src/**'
+      - 'evals/package.json'
+      - '.github/workflows/eval-agents.yml'
+  workflow_dispatch:
+    inputs:
+      tool_model:
+        description: 'OpenRouter slug for the agents tier'
+        default: 'anthropic/claude-haiku-4.5'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  EVAL_BACKEND: openrouter
+  EVAL_MAX_TURNS: '25'
+  EVAL_QUIET: '1'
+
+jobs:
+  # -- Detect which suites this change should run ------------------------------
+  changes:
+    # Never hand the secret-bearing jobs below a fork PR.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      agents: ${{ steps.detect.outputs.agents }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: detect
+        working-directory: evals
+        env:
+          EVENT: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: |
+          # pull_request: the PR diff. push: the pushed range (a new branch has an all-zero
+          # "before", so fall back to the last commit). workflow_dispatch: everything.
+          ZERO=0000000000000000000000000000000000000000
+          if [ "$EVENT" = pull_request ]; then RANGE="$PR_BASE...HEAD"
+          elif [ "$EVENT" = push ] && [ -n "$PUSH_BEFORE" ] && [ "$PUSH_BEFORE" != "$ZERO" ]; then RANGE="$PUSH_BEFORE...HEAD"
+          elif [ "$EVENT" = push ]; then RANGE="HEAD~1...HEAD"
+          else RANGE="$(git rev-list --max-parents=0 HEAD | tail -1)...HEAD"; fi
+          CHANGED_FILES="$(git diff --name-only "$RANGE")"
+          export CHANGED_FILES
+          node scripts/ci-detect.mjs
+
+  # -- Agents - tool tier, LiteLLM translating proxy. Report-only -------------
+  agents:
+    needs: [changes]
+    if: needs.changes.outputs.agents != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        agent: ${{ fromJSON(needs.changes.outputs.agents) }}
+    defaults:
+      run:
+        working-directory: evals
+    env:
+      OPENROUTER_BASE_URL: http://localhost:4000
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      EVAL_MODEL: ${{ inputs.tool_model || 'anthropic/claude-haiku-4.5' }}
+      EVAL_JUDGE_MODEL: ${{ inputs.tool_model || 'anthropic/claude-haiku-4.5' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 10 }
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: evals/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: docker compose -f proxy/docker-compose.yml up -d
+      - run: pnpm proxy:wait
+      # Anchored with a trailing slash so `architecture-reviewer/` does not also run `-lite`.
+      - run: pnpm exec vitest run "agents/${{ matrix.agent }}/" --no-file-parallelism | tee results-summary.txt
+      - if: always()
+        run: |
+          { echo "### agent: ${{ matrix.agent }}"; echo '```'; tail -40 results-summary.txt 2>/dev/null || echo "(no eval output - an earlier step failed, see the job log)"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: evals-agent-${{ matrix.agent }}
+          path: evals/results/
+          if-no-files-found: ignore
+      - if: failure()
+        run: docker compose -f proxy/docker-compose.yml logs --tail 100
+      - if: always()
+        run: docker compose -f proxy/docker-compose.yml down

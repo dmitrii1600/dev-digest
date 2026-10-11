@@ -8,7 +8,7 @@ swapped for mocks in tests.
 
 > This is the starter module set plus the lesson modules built so far: skills and
 > conventions (L02), intent and smart-diff (L03), blast (L04), project-context,
-> onboarding and brief (L05). Later lessons add their own (eval/ci/hooks, memory,
+> onboarding and brief (L05), evals (L06). Later lessons add their own (ci/hooks, memory,
 > plugins, …) — each is a self-contained `modules/<name>/` plugin plus, usually, a
 > slot it starts feeding the reviewer prompt. The DB schema already contains
 > **every** table; the unused ones simply sit empty until a lesson fills them.
@@ -107,7 +107,7 @@ flowchart TB
     smartDiff["smart-diff<br/>/pulls/:id/smart-diff"]
   end
   subgraph Agents["Agents"]
-    agents["agents<br/>/agents · /agents/:id · /agents/:id/skills/:skillId"]
+    agents["agents<br/>/agents · /agents/:id · /agents/:id/skills/:skillId · POST /agents/:id/promote"]
   end
   subgraph SkillsMod["Skills"]
     skills["skills<br/>/skills · /skills/:id/(versions|restore|agents|stats)<br/>/skills/import(/preview) · /skills/import/url(/preview)"]
@@ -120,12 +120,28 @@ flowchart TB
     onboarding["onboarding<br/>/repos/:id/onboarding · /repos/:id/onboarding/generate"]
     brief["brief<br/>GET·POST /pulls/:id/brief"]
   end
+  subgraph EvalMod["Evals"]
+    evals["evals<br/>POST /findings/:id/eval-case · /agents|skills/:id/(eval-cases|eval-runs|eval-dashboard)<br/>/agents/:id/eval-runs/compare · /eval-runs/:id · /eval-cases/:id · /eval-cases/:id/runs · /eval-cases/:id/runs/latest · /eval/dashboard"]
+  end
   subgraph Platform["Platform"]
     settings["settings<br/>/settings · /providers"]
     workspace["workspace<br/>/workspace"]
   end
   HEALTH["/health (liveness) · /health/ready (DB ping → 200/503)"]
 ```
+
+The evals routes, status codes and scoring are documented in
+[`modules/evals/README.md`](src/modules/evals/README.md).
+
+`POST /agents/:id/promote` (body `AgentPromoteInput`: `from_version`, `eval_run_id`, `expected_version`; no model
+call) restores the configuration an eval run used as a **new** version (current + 1), in one transaction that
+locks the agent row. The run must be this agent's own suite run (`owner_kind = 'agent'`); the skill set
+recorded on the run is re-linked in order and any other linked skill is kept but disabled. Errors: 404 (agent,
+run or snapshot not found) · 409 `agent_version_conflict` (`expected_version` is stale; `details.current_version`) ·
+422 `promotion_invalid` (`from_version` is not the run's version) · 422 `agent_version_unreadable`. Existing
+`agent_versions` and `eval_runs` rows are never changed; the new version carries a nullable
+`agent_versions.origin` (`{ kind: 'promotion', from_version, eval_run_id, missing_skills }`), returned on
+`GET /agents/:id/versions`.
 
 ## Environment
 

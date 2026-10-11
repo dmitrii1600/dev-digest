@@ -24,6 +24,7 @@ file is stale.
 | [`test-writer`](test-writer.md) | sonnet | Read, Write, Edit, Grep, Glob, Bash, Skill | — | a surface to cover + the behaviour to pin | tests + **Test Report** | edits production code, reviews, opens PRs, adds a dependency |
 | [`plan-verifier`](plan-verifier.md) | sonnet | Read, Grep, Glob, Bash, Skill, Write (own report only) | — | path to a plan or spec + the branch; delta mode: + the previous Plan Conformance report | **Plan Conformance Report** — a per-item ledger | edits anything, implements the gaps, gives general review advice |
 | [`architecture-reviewer`](architecture-reviewer.md) | sonnet | Read, Grep, Glob, Bash, Skill | `onion-architecture`, `frontend-ui-architecture` | a scope — branch, `base…HEAD`, or a file list | **Architecture Review**, advisory verdict | edits anything, fixes, reviews security, gates the PR |
+| [`architecture-reviewer-lite`](architecture-reviewer-lite.md) | sonnet | Read, Grep, Glob, Bash, Skill | `onion-architecture`, `frontend-ui-architecture` | — **eval-only** B side of the A/B in `evals/agents/architecture-reviewer-lite/`; never dispatched | same as `architecture-reviewer`, minus the required `Rule:` line | everything `architecture-reviewer` refuses |
 | [`doc-writer`](doc-writer.md) | sonnet | Read, Write, Edit, Grep, Glob, Bash, Skill | `mermaid-diagram` | a shipped feature + the plan or report behind it | docs + **Documentation Report** | edits code, writes specs, appends to `INSIGHTS.md` |
 
 ## The chain
