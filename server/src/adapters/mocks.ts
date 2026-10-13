@@ -17,6 +17,8 @@ import type {
   OpenPrPayload,
   CommitFilesPayload,
   IssueMeta,
+  WorkflowRunMeta,
+  ArtifactDownload,
   GitClient,
   CloneOptions,
   UnifiedDiff,
@@ -123,7 +125,7 @@ export class MockEmbedder implements Embedder {
 }
 
 // ---------- Mock GitHub ----------
-export interface MockGitHubOptions {
+export interface MockGitHubOptions extends MockGitHubCiOptions {
   pulls?: PrMeta[];
   detail?: Partial<PrDetail>;
   login?: string;
@@ -138,6 +140,21 @@ export interface MockGitHubOptions {
   >;
 }
 
+export interface MockGitHubCiOptions {
+  /** Numeric repository id returned by `getRepoId` (default 4242). */
+  repoId?: number;
+  /** Paths `pathExists` reports as present (default none). */
+  existingPaths?: string[];
+  /** `listWorkflowRuns` fixtures. */
+  workflowRuns?: WorkflowRunMeta[];
+  /** `downloadRunArtifact` fixtures keyed by run id (default `missing`). */
+  artifacts?: Record<number, ArtifactDownload>;
+  /** Makes `commitFiles` throw this message. */
+  commitError?: string;
+  /** Makes `listWorkflowRuns` throw this message. */
+  runsError?: string;
+}
+
 export class MockGitHubClient implements GitHubClient {
   public posted: { n: number; review: GitHubReviewPayload }[] = [];
   public openedPrs: OpenPrPayload[] = [];
@@ -145,6 +162,9 @@ export class MockGitHubClient implements GitHubClient {
   public createdComments: CreateReviewCommentInput[] = [];
   public commitsForPathCalls: { repo: RepoRef; path: string; perPage: number }[] = [];
   public pullsForCommitCalls: { repo: RepoRef; sha: string }[] = [];
+  public listRunsCalls: { repo: RepoRef; workflowFile: string; perPage: number }[] = [];
+  public artifactCalls: { repo: RepoRef; runId: number; name: string }[] = [];
+  public pathExistsCalls: { repo: RepoRef; path: string; ref: string }[] = [];
 
   constructor(private opts: MockGitHubOptions = {}) {}
 
@@ -234,6 +254,7 @@ export class MockGitHubClient implements GitHubClient {
   }
 
   async commitFiles(_repo: RepoRef, payload: CommitFilesPayload): Promise<{ branch: string }> {
+    if (this.opts.commitError) throw new Error(this.opts.commitError);
     this.committed.push(payload);
     return { branch: payload.branch };
   }
@@ -262,6 +283,34 @@ export class MockGitHubClient implements GitHubClient {
   ): Promise<{ number: number; title: string; merged_at: string | null; author: string }[]> {
     this.pullsForCommitCalls.push({ repo, sha });
     return this.opts.pullsByCommit?.[sha] ?? [];
+  }
+
+  async getRepoId(_repo: RepoRef): Promise<number> {
+    return this.opts.repoId ?? 4242;
+  }
+
+  async pathExists(repo: RepoRef, path: string, ref: string): Promise<boolean> {
+    this.pathExistsCalls.push({ repo, path, ref });
+    return (this.opts.existingPaths ?? []).includes(path);
+  }
+
+  async listWorkflowRuns(
+    repo: RepoRef,
+    workflowFile: string,
+    perPage: number,
+  ): Promise<WorkflowRunMeta[]> {
+    this.listRunsCalls.push({ repo, workflowFile, perPage });
+    if (this.opts.runsError) throw new Error(this.opts.runsError);
+    return this.opts.workflowRuns ?? [];
+  }
+
+  async downloadRunArtifact(
+    repo: RepoRef,
+    runId: number,
+    opts: { name: string; fileName: string; maxBytes: number },
+  ): Promise<ArtifactDownload> {
+    this.artifactCalls.push({ repo, runId, name: opts.name });
+    return this.opts.artifacts?.[runId] ?? { kind: 'missing' };
   }
 }
 

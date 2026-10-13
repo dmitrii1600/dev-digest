@@ -30,3 +30,11 @@ describe("WORKSPACE nav entries", () => {
     expect(activeKeyFor("/repos/x/context")).toBe("context");
   });
 });
+
+describe("GLOBAL nav entries", () => {
+  it("lists CI Runs and activates it on /ci-runs", () => {
+    const items = NAV.find((g) => g.section === "GLOBAL")!.items;
+    expect(items).toContainEqual(expect.objectContaining({ key: "ci-runs", label: "CI Runs", href: "/ci-runs" }));
+    expect(activeKeyFor("/ci-runs")).toBe("ci-runs");
+  });
+});

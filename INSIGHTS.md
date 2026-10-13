@@ -390,6 +390,8 @@ append-only. Empty sections are expected — append under the one that fits.
   owns the process on :3001 (`Get-CimInstance Win32_Process` command line) and
   whether the paths it resolves actually exist there.
 
+- 2026-10-11 — Spec `Status: approved` is a human action: in auto mode an agent's `sed` that flips `Status: draft` was blocked by the classifier as self-modification, and `/run-plan` stops on `draft`. Ask the person to flip it (or to approve explicitly in chat) before starting the build; spec-creator never changes Status (`.claude/skills/run-plan/SKILL.md` Step 0).
+
 
 ## Tool & Library Notes
 

@@ -123,6 +123,9 @@ flowchart TB
   subgraph EvalMod["Evals"]
     evals["evals<br/>POST /findings/:id/eval-case · /agents|skills/:id/(eval-cases|eval-runs|eval-dashboard)<br/>/agents/:id/eval-runs/compare · /eval-runs/:id · /eval-cases/:id · /eval-cases/:id/runs · /eval-cases/:id/runs/latest · /eval/dashboard"]
   end
+  subgraph CiMod["CI"]
+    ci["ci<br/>/agents/:id/(ci|export-ci|export-ci/preview|ci/update) · /ci/runs · POST /ci/runs/refresh"]
+  end
   subgraph Platform["Platform"]
     settings["settings<br/>/settings · /providers"]
     workspace["workspace<br/>/workspace"]
@@ -131,7 +134,8 @@ flowchart TB
 ```
 
 The evals routes, status codes and scoring are documented in
-[`modules/evals/README.md`](src/modules/evals/README.md).
+[`modules/evals/README.md`](src/modules/evals/README.md); the Export-to-CI routes,
+file set and run verification in [`modules/ci/README.md`](src/modules/ci/README.md).
 
 `POST /agents/:id/promote` (body `AgentPromoteInput`: `from_version`, `eval_run_id`, `expected_version`; no model
 call) restores the configuration an eval run used as a **new** version (current + 1), in one transaction that

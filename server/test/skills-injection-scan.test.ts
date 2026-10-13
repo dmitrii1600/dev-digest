@@ -5,7 +5,7 @@ import {
   NOT_SCANNED,
   scanSkillBody,
   securityReport,
-} from '../src/modules/skills/injection-scan.js';
+} from '../src/modules/_shared/injection-scan.js';
 
 /**
  * Pure tests of the heuristic prompt-injection scan. One positive fixture per

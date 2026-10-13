@@ -21,7 +21,7 @@ import {
   URL_IMPORT_ACCEPTED_CONTENT_TYPES,
   ZIP_CONTENT_TYPES,
 } from './constants.js';
-import { NOT_SCANNED, securityReport } from './injection-scan.js';
+import { NOT_SCANNED, securityReport } from '../_shared/injection-scan.js';
 
 /**
  * Pure helpers for the skills module — DB row ⇄ DTO mapping and the `.md` /
