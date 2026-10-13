@@ -8,7 +8,8 @@
     "start": "next start -p 3000",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
-    "test": "vitest run"
+    "test": "vitest run",
+    "verify:l06": "vitest run --config vitest.l06.config.ts"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.62.8",

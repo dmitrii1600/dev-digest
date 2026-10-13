@@ -525,6 +525,11 @@ append-only. Empty sections are expected — append under the one that fits.
   minutes.
 - 2026-09-29 — Per-agent token spend lives only in the subagent transcript (`~/.claude/projects/<slug>/<session>/subagents/agent-<id>.jsonl` + `.meta.json`), summed once per `message.id` — a streamed reply is several lines that repeat the same `usage`. The `totalTokens` in an `Agent` tool result is the agent's **final context size**, not its spend, and the session's `cost-state` line has been seen to undercount subagent output by ~40 % (`scripts/retro-usage.mjs` prints a ⚠ when the sums disagree). cost-state is a snapshot at write time — in one session its opus figures equalled the first agent exactly and knew nothing of the four that ran later. Reconstruct spend from the transcript at list price instead (input/output/cache read per model, cache writes 1.25× for the 5-minute TTL and 2× for the 1-hour TTL — that formula reproduces the harness figure to the cent).
 
+- 2026-10-11 — In a fresh worktree `server` typecheck fails with `Cannot find module 'openai'` / `'zod'`
+  from `../reviewer-core/src/llm/*.ts` plus `unknown → T` errors in `src/adapters/llm/*.ts`: the server's
+  tsconfig `paths` compile reviewer-core **source** (`server/tsconfig.json:24`), which resolves its imports
+  from `reviewer-core/node_modules`. Run `npm ci` in `reviewer-core/` first; the errors are not in your diff.
+
 ## Recurring Errors & Fixes
 
 - 2026-09-16 — `28P01 auth_failed` connecting to the dev Postgres from the host on

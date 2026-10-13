@@ -7,7 +7,7 @@
 
 import React from "react";
 import { Icon, Badge } from "@devdigest/ui";
-import type { ReviewRecord, Severity, Verdict } from "@devdigest/shared";
+import type { PrFile, ReviewRecord, Severity, Verdict } from "@devdigest/shared";
 import { FindingsPanel } from "../FindingsPanel";
 import { SeverityPills, countBySeverity } from "../SeverityPills";
 import { VerdictBanner } from "../VerdictBanner";
@@ -32,6 +32,7 @@ export function ReviewRunAccordion({
   headSha,
   targetRunId = null,
   targetNonce = 0,
+  files,
 }: {
   review: ReviewRecord;
   prId: string;
@@ -42,6 +43,8 @@ export function ReviewRunAccordion({
    *  (driven from the Timeline: clicking an agent name navigates here). */
   targetRunId?: string | null;
   targetNonce?: number;
+  /** The PR's files — the eval-case confirmation modal previews their hunks. */
+  files?: PrFile[];
 }) {
   const [open, setOpen] = React.useState(defaultOpen);
   const rootRef = React.useRef<HTMLDivElement | null>(null);
@@ -164,6 +167,7 @@ export function ReviewRunAccordion({
             repoFullName={repoFullName}
             headSha={headSha}
             evalAgentAvailable={!!review.agent_id && !!review.agent_name}
+            files={files}
           />
         </div>
       )}

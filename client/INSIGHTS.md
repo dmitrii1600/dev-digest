@@ -236,6 +236,11 @@ append-only. Empty sections are expected — append under the one that fits.
   page, not those. Why: a client page pulls the whole route tree into the client
   bundle for no interactivity gain.
 
+- 2026-10-11 — The kit `Modal` gives its `role="dialog"` no accessible name and has no prop for one, and
+  `src/vendor/ui` is do-not-touch; name it from the child with an effect that sets `aria-labelledby` on
+  `closest('[role="dialog"]')` (`FindingsPanel/_components/EvalCaseConfirmModal/EvalCaseConfirmModal.tsx:40`).
+  Why: `getByRole("dialog", { name })` and screen readers both need it.
+
 ## Tool & Library Notes
 
 - 2026-09-16 — `@testing-library/user-event` is **not** installed; the suite uses
@@ -290,6 +295,11 @@ b")` never matches a multi-line
   `title` and `onRetry`.
 
 
+- 2026-10-11 — A lesson-scoped vitest lane needs its own config that spreads the base and replaces
+  `test.include` (`client/vitest.l06.config.ts`, `server/vitest.l06-it.config.ts`): CLI path filters are
+  substring OR-matches, so "evals AND `.it.test`" is inexpressible, and Next route folders like `[id]` are glob
+  character classes — write `*` for the segment, never the literal `[id]`.
+
 ## Recurring Errors & Fixes
 
 - 2026-10-06 — `Module not found: Can't resolve './contracts/findings.js'` from `next dev` /
@@ -303,3 +313,8 @@ b")` never matches a multi-line
 ## Session Notes
 
 ## Open Questions
+
+- 2026-10-11 — `previewHunks` (`FindingsPanel/_components/EvalCaseConfirmModal/helpers.ts:11`) re-implements the
+  hunk-overlap rule of the server's `freezeDiff` (`server/src/modules/evals/helpers.ts:56`) with no shared test,
+  so the modal preview can drift from the diff that is actually frozen into the case. Open: share the rule via
+  `@devdigest/shared` or pin both with one fixture.

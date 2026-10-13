@@ -4,11 +4,14 @@
 
 import React from "react";
 import { useTranslations } from "next-intl";
+import { useRouter } from "next/navigation";
 import { Toggle, EmptyState } from "@devdigest/ui";
-import type { FindingRecord, Severity } from "@devdigest/shared";
+import type { FindingRecord, PrFile, Severity } from "@devdigest/shared";
 import { FindingCard, type EvalCaseStatus } from "../FindingCard";
 import { useFindingAction } from "@/lib/hooks/reviews";
-import { useCreateEvalCaseFromFinding } from "@/lib/hooks/evals";
+import { ApiError } from "@/lib/api";
+import { useCreateEvalCaseFromFinding, useStartCaseRun } from "@/lib/hooks/evals";
+import { EvalCaseConfirmModal } from "./_components/EvalCaseConfirmModal";
 import { KEY_TO_ACTION } from "./constants";
 import { evalStatusForError, visibleFindings } from "./helpers";
 import { s } from "./styles";
@@ -20,6 +23,7 @@ export function FindingsPanel({
   headSha,
   severity = null,
   evalAgentAvailable = false,
+  files,
 }: {
   findings: FindingRecord[];
   prId: string;
@@ -31,10 +35,18 @@ export function FindingsPanel({
   /** The review has a producing agent that still exists — only then can a finding
    *  become an eval case (EC-3). */
   evalAgentAvailable?: boolean;
+  /** The PR's files, for the eval-case confirmation modal's diff preview. */
+  files?: PrFile[];
 }) {
   const t = useTranslations("prReview");
   const action = useFindingAction();
   const createEvalCase = useCreateEvalCaseFromFinding();
+  const startCaseRun = useStartCaseRun();
+  const router = useRouter();
+  const [confirming, setConfirming] = React.useState<FindingRecord | null>(null);
+  const [busy, setBusy] = React.useState(false);
+  const [modalError, setModalError] = React.useState<"too_large" | "error" | null>(null);
+  const busyRef = React.useRef(false);
   const [evalStatus, setEvalStatus] = React.useState<Record<string, EvalCaseStatus>>({});
   const [hideLow, setHideLow] = React.useState(false);
   const [focusIdx, setFocusIdx] = React.useState(0);
@@ -54,6 +66,7 @@ export function FindingsPanel({
     const handler = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA") return;
+      if (confirming) return;
       if (e.key === "j") setFocusIdx((i) => Math.min(i + 1, shown.length - 1));
       else if (e.key === "k") setFocusIdx((i) => Math.max(i - 1, 0));
       else if (KEY_TO_ACTION[e.key] && shown[focused]) {
@@ -62,13 +75,54 @@ export function FindingsPanel({
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [shown, focused, action, prId]);
+  }, [shown, focused, action, prId, confirming]);
 
-  const turnIntoEval = (findingId: string) =>
-    createEvalCase.mutate(findingId, {
-      onSuccess: (res) => setEvalStatus((m) => ({ ...m, [findingId]: res.created ? "created" : "exists" })),
-      onError: (err) => setEvalStatus((m) => ({ ...m, [findingId]: evalStatusForError(err) })),
-    });
+  const closeModal = () => {
+    setConfirming(null);
+    setModalError(null);
+  };
+
+  // Save only creates the case; Run also starts a single-case run and opens the
+  // owning agent's Evals tab. A second click while a request is in flight is dropped.
+  const submit = async (mode: "save" | "run") => {
+    const f = confirming;
+    if (!f || busyRef.current) return;
+    busyRef.current = true;
+    setBusy(true);
+    setModalError(null);
+    const setStatus = (status: EvalCaseStatus) => setEvalStatus((m) => ({ ...m, [f.id]: status }));
+    try {
+      let res;
+      try {
+        res = await createEvalCase.mutateAsync(f.id);
+      } catch (err) {
+        const status = evalStatusForError(err);
+        setModalError(status === "too_large" ? "too_large" : "error");
+        return;
+      }
+      if (mode === "save") {
+        setStatus(res.created ? "created" : "exists");
+        closeModal();
+        return;
+      }
+      try {
+        await startCaseRun.mutateAsync({ caseId: res.case.id });
+      } catch (err) {
+        // 409: the case is already running — treat as started.
+        if (!(err instanceof ApiError && err.status === 409)) {
+          setStatus("run_failed");
+          closeModal();
+          return;
+        }
+      }
+      setStatus(res.created ? "created" : "exists");
+      closeModal();
+      router.push(`/agents/${res.case.owner_id}?tab=evals`);
+    } finally {
+      busyRef.current = false;
+      setBusy(false);
+    }
+  };
 
   return (
     <div>
@@ -93,14 +147,26 @@ export function FindingsPanel({
               repoFullName={repoFullName}
               headSha={headSha}
               evalAvailable={evalAgentAvailable}
-              evalPending={createEvalCase.isPending}
+              evalPending={confirming !== null}
               evalStatus={evalStatus[f.id] ?? null}
-              onTurnIntoEval={() => turnIntoEval(f.id)}
+              onTurnIntoEval={() => setConfirming(f)}
               onAction={(act) => action.mutate({ findingId: f.id, action: act, prId })}
             />
           ))
         )}
       </div>
+
+      {confirming && (
+        <EvalCaseConfirmModal
+          finding={confirming}
+          files={files}
+          busy={busy}
+          error={modalError}
+          onSaveOnly={() => void submit("save")}
+          onRun={() => void submit("run")}
+          onCancel={closeModal}
+        />
+      )}
     </div>
   );
 }

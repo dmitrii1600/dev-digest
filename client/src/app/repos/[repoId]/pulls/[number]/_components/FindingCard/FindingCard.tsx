@@ -24,13 +24,14 @@ import { githubBlobUrl } from "../../github-urls";
 import { s } from "./styles";
 
 /** Outcome of the last "Turn into eval case" click, owned by the panel. */
-export type EvalCaseStatus = "created" | "exists" | "too_large" | "error";
+export type EvalCaseStatus = "created" | "exists" | "too_large" | "error" | "run_failed";
 
 const EVAL_STATUS_KEY: Record<EvalCaseStatus, string> = {
   created: "finding.evalCaseCreated",
   exists: "finding.evalCaseExists",
   too_large: "finding.evalDiffTooLarge",
   error: "finding.evalCaseFailed",
+  run_failed: "finding.evalRunNotStarted",
 };
 
 export function FindingCard({
