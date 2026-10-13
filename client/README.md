@@ -32,6 +32,7 @@ flowchart TD
   CONV["/repos/:repoId/conventions<br/>Conventions (scan · accept/reject/edit · create skill)"]
   CTX["/repos/:repoId/context<br/>Project Context (clone Markdown; author under .devdigest/specs/)"]
   SETTINGS["/settings/:section<br/>API keys · models"]
+  MULTI["/multi-agent<br/>Configure run"] -->|"POST /pulls/:id/multi-review"| MRES["/multi-agent/:multiRunId<br/>results (columns · tabs · disagreements)"]
   EVAL["/eval<br/>Eval Dashboard"] --> EVALAGENT["/eval/:agentId<br/>tiles · trend · runs · Compare"]
 
   PULLS -->|"GET /repos/:id/pulls · /repos/:id/index-state"| API
@@ -46,13 +47,17 @@ flowchart TD
   PR -->|"POST /findings/:id/eval-case"| API
   AGENT -->|"Evals tab: GET /agents/:id/eval-cases · /eval-dashboard · POST …/eval-runs · POST /agents/:id/eval-cases · PUT·DELETE /eval-cases/:id · POST /eval-cases/:id/runs · GET /eval-cases/:id/runs/latest"| API
   SKILL -->|"Evals tab: GET /skills/:id/eval-cases · /eval-dashboard · POST /skills/:id/eval-cases · POST …/eval-runs · the case routes above"| API
+  MULTI -->|"GET /agents/run-estimates · /repos/:id/pulls"| API
+  MRES -->|"GET /multi-reviews/:id (re-read every 2 s while a run is in flight)"| API
   EVAL -->|"GET /eval/dashboard"| API
   EVALAGENT -->|"GET /agents/:id/eval-dashboard · /eval-runs · /eval-runs/compare?a=&b="| API
 ```
 
 Cross-cutting chrome lives in `src/components/app-shell` (nav, breadcrumbs,
 `g`-then-key shortcuts). Pages are thin; feature logic sits in colocated
-`_components/<Name>/` folders, each with its own `*.test.tsx`.
+`_components/<Name>/` folders, each with its own `*.test.tsx`. The run trace
+drawer, `FindingsPanel` and `FindingCard` are shared by the PR page and the
+multi-agent results page, so they live under `src/components/`.
 
 ## Project Context
 

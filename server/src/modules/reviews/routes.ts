@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
-import { RunRequest } from '@devdigest/shared';
+import { RunRequest, MultiReviewRequest, MultiReviewStarted, MultiReviewDetail } from '@devdigest/shared';
 import type { RunEvent } from '@devdigest/shared';
 import { getContext } from '../_shared/context.js';
 import { IdParams } from '../_shared/schemas.js';
@@ -10,6 +10,8 @@ import { ReviewService } from './service.js';
 /**
  * reviews module.
  *   POST   /pulls/:id/review  {agentId} | {all:true}  → run review(s); returns runs
+ *   POST   /pulls/:id/multi-review {agentIds}           → one multi-agent run (1–10 agents, concurrent)
+ *   GET    /multi-reviews/:id                          → a multi-agent run: each agent's run + findings
  *   GET    /runs/:id/events                            → SSE stream of RunEvent (replay-first)
  *   GET    /runs/:id/trace                             → the single-document RunTrace
  *   GET    /pulls/:id/reviews                          → persisted reviews + findings for a PR
@@ -42,6 +44,29 @@ export default async function reviewsRoutes(appBase: FastifyInstance) {
     );
     return { pr_id: req.params.id, runs, reviews };
   });
+
+  // ---- Multi-agent run: N chosen agents on one PR -------------------
+  // Same per-route limit as /review: each call fans out to N LLM runs.
+  app.post(
+    '/pulls/:id/multi-review',
+    {
+      schema: { params: IdParams, body: MultiReviewRequest, response: { 200: MultiReviewStarted } },
+      config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
+    },
+    async (req) => {
+      const { workspaceId } = await getContext(container, req);
+      return service.runMultiReview(workspaceId, req.params.id, req.body.agentIds, req.log);
+    },
+  );
+
+  app.get(
+    '/multi-reviews/:id',
+    { schema: { params: IdParams, response: { 200: MultiReviewDetail } } },
+    async (req) => {
+      const { workspaceId } = await getContext(container, req);
+      return service.getMultiReview(workspaceId, req.params.id);
+    },
+  );
 
   // ---- SSE: live run events (replay buffer first, then live; ends on done) -
   // No rate limit: SSE is one long-lived connection, not burst traffic.

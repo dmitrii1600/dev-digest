@@ -9,7 +9,7 @@ import React from "react";
 import { useTranslations } from "next-intl";
 import { Badge, MonoLink, Icon } from "@devdigest/ui";
 import type { DownstreamImpact } from "@devdigest/shared";
-import { githubBlobUrl } from "@/app/repos/[repoId]/pulls/[number]/github-urls";
+import { githubBlobUrl } from "@/lib/github-urls";
 import { s } from "./styles";
 
 type ChipIcon = "Globe" | "Clock";

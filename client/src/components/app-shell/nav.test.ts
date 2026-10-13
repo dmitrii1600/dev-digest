@@ -30,3 +30,12 @@ describe("WORKSPACE nav entries", () => {
     expect(activeKeyFor("/repos/x/context")).toBe("context");
   });
 });
+
+describe("GLOBAL nav entries", () => {
+  it("lists Multi-Agent Review and activates it on /multi-agent routes", () => {
+    const items = NAV.find((g) => g.section === "GLOBAL")!.items;
+    expect(items[0]).toMatchObject({ key: "multi-agent", label: "Multi-Agent Review", icon: "Users", href: "/multi-agent" });
+    expect(activeKeyFor("/multi-agent")).toBe("multi-agent");
+    expect(activeKeyFor("/multi-agent/x")).toBe("multi-agent");
+  });
+});

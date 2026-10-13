@@ -9,6 +9,7 @@ import { render, screen, cleanup, fireEvent, within } from "@testing-library/rea
 import { NextIntlClientProvider } from "next-intl";
 import type { FindingRecord, ReviewRecord, RunSummary } from "@devdigest/shared";
 import messages from "../../../../../../../../messages/en/prReview.json";
+import multiReview from "../../../../../../../../messages/en/multiReview.json";
 import { RunHistory } from "./RunHistory";
 
 afterEach(cleanup);
@@ -38,7 +39,7 @@ function run(o: Partial<RunSummary>): RunSummary {
 
 function renderRuns(runs: RunSummary[], reviews: ReviewRecord[] = []) {
   return render(
-    <NextIntlClientProvider locale="en" messages={{ prReview: messages }}>
+    <NextIntlClientProvider locale="en" messages={{ prReview: messages, multiReview }}>
       <RunHistory runs={runs} reviews={reviews} onOpenTrace={() => {}} />
     </NextIntlClientProvider>,
   );
@@ -216,5 +217,12 @@ describe("timeline hover preview", () => {
     fireEvent.mouseEnter(chip.parentElement!);
     expect(chip.tagName).toBe("SPAN");
     expect(chip.closest("button")).toBeNull();
+  });
+
+  it("links a multi-agent run to its results and adds nothing to other runs", () => {
+    renderRuns([run({ run_id: "r1", multi_run_id: "m1" }), run({ run_id: "r2", multi_run_id: null }), run({ run_id: "r3" })]);
+    const links = screen.getAllByRole("link", { name: "Open multi-agent results" });
+    expect(links).toHaveLength(1);
+    expect(links[0]).toHaveAttribute("href", "/multi-agent/m1");
   });
 });
