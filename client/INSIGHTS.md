@@ -16,6 +16,12 @@ append-only. Empty sections are expected — append under the one that fits.
 
 ## What Doesn't Work
 
+- 2026-10-15 — Gating a modal's dismissal on a `busy` *state* passed as a prop leaves a window where a
+  request has started but the modal's document `keydown` listener still holds `busy=false`. Escape then closed
+  the dialog while the case was still saved. Guard dismissal with the synchronous `busyRef` instead
+  (`src/components/findings-panel/FindingsPanel.tsx` `cancelModal`). Reproduce it in RTL by clicking and
+  dispatching Escape inside one `act()` batch (`FindingsPanel.confirm.test.tsx`).
+
 - 2026-10-11 — The vendored `Dropdown` cannot host a checkbox list: every item's `onClick` also closes the menu
   (`src/vendor/ui/kit/Dropdown.tsx:12-13`), and `vendor/ui` is do-not-touch. A multi-select picker needs its own
   small popover (outside-mousedown + Escape listener), as `RunReviewDropdown.tsx` now does.

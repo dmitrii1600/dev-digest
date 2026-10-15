@@ -534,6 +534,11 @@ append-only. Empty sections are expected — append under the one that fits.
 
 ## Recurring Errors & Fixes
 
+- 2026-10-15 — After merging `main` brought a new dependency (`yaml`), the first `pnpm run lint` in `server/`
+  auto-installed it and then exited 1 with `ERR_PNPM_IGNORED_BUILDS`. That turned the pr-self-review `checks`
+  red with no code error behind it. The second run is green: re-run `node .claude/hooks/pr-self-review-gate.mjs
+  checks` before you treat a red lint as real.
+
 - 2026-09-16 — `28P01 auth_failed` connecting to the dev Postgres from the host on
   Windows: `localhost` resolves to `::1` first, where a WSL relay answers, while
   the container is published on IPv4. The container is fine — `docker exec psql`
