@@ -1,17 +1,22 @@
-import { describe, it, expect, afterEach, vi } from "vitest";
+import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
 import { render, screen, cleanup, fireEvent, act } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
 import type { FindingRecord } from "@devdigest/shared";
 import { ApiError } from "@/lib/api";
 import messages from "../../../messages/en/prReview.json";
 
+const actionMutate = vi.hoisted(() => vi.fn());
 vi.mock("../../lib/hooks/reviews", () => ({
-  useFindingAction: () => ({ mutate: vi.fn(), isPending: false }),
+  useFindingAction: () => ({ mutate: actionMutate, isPending: false }),
 }));
-const evalMutate = vi.hoisted(() => vi.fn());
+const createCase = vi.hoisted(() => vi.fn());
+const runCase = vi.hoisted(() => vi.fn());
+const push = vi.hoisted(() => vi.fn());
 vi.mock("../../lib/hooks/evals", () => ({
-  useCreateEvalCaseFromFinding: () => ({ mutate: evalMutate, isPending: false }),
+  useCreateEvalCaseFromFinding: () => ({ mutateAsync: createCase, isPending: false }),
+  useStartCaseRun: () => ({ mutateAsync: runCase, isPending: false }),
 }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push }) }));
 
 import { FindingsPanel } from "./FindingsPanel";
 
@@ -62,10 +67,19 @@ describe("FindingsPanel (smoke)", () => {
 describe("FindingsPanel — Turn into eval case", () => {
   const ACCEPTED: FindingRecord[] = [{ ...FINDINGS[0]!, accepted_at: "2026-10-05T10:00:00Z" }];
   const button = () => screen.getByRole("button", { name: "Turn into eval case" });
+  const saved = (created = true) => ({ created, case: { id: "c1", owner_id: "a1" } });
+  const open = () => {
+    renderWithIntl(<FindingsPanel findings={ACCEPTED} prId="pr1" evalAgentAvailable />);
+    fireEvent.click(button());
+  };
+  const click = async (name: string) => {
+    fireEvent.click(screen.getByRole("button", { name }));
+    await act(async () => {});
+  };
 
-  /** Make the mocked mutation answer the next click the way the API would. */
-  const answer = (settle: (opts: { onSuccess: (r: unknown) => void; onError: (e: unknown) => void }) => void) =>
-    evalMutate.mockImplementation((_id, opts) => act(() => settle(opts)));
+  beforeEach(() => {
+    for (const m of [createCase, runCase, push, actionMutate]) m.mockReset();
+  });
 
   it("EC-3: offers the action only when the review's agent still exists", () => {
     renderWithIntl(<FindingsPanel findings={ACCEPTED} prId="pr1" />);
@@ -75,28 +89,92 @@ describe("FindingsPanel — Turn into eval case", () => {
     expect(button()).toBeEnabled();
   });
 
-  it("AC-2 / EC-2: sends the finding id, then confirms a new case and an already existing one", () => {
-    evalMutate.mockReset();
-    answer((o) => o.onSuccess({ case: {}, created: true }));
-    renderWithIntl(<FindingsPanel findings={ACCEPTED} prId="pr1" evalAgentAvailable />);
-    fireEvent.click(button());
-    expect(evalMutate).toHaveBeenCalledWith("f1", expect.anything());
+  it("AC-1 / NFR-1: opens a dialog without any request, and Cancel sends nothing", async () => {
+    open();
+    expect(screen.getByRole("dialog", { name: "Create eval case" })).toBeInTheDocument();
+    expect(createCase).not.toHaveBeenCalled();
+    await click("Cancel");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(createCase).not.toHaveBeenCalled();
+    expect(runCase).not.toHaveBeenCalled();
+  });
+
+  it("AC-5 / EC-6: Save only creates once, closes, stays on the page, and says created or already existing", async () => {
+    createCase.mockResolvedValueOnce(saved(true));
+    open();
+    await click("Save only");
+    expect(createCase).toHaveBeenCalledTimes(1);
+    expect(createCase).toHaveBeenCalledWith("f1");
+    expect(runCase).not.toHaveBeenCalled();
+    expect(push).not.toHaveBeenCalled();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(screen.getByRole("status")).toHaveTextContent("Eval case created.");
 
-    answer((o) => o.onSuccess({ case: {}, created: false }));
+    createCase.mockResolvedValueOnce(saved(false));
     fireEvent.click(button());
+    await click("Save only");
     expect(screen.getByRole("status")).toHaveTextContent("This finding is already an eval case.");
   });
 
-  it("EC-12: a 422 diff_too_large says the diff is too large; any other failure is generic", () => {
-    evalMutate.mockReset();
-    answer((o) => o.onError(new ApiError("big", 422, "eval_case_rejected", { reason: "diff_too_large" })));
-    renderWithIntl(<FindingsPanel findings={ACCEPTED} prId="pr1" evalAgentAvailable />);
-    fireEvent.click(button());
-    expect(screen.getByRole("status")).toHaveTextContent("The diff is too large to freeze as an eval case.");
+  it("AC-6 / EC-6: Run creates, runs the returned case and opens the agent's Evals tab", async () => {
+    createCase.mockResolvedValueOnce(saved(false));
+    runCase.mockResolvedValueOnce({});
+    open();
+    await click("Run");
+    expect(runCase).toHaveBeenCalledWith({ caseId: "c1" });
+    expect(push).toHaveBeenCalledWith("/agents/a1?tab=evals");
+  });
 
-    answer((o) => o.onError(new ApiError("boom", 500, "internal")));
-    fireEvent.click(button());
-    expect(screen.getByRole("status")).toHaveTextContent("Could not create the eval case.");
+  it("EC-1: a second click while create is pending sends one request", async () => {
+    let release!: (v: unknown) => void;
+    createCase.mockReturnValueOnce(new Promise((r) => (release = r)));
+    open();
+    fireEvent.click(screen.getByRole("button", { name: "Save only" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save only" }));
+    fireEvent.click(screen.getByRole("button", { name: "Run" }));
+    expect(createCase).toHaveBeenCalledTimes(1);
+    await act(async () => release(saved()));
+  });
+
+  it("EC-2: a failed create keeps the dialog open with the card message and re-enables the actions", async () => {
+    createCase.mockRejectedValueOnce(new ApiError("big", 422, "eval_case_rejected", { reason: "diff_too_large" }));
+    open();
+    await click("Run");
+    expect(screen.getByRole("alert")).toHaveTextContent("The diff is too large to freeze as an eval case.");
+    expect(screen.getByRole("button", { name: "Save only" })).toBeEnabled();
+    expect(runCase).not.toHaveBeenCalled();
+
+    createCase.mockRejectedValueOnce(new ApiError("boom", 500, "internal"));
+    await click("Save only");
+    expect(screen.getByRole("alert")).toHaveTextContent("Could not create the eval case.");
+    expect(runCase).not.toHaveBeenCalled();
+  });
+
+  it("EC-3: a failed run closes the dialog, stays on the page and says the run did not start", async () => {
+    createCase.mockResolvedValueOnce(saved());
+    runCase.mockRejectedValueOnce(new ApiError("boom", 500, "internal"));
+    open();
+    await click("Run");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(push).not.toHaveBeenCalled();
+    expect(screen.getByRole("status")).toHaveTextContent("Eval case saved, but the run did not start.");
+  });
+
+  it("EC-4: a 409 on the run counts as started", async () => {
+    createCase.mockResolvedValueOnce(saved());
+    runCase.mockRejectedValueOnce(new ApiError("running", 409, "conflict"));
+    open();
+    await click("Run");
+    expect(push).toHaveBeenCalledWith("/agents/a1?tab=evals");
+  });
+
+  it("EC-7: a/d do nothing while the dialog is open and work again after Cancel", async () => {
+    open();
+    fireEvent.keyDown(window, { key: "a" });
+    fireEvent.keyDown(window, { key: "d" });
+    expect(actionMutate).not.toHaveBeenCalled();
+    await click("Cancel");
+    fireEvent.keyDown(window, { key: "a" });
+    expect(actionMutate).toHaveBeenCalledTimes(1);
   });
 });

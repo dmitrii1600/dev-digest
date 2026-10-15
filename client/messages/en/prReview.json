@@ -15,7 +15,8 @@
     "evalCaseCreated": "Eval case created.",
     "evalCaseExists": "This finding is already an eval case.",
     "evalDiffTooLarge": "The diff is too large to freeze as an eval case.",
-    "evalCaseFailed": "Could not create the eval case."
+    "evalCaseFailed": "Could not create the eval case.",
+    "evalRunNotStarted": "Eval case saved, but the run did not start."
   },
   "trifecta": {
     "lethal": "LETHAL TRIFECTA — ALL 3 PRESENT",
@@ -146,5 +147,18 @@
     "empty": "No findings in this run.",
     "noReview": "Not reviewed yet.",
     "titleShort": "{count, plural, one {# FINDING} other {# FINDINGS}}"
+  },
+  "evalConfirm": {
+    "title": "Create eval case",
+    "subtitle": "Check what this finding will freeze into before saving it.",
+    "expectation": "Expectation",
+    "mustFind": "must_find",
+    "mustNotFlag": "must_not_flag",
+    "diffPreview": "Diff preview",
+    "previewUnavailable": "A diff preview is not available for this finding.",
+    "previewTruncated": "Preview truncated to the first {count} lines.",
+    "cancel": "Cancel",
+    "saveOnly": "Save only",
+    "run": "Run"
   }
 }

@@ -11,6 +11,8 @@
     "lint": "eslint .",
     "arch": "depcruise src --config .dependency-cruiser.cjs",
     "test": "vitest run",
+    "verify:l06": "vitest run test/evals --exclude \"**/*.it.test.ts\"",
+    "verify:l06:it": "vitest run --config vitest.l06-it.config.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/db/migrate.ts",
     "db:seed": "tsx src/db/seed.ts"

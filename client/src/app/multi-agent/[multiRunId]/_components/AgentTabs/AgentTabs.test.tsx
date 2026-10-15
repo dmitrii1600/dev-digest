@@ -9,8 +9,10 @@ vi.mock("@/lib/hooks/reviews", () => ({
   useFindingAction: () => ({ mutate: vi.fn(), isPending: false }),
 }));
 vi.mock("@/lib/hooks/evals", () => ({
-  useCreateEvalCaseFromFinding: () => ({ mutate: vi.fn(), isPending: false }),
+  useCreateEvalCaseFromFinding: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useStartCaseRun: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
 
 import { AgentTabs } from "./AgentTabs";
 

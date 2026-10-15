@@ -16,6 +16,12 @@ append-only. Empty sections are expected — append under the one that fits.
 
 ## What Doesn't Work
 
+- 2026-10-15 — Gating a modal's dismissal on a `busy` *state* passed as a prop leaves a window where a
+  request has started but the modal's document `keydown` listener still holds `busy=false`. Escape then closed
+  the dialog while the case was still saved. Guard dismissal with the synchronous `busyRef` instead
+  (`src/components/findings-panel/FindingsPanel.tsx` `cancelModal`). Reproduce it in RTL by clicking and
+  dispatching Escape inside one `act()` batch (`FindingsPanel.confirm.test.tsx`).
+
 - 2026-10-11 — The vendored `Dropdown` cannot host a checkbox list: every item's `onClick` also closes the menu
   (`src/vendor/ui/kit/Dropdown.tsx:12-13`), and `vendor/ui` is do-not-touch. A multi-select picker needs its own
   small popover (outside-mousedown + Escape listener), as `RunReviewDropdown.tsx` now does.
@@ -239,6 +245,11 @@ append-only. Empty sections are expected — append under the one that fits.
   page, not those. Why: a client page pulls the whole route tree into the client
   bundle for no interactivity gain.
 
+- 2026-10-11 — The kit `Modal` gives its `role="dialog"` no accessible name and has no prop for one, and
+  `src/vendor/ui` is do-not-touch; name it from the child with an effect that sets `aria-labelledby` on
+  `closest('[role="dialog"]')` (`FindingsPanel/_components/EvalCaseConfirmModal/EvalCaseConfirmModal.tsx:40`).
+  Why: `getByRole("dialog", { name })` and screen readers both need it.
+
 ## Tool & Library Notes
 
 - 2026-10-11 — `EmptyState`'s `cta` renders a `<button>`, not a link (`MultiReviewView.tsx:40-42`): for a navigation CTA
@@ -295,6 +306,11 @@ b")` never matches a multi-line
   `title` and `onRetry`.
 
 
+- 2026-10-11 — A lesson-scoped vitest lane needs its own config that spreads the base and replaces
+  `test.include` (`client/vitest.l06.config.ts`, `server/vitest.l06-it.config.ts`): CLI path filters are
+  substring OR-matches, so "evals AND `.it.test`" is inexpressible, and Next route folders like `[id]` are glob
+  character classes — write `*` for the segment, never the literal `[id]`.
+
 ## Recurring Errors & Fixes
 
 - 2026-10-11 — An untracked `client/%SystemDrive%/ProgramData/Microsoft/Windows/Caches/*.db` tree (≈1 MB, Windows
@@ -312,3 +328,8 @@ b")` never matches a multi-line
 ## Session Notes
 
 ## Open Questions
+
+- 2026-10-11 — `previewHunks` (`FindingsPanel/_components/EvalCaseConfirmModal/helpers.ts:11`) re-implements the
+  hunk-overlap rule of the server's `freezeDiff` (`server/src/modules/evals/helpers.ts:56`) with no shared test,
+  so the modal preview can drift from the diff that is actually frozen into the case. Open: share the rule via
+  `@devdigest/shared` or pin both with one fixture.
