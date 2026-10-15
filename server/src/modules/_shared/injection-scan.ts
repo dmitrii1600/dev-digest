@@ -78,3 +78,7 @@ export function securityReport(body: string): SkillSecurityReport {
 }
 
 export const NOT_SCANNED: SkillSecurityReport = { status: 'not_scanned', findings: [] };
+
+/** Sources whose bodies are scanned on read and gated on enable. `manual` and
+ *  `extracted` were authored or accepted by the user and are never scanned. */
+export const SCANNED_SOURCES: ReadonlySet<string> = new Set(['imported_url', 'imported_file']);

@@ -1,4 +1,5 @@
 import { Octokit } from 'octokit';
+import { strFromU8, unzipSync } from 'fflate';
 import type {
   GitHubClient,
   RepoRef,
@@ -11,6 +12,8 @@ import type {
   OpenPrPayload,
   CommitFilesPayload,
   IssueMeta,
+  WorkflowRunMeta,
+  ArtifactDownload,
 } from '@devdigest/shared';
 import { withRetry, withTimeout } from '../../platform/resilience.js';
 
@@ -385,6 +388,126 @@ export class OctokitGitHubClient implements GitHubClient {
             per_page: perPage,
           });
           return data.map((c) => ({ sha: c.sha }));
+        })(),
+        TIMEOUT,
+      ),
+    );
+  }
+
+  async getRepoId(repo: RepoRef): Promise<number> {
+    return withRetry(() =>
+      withTimeout(
+        (async () => {
+          const { data } = await this.octokit.rest.repos.get({ owner: repo.owner, repo: repo.name });
+          return data.id;
+        })(),
+        TIMEOUT,
+      ),
+    );
+  }
+
+  async pathExists(repo: RepoRef, path: string, ref: string): Promise<boolean> {
+    return withRetry(() =>
+      withTimeout(
+        (async () => {
+          try {
+            await this.octokit.rest.repos.getContent({
+              owner: repo.owner,
+              repo: repo.name,
+              path,
+              ref,
+            });
+            return true;
+          } catch (err) {
+            if ((err as { status?: number }).status === 404) return false;
+            throw err;
+          }
+        })(),
+        TIMEOUT,
+      ),
+    );
+  }
+
+  async listWorkflowRuns(
+    repo: RepoRef,
+    workflowFile: string,
+    perPage: number,
+  ): Promise<WorkflowRunMeta[]> {
+    return withRetry(() =>
+      withTimeout(
+        (async () => {
+          const { data } = await this.octokit.rest.actions.listWorkflowRuns({
+            owner: repo.owner,
+            repo: repo.name,
+            workflow_id: workflowFile,
+            status: 'completed',
+            event: 'pull_request',
+            per_page: perPage,
+          });
+          return data.workflow_runs.map((r) => ({
+            id: r.id,
+            head_sha: r.head_sha ?? null,
+            repository_id: r.repository.id,
+            path: r.path,
+            html_url: r.html_url,
+            conclusion: r.conclusion ?? null,
+            display_title: r.display_title,
+            updated_at: r.updated_at,
+            pull_requests: (r.pull_requests ?? []).map((p) => p.number),
+          }));
+        })(),
+        TIMEOUT,
+      ),
+    );
+  }
+
+  async downloadRunArtifact(
+    repo: RepoRef,
+    runId: number,
+    opts: { name: string; fileName: string; maxBytes: number },
+  ): Promise<ArtifactDownload> {
+    return withRetry(() =>
+      withTimeout(
+        (async (): Promise<ArtifactDownload> => {
+          const { data } = await this.octokit.rest.actions.listWorkflowRunArtifacts({
+            owner: repo.owner,
+            repo: repo.name,
+            run_id: runId,
+            name: opts.name,
+          });
+          const artifact = data.artifacts[0];
+          if (!artifact) return { kind: 'missing' };
+          if (artifact.expired) return { kind: 'expired' };
+          if (artifact.size_in_bytes > opts.maxBytes) return { kind: 'too_large' };
+          const res = await this.octokit.rest.actions.downloadArtifact({
+            owner: repo.owner,
+            repo: repo.name,
+            artifact_id: artifact.id,
+            archive_format: 'zip',
+          });
+          // Cap the inflated size from the zip's declared size, before anything is allocated;
+          // a malformed archive is rejected, never thrown (one bad artifact must not stop refresh).
+          let sizeExceeded = false;
+          let entries: Record<string, Uint8Array>;
+          try {
+            entries = unzipSync(new Uint8Array(res.data as ArrayBuffer), {
+              filter: (f) => {
+                if (f.name !== opts.fileName) return false;
+                if (f.originalSize > opts.maxBytes) {
+                  sizeExceeded = true;
+                  return false;
+                }
+                return true;
+              },
+            });
+          } catch {
+            return { kind: 'too_large' };
+          }
+          if (sizeExceeded) return { kind: 'too_large' };
+          const entry = entries[opts.fileName];
+          if (!entry) return { kind: 'missing' };
+          if (entry.byteLength > opts.maxBytes) return { kind: 'too_large' };
+          return { kind: 'ok', text: strFromU8(entry) };
         })(),
         TIMEOUT,
       ),

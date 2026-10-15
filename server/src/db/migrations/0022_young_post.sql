@@ -1,0 +1,2 @@
+CREATE UNIQUE INDEX "ci_installations_agent_repo_uq" ON "ci_installations" USING btree ("agent_id","repo");--> statement-breakpoint
+CREATE INDEX "ci_runs_installation_idx" ON "ci_runs" USING btree ("ci_installation_id");

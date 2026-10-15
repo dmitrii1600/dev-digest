@@ -17,7 +17,7 @@ import {
   toSkillVersionDto,
 } from './helpers.js';
 import { INJECTION_BLOCK_MESSAGE, MAX_UPLOAD_BYTES, SCANNED_SOURCES } from './constants.js';
-import { scanSkillBody } from './injection-scan.js';
+import { scanSkillBody } from '../_shared/injection-scan.js';
 
 /**
  * A1 — skills service. Business logic for the Skills Lab: CRUD, versioning,

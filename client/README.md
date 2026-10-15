@@ -27,11 +27,12 @@ flowchart TD
   ONB["/onboarding<br/>add repo"] -->|"POST /repos"| API[("Fastify API")]
   PULLS --> PR["/pulls/:number<br/>review detail<br/>(overview · diff · findings)"]
 
-  AGENTS["/agents"] --> AGENT["/agents/:id<br/>editor (config · skills · context · evals)"]
+  AGENTS["/agents"] --> AGENT["/agents/:id<br/>editor (config · skills · context · evals · ci)"]
   SKILLS["/skills<br/>Skills Lab"] --> SKILL["/skills/:id<br/>editor (config · preview · versions · stats · context · evals)"]
   CONV["/repos/:repoId/conventions<br/>Conventions (scan · accept/reject/edit · create skill)"]
   CTX["/repos/:repoId/context<br/>Project Context (clone Markdown; author under .devdigest/specs/)"]
   SETTINGS["/settings/:section<br/>API keys · models"]
+  CIRUNS["/ci-runs<br/>CI Runs"]
   EVAL["/eval<br/>Eval Dashboard"] --> EVALAGENT["/eval/:agentId<br/>tiles · trend · runs · Compare"]
 
   PULLS -->|"GET /repos/:id/pulls · /repos/:id/index-state"| API
@@ -46,6 +47,8 @@ flowchart TD
   PR -->|"POST /findings/:id/eval-case"| API
   AGENT -->|"Evals tab: GET /agents/:id/eval-cases · /eval-dashboard · POST …/eval-runs · POST /agents/:id/eval-cases · PUT·DELETE /eval-cases/:id · POST /eval-cases/:id/runs · GET /eval-cases/:id/runs/latest"| API
   SKILL -->|"Evals tab: GET /skills/:id/eval-cases · /eval-dashboard · POST /skills/:id/eval-cases · POST …/eval-runs · the case routes above"| API
+  AGENT -->|"CI tab: GET /agents/:id/ci · export-ci/preview · POST /agents/:id/export-ci · /ci/update"| API
+  CIRUNS -->|"GET /ci/runs?agent_id=&repo_id= · POST /ci/runs/refresh"| API
   EVAL -->|"GET /eval/dashboard"| API
   EVALAGENT -->|"GET /agents/:id/eval-dashboard · /eval-runs · /eval-runs/compare?a=&b="| API
 ```
@@ -246,6 +249,13 @@ flowchart LR
 - **Nav.** The sidebar entry is in `src/vendor/ui/nav.ts` (key `eval`, under Skills Lab).
 - **The contracts are mirrored.** `client/src/test/eval-contract-sync.test.ts` fails if
   `contracts/eval-ci.ts` or `contracts/knowledge.ts` differs from the server copy.
+
+## Export to CI
+
+Server side: `server/src/modules/ci/README.md`. Hooks in `src/lib/hooks/ci.ts`; the CI tab and the 4-step
+wizard live under `agents/[id]/_components/AgentEditor/_components/CiTab/`; `/ci-runs` and the agent CI tab share
+`components/ci-runs-table`. The wizard validates an edited workflow with the `yaml` package (EC-4) and
+every string is in `messages/en/ci.json`.
 
 ## Testing
 
