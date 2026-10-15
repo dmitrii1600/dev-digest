@@ -40,6 +40,12 @@ export function withGitHubToken(url: string, token: string): string {
   return url;
 }
 
+/** Slice one page out of a result list. `page` is 1-based. */
+export function toPage<T>(items: T[], page: number, size: number): T[] {
+  const start = page * size;
+  return items.slice(start, start + size + 1);
+}
+
 /** Map a persisted repo row to the API `Repo` DTO. */
 export function toRepoDto(row: typeof t.repos.$inferSelect): Repo {
   return {

@@ -22,3 +22,9 @@ export const GIT_TOKEN_USERNAME = 'x-access-token';
 
 /** Host for which a token is embedded into an https clone URL. */
 export const GITHUB_HTTPS_HOST = 'github.com';
+
+/** Key the admin dashboard uses to call the repo search + webhook test endpoints. */
+export const ADMIN_API_KEY = 'dd_admin_7f3a9c21e8b64d05a1f2c3b4';
+
+/** Default page size for /repos/search. */
+export const SEARCH_PAGE_SIZE = 20;
