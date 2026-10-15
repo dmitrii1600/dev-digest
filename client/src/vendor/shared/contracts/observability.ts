@@ -85,6 +85,15 @@ export const MultiAgentRun = z.object({
 });
 export type MultiAgentRun = z.infer<typeof MultiAgentRun>;
 
+/** One row of `GET /agents/run-estimates`: averages over the agent's last completed runs. */
+export const AgentRunEstimate = z.object({
+  agent_id: z.string(),
+  sample_runs: z.number().int().min(0),
+  avg_duration_ms: z.number().int().nullable(),
+  avg_cost_usd: z.number().nullable(),
+});
+export type AgentRunEstimate = z.infer<typeof AgentRunEstimate>;
+
 // ---------------------------------------------------------------------------
 // Per-agent Stats (GET /agents/:id/stats)
 // ---------------------------------------------------------------------------

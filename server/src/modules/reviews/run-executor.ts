@@ -57,7 +57,7 @@ export class ReviewRunExecutor {
 
   /**
    * Background execution of the queued agent runs (NOT awaited by the route).
-   * Loads the diff + intent once, then map-reduces each agent, streaming events
+   * Loads the diff + intent once, then map-reduces the agents concurrently, streaming events
    * over the runBus and persisting each review. Per-agent failures are isolated.
    */
   async executeRuns(
@@ -131,7 +131,9 @@ export class ReviewRunExecutor {
       )
       .catch(() => null);
 
-    for (const { agent, runId } of jobs) {
+    // Agents run concurrently. Each job's try/catch swallows its own rejection,
+    // so one failing agent never rejects Promise.all (isolation, EC-1).
+    await Promise.all(jobs.map(async ({ agent, runId }) => {
       const agentStart = Date.now();
       logger?.info(
         { runId, agent: agent.name, provider: agent.provider, model: agent.model, prId: pull.id },
@@ -158,7 +160,7 @@ export class ReviewRunExecutor {
           `review: agent "${agent.name}" ${cancelled ? 'cancelled' : 'failed'}`,
         );
       }
-    }
+    }));
   }
 
   /** Execute a single agent's review against a PR, streaming progress. */

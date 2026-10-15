@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
-import { Agent, AgentPromoteInput, CiFailOn, Provider, ReviewStrategy } from '@devdigest/shared';
+import { Agent, AgentPromoteInput, AgentRunEstimate, CiFailOn, Provider, ReviewStrategy } from '@devdigest/shared';
 import { getContext } from '../_shared/context.js';
 import { IdParams } from '../_shared/schemas.js';
 import { NotFoundError } from '../../platform/errors.js';
@@ -30,6 +30,7 @@ const PatchSkillLinkBody = z.object({
 /**
  * A2 — agents module (owner A2).
  *   GET    /agents                  → list (workspace-scoped)
+ *   GET    /agents/run-estimates    → AgentRunEstimate[]  avg duration/cost over each agent's last 20 completed runs
  *   GET    /agents/:id              → one agent
  *   POST   /agents                  → create
  *   PUT    /agents/:id              → update / toggle enabled (versions config)
@@ -90,6 +91,12 @@ export default async function agentsRoutes(appBase: FastifyInstance) {
   app.get('/agents', async (req) => {
     const { workspaceId } = await getContext(app.container, req);
     return service.list(workspaceId);
+  });
+
+  // Static path: wins over `/agents/:id` in Fastify's router.
+  app.get('/agents/run-estimates', { schema: { response: { 200: z.array(AgentRunEstimate) } } }, async (req) => {
+    const { workspaceId } = await getContext(app.container, req);
+    return service.runEstimates(workspaceId);
   });
 
   app.get('/agents/:id', { schema: { params: IdParams } }, async (req) => {

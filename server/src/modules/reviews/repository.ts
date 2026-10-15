@@ -135,8 +135,20 @@ export class ReviewRepository {
     prId: string;
     provider: string | null;
     model: string | null;
+    multiRunId?: string | null;
   }): Promise<string> {
     return runRepo.createAgentRun(this.db, values);
+  }
+
+  createMultiAgentRun(values: { workspaceId: string; prId: string }): Promise<string> {
+    return runRepo.createMultiAgentRun(this.db, values);
+  }
+
+  getMultiAgentRun(
+    workspaceId: string,
+    id: string,
+  ): Promise<{ id: string; prId: string; ranAt: Date } | undefined> {
+    return runRepo.getMultiAgentRun(this.db, workspaceId, id);
   }
 
   completeAgentRun(

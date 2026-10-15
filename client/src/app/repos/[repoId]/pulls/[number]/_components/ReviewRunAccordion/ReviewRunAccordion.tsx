@@ -8,7 +8,7 @@
 import React from "react";
 import { Icon, Badge } from "@devdigest/ui";
 import type { ReviewRecord, Severity, Verdict } from "@devdigest/shared";
-import { FindingsPanel } from "../FindingsPanel";
+import { FindingsPanel } from "@/components/findings-panel";
 import { SeverityPills, countBySeverity } from "../SeverityPills";
 import { VerdictBanner } from "../VerdictBanner";
 import { useDeleteReview } from "@/lib/hooks/reviews";

@@ -103,11 +103,11 @@ flowchart TB
     polling["polling<br/>/repos/:id/poll"]
   end
   subgraph Review["Review & runs"]
-    reviews["reviews<br/>/pulls/:id/review · /reviews · /findings/:id/(accept|dismiss)<br/>/runs/:id/(events|trace)"]
+    reviews["reviews<br/>/pulls/:id/review · /pulls/:id/multi-review · /multi-reviews/:id · /reviews · /findings/:id/(accept|dismiss)<br/>/runs/:id/(events|trace)"]
     smartDiff["smart-diff<br/>/pulls/:id/smart-diff"]
   end
   subgraph Agents["Agents"]
-    agents["agents<br/>/agents · /agents/:id · /agents/:id/skills/:skillId · POST /agents/:id/promote"]
+    agents["agents<br/>/agents · /agents/run-estimates · /agents/:id · /agents/:id/skills/:skillId · POST /agents/:id/promote"]
   end
   subgraph SkillsMod["Skills"]
     skills["skills<br/>/skills · /skills/:id/(versions|restore|agents|stats)<br/>/skills/import(/preview) · /skills/import/url(/preview)"]

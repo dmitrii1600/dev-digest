@@ -930,6 +930,12 @@ Haiku series of 2026-10-05 was 4/8 vs 4/8, which is noise. Keep the strict defin
 Both variants fail "does not comment on naming, style or test coverage" on every run, so that
 practice measures the case, not the edit.
 
+### 2026-10-11 — Multi-Agent Review via /run-plan (3 tracks)
+Spec → plan → step 0 + 3 parallel implementer tracks + integration, all green incl. `--it`. Fresh worktree had no
+`node_modules`; a per-package `pnpm install --frozen-lockfile` / `npm ci` (install scripts blocked) was enough for
+lint/typecheck/vitest. The integration agent reported e2e 0/18 `spawn agent-browser ENOENT` although e2e/INSIGHTS
+(2026-09-27) already gives the fix (`AGENT_BROWSER_BIN`) — pass that env when running `scripts/e2e.sh` on Windows.
+
 ## Open Questions
 
 - 2026-09-18 — The pr-self-review PreToolUse hook matches on command text, so a

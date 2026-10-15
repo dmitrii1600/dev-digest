@@ -32,6 +32,13 @@ describe("WORKSPACE nav entries", () => {
 });
 
 describe("GLOBAL nav entries", () => {
+  it("lists Multi-Agent Review and activates it on /multi-agent routes", () => {
+    const items = NAV.find((g) => g.section === "GLOBAL")!.items;
+    expect(items[0]).toMatchObject({ key: "multi-agent", label: "Multi-Agent Review", icon: "Users", href: "/multi-agent" });
+    expect(activeKeyFor("/multi-agent")).toBe("multi-agent");
+    expect(activeKeyFor("/multi-agent/x")).toBe("multi-agent");
+  });
+
   it("lists CI Runs and activates it on /ci-runs", () => {
     const items = NAV.find((g) => g.section === "GLOBAL")!.items;
     expect(items).toContainEqual(expect.objectContaining({ key: "ci-runs", label: "CI Runs", href: "/ci-runs" }));

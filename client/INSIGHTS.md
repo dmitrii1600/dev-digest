@@ -16,6 +16,9 @@ append-only. Empty sections are expected — append under the one that fits.
 
 ## What Doesn't Work
 
+- 2026-10-11 — The vendored `Dropdown` cannot host a checkbox list: every item's `onClick` also closes the menu
+  (`src/vendor/ui/kit/Dropdown.tsx:12-13`), and `vendor/ui` is do-not-touch. A multi-select picker needs its own
+  small popover (outside-mousedown + Escape listener), as `RunReviewDropdown.tsx` now does.
 - 2026-09-15 — The PR-list header right-aligned its last column by index
   (`i === COLUMN_KEYS.length - 1`), so inserting any column before `updated`
   silently left the new one left-aligned while the rows' cell was right-aligned.
@@ -26,7 +29,7 @@ append-only. Empty sections are expected — append under the one that fits.
 - 2026-09-16 — `borderColor` is **itself a shorthand** for the four sides, so
   pairing it with `borderLeftColor` trips React's "updating a style property
   during rerender" warning exactly as `border` + `borderLeft` would. The comment
-  at `src/app/repos/[repoId]/pulls/[number]/_components/FindingCard/styles.ts:7`
+  at `src/components/finding-card/styles.ts:7` (moved from the PR route 2026-10-11)
   warned about the shorthand and then used `borderColor` anyway; it now sets
   `borderTop/Right/BottomColor` per side. Invisible until something rerenders the
   card with `focused` changing — the severity filter is what surfaced it.
@@ -104,7 +107,7 @@ append-only. Empty sections are expected — append under the one that fits.
 
 - 2026-09-15 — There are two token formatters and they are not interchangeable:
   `formatTokens(in, out)` → `"8k→1.2k"` for the trace drawer
-  (`src/app/repos/[repoId]/pulls/[number]/_components/RunTraceDrawer/helpers.ts:27`)
+  (`src/components/run-trace-drawer/helpers.ts:27`, moved from the PR route 2026-10-11)
   and `formatTokenCount(n)` → `"15.2K"` for one count
   (`src/components/run-cost-badge/RunCostBadge.tsx:33`). The second is
   deliberately NOT called `formatTokens` — same name, different arity is a trap.
@@ -158,10 +161,10 @@ append-only. Empty sections are expected — append under the one that fits.
 
 - 2026-09-18 — `AGENTS.md`’s "cross-folder imports use `@/`" splits on
   **sibling vs parent**, not on folder depth. In `TraceBody.tsx`
-  (`src/app/repos/[repoId]/pulls/[number]/_components/RunTraceDrawer/_components/TraceBody/TraceBody.tsx:13`)
+  (now `src/components/run-trace-drawer/_components/TraceBody/TraceBody.tsx:13`)
   a sibling component folder stays relative (`../TraceSection`) while the
   parent segment's own modules take the alias
-  (`@/app/…/RunTraceDrawer/constants`, same file `:10`). The two forms sitting
+  (now `@/components/run-trace-drawer/constants`, same file `:10`). The two forms sitting
   four lines apart is correct, not a half-done migration — read as
   "relative = same folder only", the compliant import gets filed as a
   violation.
@@ -205,7 +208,7 @@ append-only. Empty sections are expected — append under the one that fits.
   literal key retyped in a component (`…/[number]/page.tsx:52,57` still does
   this) silently stops matching after a rename — React Query matches keys
   structurally and never warns.
-- 2026-09-26 — `githubBlobUrl` lives in the page segment
+- 2026-09-26 — *(superseded 2026-10-11: moved to `src/lib/github-urls.ts` so the shared `components/finding-card` can import it; import `@/lib/github-urls`.)* `githubBlobUrl` lived in the page segment
   (`src/app/repos/[repoId]/pulls/[number]/github-urls.ts`), not in `src/lib/`;
   the L04 assignment text names the wrong path. From `_components/*` import it
   through the `@/app/repos/[repoId]/pulls/[number]/github-urls` alias
@@ -238,6 +241,8 @@ append-only. Empty sections are expected — append under the one that fits.
 
 ## Tool & Library Notes
 
+- 2026-10-11 — `EmptyState`'s `cta` renders a `<button>`, not a link (`MultiReviewView.tsx:40-42`): for a navigation CTA
+  render the `EmptyState` without `cta` and put a `next/link` under it, or the target is not a real link.
 - 2026-09-16 — `@testing-library/user-event` is **not** installed; the suite uses
   `fireEvent` from `@testing-library/react` (`FindingCard.test.tsx:2`). Write new
   interaction tests with `fireEvent` rather than adding the dependency.
@@ -291,6 +296,10 @@ b")` never matches a multi-line
 
 
 ## Recurring Errors & Fixes
+
+- 2026-10-11 — An untracked `client/%SystemDrive%/ProgramData/Microsoft/Windows/Caches/*.db` tree (≈1 MB, Windows
+  Shell cache files) appeared after a parallel test/e2e session on Windows — an unexpanded `%SystemDrive%` used as a
+  relative path. Delete it before committing; it is never project content.
 
 - 2026-10-06 — `Module not found: Can't resolve './contracts/findings.js'` from `next dev` /
   `next build` means a *value* import of `@devdigest/shared` reached webpack: the vendored barrel

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { Provider } from './knowledge.js';
 import { SeverityCounts } from './findings.js';
+import { ReviewRunTarget } from './review-api.js';
 
 /**
  * Platform / scaffolding DTOs owned by F1:
@@ -375,6 +376,24 @@ export const RunRequest = z.object({
   all: z.boolean().optional(),
 });
 export type RunRequest = z.infer<typeof RunRequest>;
+
+/**
+ * Body of `POST /pulls/:id/multi-review`: the agents to fan out on one PR.
+ * Strict, so an unknown key is a 422 rather than silently ignored.
+ */
+export const MultiReviewRequest = z.object({
+  agentIds: z.array(z.string().min(1)).min(1).max(10)
+    .refine((ids) => new Set(ids).size === ids.length, { message: 'agentIds must be unique' }),
+}).strict();
+export type MultiReviewRequest = z.infer<typeof MultiReviewRequest>;
+
+/** Response of `POST /pulls/:id/multi-review` (ids returned before any agent finishes). */
+export const MultiReviewStarted = z.object({
+  multi_run_id: z.string(),
+  pr_id: z.string(),
+  runs: z.array(ReviewRunTarget),
+});
+export type MultiReviewStarted = z.infer<typeof MultiReviewStarted>;
 
 // ---- Structured API error envelope (returned by the API; UX taxonomy is FE) ----
 export const ApiErrorBody = z.object({

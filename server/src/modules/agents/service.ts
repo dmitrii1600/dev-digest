@@ -1,6 +1,7 @@
 import type { Container } from '../../platform/container.js';
 import type {
   Agent,
+  AgentRunEstimate,
   AgentPromoteInput,
   AgentSkillLink,
   AgentVersion,
@@ -11,6 +12,7 @@ import type {
   ReviewStrategy,
 } from '@devdigest/shared';
 import { AppError, NotFoundError } from '../../platform/errors.js';
+import { RUN_ESTIMATE_WINDOW } from './constants.js';
 import { AgentsRepository, type AgentRow } from './repository.js';
 import { planSkillLinks, readRunSkills, readVersionConfig, toAgentDto, toAgentVersionDto } from './helpers.js';
 
@@ -69,6 +71,24 @@ export class AgentsService {
   async list(workspaceId: string): Promise<Agent[]> {
     const rows = await this.repo.list(workspaceId);
     return rows.map(toAgentDto);
+  }
+
+  /** Run-time / cost estimate per agent (every agent has a row, EC-6). */
+  async runEstimates(workspaceId: string): Promise<AgentRunEstimate[]> {
+    const [agents, rows] = await Promise.all([
+      this.repo.list(workspaceId),
+      this.repo.runEstimates(workspaceId, RUN_ESTIMATE_WINDOW),
+    ]);
+    const byAgent = new Map(rows.map((r) => [r.agentId, r]));
+    return agents.map((a) => {
+      const r = byAgent.get(a.id);
+      return {
+        agent_id: a.id,
+        sample_runs: r?.sampleRuns ?? 0,
+        avg_duration_ms: r?.avgDurationMs ?? null,
+        avg_cost_usd: r?.avgCostUsd ?? null,
+      };
+    });
   }
 
   async get(workspaceId: string, id: string): Promise<Agent | undefined> {
