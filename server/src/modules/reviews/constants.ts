@@ -10,3 +10,9 @@
  * model's context.
  */
 export const REVIEW_STRATEGY = 'single-pass' as const;
+
+/**
+ * An id that is not a uuid cannot be in the workspace → 404, never a Postgres
+ * `22P02` (invalid input syntax for type uuid) surfacing as a 500.
+ */
+export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

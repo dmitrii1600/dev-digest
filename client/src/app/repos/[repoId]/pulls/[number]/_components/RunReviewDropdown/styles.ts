@@ -1,6 +1,47 @@
 import type { CSSProperties } from "react";
 
-/** Co-located styles for RunReviewDropdown. This component renders only library
-   primitives (Button/Dropdown) and has no inline styles; the map is kept for
-   convention parity and future use. */
-export const s = {} satisfies Record<string, CSSProperties>;
+/** Co-located styles for RunReviewDropdown. */
+export const s = {
+  root: { position: "relative", display: "inline-block" } satisfies CSSProperties,
+  panel: {
+    position: "absolute",
+    top: "calc(100% + 6px)",
+    right: 0,
+    background: "var(--bg-elevated)",
+    border: "1px solid var(--border-strong)",
+    borderRadius: 9,
+    boxShadow: "var(--shadow-modal)",
+    padding: 8,
+    zIndex: 40,
+  } satisfies CSSProperties,
+  warn: { fontSize: 12, color: "var(--text-muted)", padding: "4px 6px 8px" } satisfies CSSProperties,
+  header: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "2px 6px 8px" } satisfies CSSProperties,
+  headerTitle: { fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", color: "var(--text-muted)" } satisfies CSSProperties,
+  link: {
+    background: "none",
+    border: "none",
+    padding: 0,
+    fontSize: 12,
+    color: "var(--accent)",
+    cursor: "pointer",
+  } satisfies CSSProperties,
+  row: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "5px 6px" } satisfies CSSProperties,
+  agentLabel: { display: "inline-flex", alignItems: "center", gap: 8, minWidth: 0 } satisfies CSSProperties,
+  agentName: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 120 } satisfies CSSProperties,
+  hint: { fontSize: 11, color: "var(--text-muted)", flexShrink: 0 } satisfies CSSProperties,
+  runBar: { display: "flex", padding: "8px 6px 4px" } satisfies CSSProperties,
+  empty: { display: "flex", flexDirection: "column", gap: 6, padding: "6px", fontSize: 13 } satisfies CSSProperties,
+  configure: {
+    display: "block",
+    width: "100%",
+    textAlign: "left",
+    background: "none",
+    border: "none",
+    borderTop: "1px solid var(--border)",
+    marginTop: 6,
+    padding: "8px 6px 2px",
+    fontSize: 12,
+    color: "var(--text-muted)",
+    cursor: "pointer",
+  } satisfies CSSProperties,
+} as const;

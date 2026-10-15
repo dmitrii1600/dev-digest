@@ -7,6 +7,7 @@ import {
   timestamp,
   doublePrecision,
   index,
+  type AnyPgColumn,
 } from 'drizzle-orm/pg-core';
 import { workspaces } from './core';
 import { agents } from './agents';
@@ -42,6 +43,11 @@ export const agentRuns = pgTable(
     score: integer('score'),
     /** Findings that tripped the agent's gate (severity ≥ ciFailOn). */
     blockers: integer('blockers'),
+    /** The multi-agent run this run belongs to; null for a single-agent run.
+        `set null`, like `pr_id`: deleting the group keeps the run rows. */
+    multiRunId: uuid('multi_run_id').references((): AnyPgColumn => multiAgentRuns.id, {
+      onDelete: 'set null',
+    }),
   },
   (t) => ({
     // Runs for one PR, newest first (run.repo.ts listRuns / findRunning) and
@@ -55,6 +61,9 @@ export const agentRuns = pgTable(
     agentIdx: index('agent_runs_agent_idx').on(t.agentId),
     // Boot-time sweep for orphaned runs (run.repo.ts: where status='running').
     statusIdx: index('agent_runs_status_idx').on(t.status),
+    // FK target of ON DELETE set null from multi_agent_runs (a PR delete
+    // cascades there); Postgres does not index FKs. Also the results read key.
+    multiRunIdx: index('agent_runs_multi_run_idx').on(t.multiRunId),
   }),
 );
 

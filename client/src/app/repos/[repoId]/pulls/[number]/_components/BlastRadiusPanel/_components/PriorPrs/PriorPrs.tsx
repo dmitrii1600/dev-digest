@@ -8,7 +8,7 @@ import React from "react";
 import { useTranslations } from "next-intl";
 import { Badge, ErrorState, Icon, MonoLink, Skeleton } from "@devdigest/ui";
 import { usePrHistory } from "@/lib/hooks/blast";
-import { githubPrUrl } from "@/app/repos/[repoId]/pulls/[number]/github-urls";
+import { githubPrUrl } from "@/lib/github-urls";
 import { formatMergedDate } from "./helpers";
 import { s } from "./styles";
 

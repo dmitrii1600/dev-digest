@@ -94,7 +94,33 @@ export async function listRunsForPull(
     ran_at: run.ranAt ? run.ranAt.toISOString() : null,
     score: run.score,
     blockers: run.blockers,
+    multi_run_id: run.multiRunId,
   }));
+}
+
+/** Create the multi_agent_runs row that groups N agent runs on one PR. */
+export async function createMultiAgentRun(
+  db: Db,
+  values: { workspaceId: string; prId: string },
+): Promise<string> {
+  const [row] = await db
+    .insert(t.multiAgentRuns)
+    .values({ workspaceId: values.workspaceId, prId: values.prId })
+    .returning({ id: t.multiAgentRuns.id });
+  return row!.id;
+}
+
+/** One multi-agent run, scoped to the workspace. */
+export async function getMultiAgentRun(
+  db: Db,
+  workspaceId: string,
+  id: string,
+): Promise<{ id: string; prId: string; ranAt: Date } | undefined> {
+  const [row] = await db
+    .select({ id: t.multiAgentRuns.id, prId: t.multiAgentRuns.prId, ranAt: t.multiAgentRuns.ranAt })
+    .from(t.multiAgentRuns)
+    .where(and(eq(t.multiAgentRuns.id, id), eq(t.multiAgentRuns.workspaceId, workspaceId)));
+  return row;
 }
 
 /**
@@ -151,6 +177,8 @@ export async function createAgentRun(
     prId: string;
     provider: string | null;
     model: string | null;
+    /** The multi-agent run this run belongs to; omitted/null for a single review. */
+    multiRunId?: string | null;
   },
 ): Promise<string> {
   const [row] = await db
@@ -161,6 +189,7 @@ export async function createAgentRun(
       prId: values.prId,
       provider: values.provider,
       model: values.model,
+      multiRunId: values.multiRunId ?? null,
       status: 'running',
       source: 'local',
     })

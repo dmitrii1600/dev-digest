@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { Badge, Icon, CircularScore, SEV, type IconName } from "@devdigest/ui";
 import type {
@@ -181,6 +182,7 @@ export function RunHistory({
   onDelete?: (runId: string) => void;
 }) {
   const t = useTranslations("prReview");
+  const tm = useTranslations("multiReview");
   // One pass over the reviews instead of a find() per row.
   const findingsByRun = React.useMemo(() => {
     const m = new Map<string, FindingRecord[]>();
@@ -306,6 +308,11 @@ export function RunHistory({
                 />
               )}
             </div>
+            {r.multi_run_id ? (
+              <Link href={`/multi-agent/${r.multi_run_id}`} style={{ fontSize: 12, color: "var(--accent)", flexShrink: 0 }}>
+                {tm("history.openResults")}
+              </Link>
+            ) : null}
             <button
               type="button"
               title={t("timeline.openTrace")}

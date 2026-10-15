@@ -23,7 +23,7 @@ import {
 } from "@/lib/hooks/reviews";
 import { notify } from "@/providers/toast";
 import type { FindingRecord, PrFile } from "@devdigest/shared";
-import { FindingCard } from "../FindingCard";
+import { FindingCard } from "@/components/finding-card";
 import { DiffGroup } from "./_components/DiffGroup";
 import type { DiffTarget } from "@/app/repos/[repoId]/pulls/[number]/diff-target";
 import { findingsByPath, groupFiles, latestFindingsPerAgent } from "./helpers";

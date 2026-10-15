@@ -176,6 +176,8 @@ export function useFindingAction() {
         qc.invalidateQueries({ queryKey: ["reviews", prId] });
         qc.invalidateQueries({ queryKey: ["smart-diff", prId] });
       }
+      // The multi-agent results page shows the same findings (prefix match).
+      qc.invalidateQueries({ queryKey: ["multi-review"] });
     },
   });
 }

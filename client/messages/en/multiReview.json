@@ -1,0 +1,66 @@
+{
+  "picker": {
+    "header": "PICK AGENTS TO RUN",
+    "selectAll": "Select all",
+    "clear": "Clear",
+    "timeHint": "~{seconds}s",
+    "unknown": "—",
+    "selectAnAgent": "Select an agent",
+    "runOne": "Run {name}",
+    "runMulti": "Run multi-agent review ({count})",
+    "configureAgents": "Configure agents…",
+    "noEnabled": "Enable agents to run reviews",
+    "goToAgents": "Go to Agents",
+    "startFailed": "Could not start the multi-agent review. Try again."
+  },
+  "configure": {
+    "crumb": "Configure run",
+    "title": "Run a Multi-Agent Review",
+    "subtitle": "Pick a pull request and choose which agents to fan out — they run in parallel and you compare their findings side by side.",
+    "stepPr": "Pull request",
+    "selectPr": "Select a pull request…",
+    "prItem": "#{number} · {title}",
+    "stepAgents": "Agents to run",
+    "pickPrFirst": "Pick a pull request first",
+    "pickPrFirstBody": "Choose which PR to review above, then select the agents to run on it.",
+    "selectAll": "Select all",
+    "clearAll": "Clear all",
+    "estimate": "{time} · {cost}",
+    "aggregate": "≈ {time} · {cost} · parallel fan-out",
+    "runMulti": "Run multi-agent review ({count})",
+    "runOne": "Run 1 agent",
+    "selectAgents": "Select agents",
+    "noEnabled": "Enable agents to run reviews",
+    "goToAgents": "Go to Agents",
+    "startFailed": "Could not start the multi-agent review. Try again.",
+    "loadFailed": "Could not load pull requests or agents."
+  },
+  "results": {
+    "crumb": "Multi-Agent Review",
+    "configureRun": "Configure run",
+    "title": "Multi-Agent Review",
+    "selected": "{count} selected agents · parallel",
+    "columns": "Columns",
+    "tabs": "Tabs",
+    "viewSwitch": "Results view",
+    "prNumber": "#{number}",
+    "meta": "{count} agents · parallel fan-out · {time} total · {cost}",
+    "runStats": "{time} · {cost}",
+    "viewTrace": "View trace",
+    "findingsCount": "{count, plural, one {# finding} other {# findings}}",
+    "status": { "running": "Running…", "failed": "Failed", "cancelled": "Cancelled" },
+    "notFound": {
+      "title": "Multi-agent run not found",
+      "body": "This multi-agent run does not exist or belongs to another workspace.",
+      "cta": "Configure run"
+    },
+    "disagree": {
+      "title": "Where agents disagree",
+      "onlyConflicts": "Show only conflicts",
+      "didNotFlag": "did not flag",
+      "noResult": "no result",
+      "lines": "lines {start}–{end}"
+    }
+  },
+  "history": { "openResults": "Open multi-agent results" }
+}

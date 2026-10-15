@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import type { Db } from '../../db/client.js';
 import * as t from '../../db/schema.js';
 import type { AgentVersionConfig, AgentVersionOrigin, CiFailOn, Provider, ReviewStrategy } from '@devdigest/shared';
@@ -194,6 +194,51 @@ export class AgentsRepository {
 
   async list(workspaceId: string): Promise<AgentRow[]> {
     return this.db.select().from(t.agents).where(eq(t.agents.workspaceId, workspaceId));
+  }
+
+  /**
+   * Per agent: how many of its last `window` completed runs there are and their
+   * average duration / cost. SQL `avg()` skips nulls, so an unknown cost is never
+   * averaged in as 0; it is null when no run in the window has a known cost.
+   */
+  async runEstimates(
+    workspaceId: string,
+    window: number,
+  ): Promise<{ agentId: string; sampleRuns: number; avgDurationMs: number | null; avgCostUsd: number | null }[]> {
+    const ranked = this.db
+      .select({
+        agentId: t.agentRuns.agentId,
+        durationMs: t.agentRuns.durationMs,
+        costUsd: t.agentRuns.costUsd,
+        rn: sql<number>`row_number() over (partition by ${t.agentRuns.agentId} order by ${t.agentRuns.ranAt} desc)`.as(
+          'rn',
+        ),
+      })
+      .from(t.agentRuns)
+      .where(
+        and(
+          eq(t.agentRuns.workspaceId, workspaceId),
+          eq(t.agentRuns.status, 'done'),
+          sql`${t.agentRuns.agentId} is not null`,
+        ),
+      )
+      .as('ranked');
+    const rows = await this.db
+      .select({
+        agentId: ranked.agentId,
+        n: sql<number>`count(*)::int`,
+        avgDuration: sql<string | null>`avg(${ranked.durationMs})`,
+        avgCost: sql<string | null>`avg(${ranked.costUsd})`,
+      })
+      .from(ranked)
+      .where(sql`${ranked.rn} <= ${window}`)
+      .groupBy(ranked.agentId);
+    return rows.map((r) => ({
+      agentId: r.agentId!,
+      sampleRuns: r.n,
+      avgDurationMs: r.avgDuration == null ? null : Math.round(Number(r.avgDuration)),
+      avgCostUsd: r.avgCost == null ? null : Number(r.avgCost),
+    }));
   }
 
   async listEnabled(workspaceId: string): Promise<AgentRow[]> {

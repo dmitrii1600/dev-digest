@@ -26,6 +26,9 @@ append-only. Empty sections are expected — append under the one that fits.
 
 ## What Doesn't Work
 
+- 2026-10-11 — A diff-load failure (EC-3: every run of a multi-run ends `failed`) cannot be provoked in an `.it` test:
+  `loadDiff` swallows the clone error and rebuilds the diff from stored `pr_files` patches (`modules/reviews/diff-loader.ts:26-41`).
+  Pin it hermetically with a fake repository whose diff load throws (`test/multi-review-executor.test.ts`).
 - 2026-09-15 — Do not add a required field to `RunStats`, even a nullable one.
   `run_traces.trace` already holds documents written before the field existed;
   `z.number().nullable()` makes the key mandatory and every pre-existing trace
@@ -147,6 +150,10 @@ append-only. Empty sections are expected — append under the one that fits.
 
 ## Codebase Patterns
 
+- 2026-10-11 — `executeRuns` fans agents out **concurrently** (`modules/reviews/run-executor.ts:136`, `Promise.all`), after
+  the shared diff+intent prep; the per-agent body's own try/catch keeps one failure from rejecting the rest. This also
+  changed "run all" on `POST /pulls/:id/review`. There is no `queued` status: runs are inserted as `running`
+  (`repository/run.repo.ts:193`), so a UI treats `running` or `null` as in flight.
 - 2026-09-18 — An onion ring is derived from the **filename**, not a folder:
   `service.ts` / `helpers.ts` / `constants.ts` are ring 2, `repository.ts` is
   ring 3, `routes.ts` is ring 4, and the lint zones are globs over exactly those
@@ -348,6 +355,9 @@ append-only. Empty sections are expected — append under the one that fits.
 
 ## Tool & Library Notes
 
+- 2026-10-11 — A Drizzle FK to a table declared **later in the same schema file** fails typecheck with the plain
+  `.references(() => t.id)`; annotate the thunk: `.references((): AnyPgColumn => multiAgentRuns.id, …)`
+  (`db/schema/runs.ts:48`). The generated SQL is unchanged.
 - 2026-09-20 — `drizzle-kit generate` asks interactively ("is `scan_id`
   created or renamed from `accepted`?") whenever one table both gains and
   loses a column, and the prompt reads a TTY — `yes '' |` and here-docs are

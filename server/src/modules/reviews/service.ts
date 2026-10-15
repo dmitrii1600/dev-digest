@@ -1,12 +1,19 @@
 import type { Container } from '../../platform/container.js';
-import type { FindingActionKind, RunEventKind, RunTrace } from '@devdigest/shared';
+import type {
+  FindingActionKind,
+  MultiReviewDetail,
+  MultiReviewStarted,
+  RunEventKind,
+  RunTrace,
+} from '@devdigest/shared';
 import { AppError, NotFoundError } from '../../platform/errors.js';
 import type { AgentRow } from '../../db/rows.js';
 import { ReviewRepository } from './repository.js';
 import { type ReviewDto, type ReviewDtoFinding } from './helpers.js';
 import { ReviewRunExecutor, type Logger } from './run-executor.js';
 import { actOnFinding as actOnFindingImpl } from './findings.js';
-import { reviewToDto } from './helpers.js';
+import { reviewToDto, findingRowToDto } from './helpers.js';
+import { UUID_RE } from './constants.js';
 
 // Re-export DTO types + converters for backward-compatible imports from
 // './service.js' (these previously lived here; logic now in ./helpers.ts).
@@ -110,7 +117,78 @@ export class ReviewService {
     if (!pull) throw new NotFoundError('Pull request not found');
     const repo = await this.repo.getRepo(pull.repoId);
     if (!repo) throw new NotFoundError('Repo not found');
+    return this.startRuns(workspaceId, pull, repo, targets, logger, null);
+  }
 
+  /**
+   * Start one multi-agent run: resolve every agent first (any miss → 404 before
+   * anything is inserted), create the multi_agent_runs row, then fan the agents
+   * out through the same executor as a single review.
+   */
+  async runMultiReview(
+    workspaceId: string,
+    prId: string,
+    agentIds: string[],
+    logger?: Logger,
+  ): Promise<MultiReviewStarted> {
+    const pull = await this.repo.getPull(workspaceId, prId);
+    if (!pull) throw new NotFoundError('Pull request not found');
+    const repo = await this.repo.getRepo(pull.repoId);
+    if (!repo) throw new NotFoundError('Repo not found');
+
+    const targets: AgentRow[] = [];
+    for (const id of agentIds) {
+      const agent = UUID_RE.test(id) ? await this.agents.getById(workspaceId, id) : undefined;
+      if (!agent) throw new NotFoundError('Agent not found');
+      targets.push(agent);
+    }
+
+    const multiRunId = await this.repo.createMultiAgentRun({ workspaceId, prId });
+    const { runs } = await this.startRuns(workspaceId, pull, repo, targets, logger, multiRunId);
+    return { multi_run_id: multiRunId, pr_id: prId, runs };
+  }
+
+  /** One multi-agent run with each agent's run, summary and findings. */
+  async getMultiReview(workspaceId: string, id: string): Promise<MultiReviewDetail> {
+    const multi = await this.repo.getMultiAgentRun(workspaceId, id);
+    if (!multi) throw new NotFoundError('Multi-agent run not found');
+    const pull = await this.repo.getPull(workspaceId, multi.prId);
+    if (!pull) throw new NotFoundError('Pull request not found');
+
+    const runs = (await this.repo.listRunsForPull(workspaceId, multi.prId))
+      .filter((r) => r.multi_run_id === id)
+      .sort((a, b) => (a.ran_at ?? '').localeCompare(b.ran_at ?? '') || a.run_id.localeCompare(b.run_id));
+    const reviews = await this.repo.reviewsForPull(multi.prId);
+    const byRun = new Map(reviews.filter((r) => r.review.runId).map((r) => [r.review.runId as string, r]));
+
+    return {
+      id: multi.id,
+      pr: { id: pull.id, number: pull.number, title: pull.title },
+      ran_at: multi.ranAt.toISOString(),
+      agents: runs.map((run) => {
+        const hit = byRun.get(run.run_id);
+        return {
+          run,
+          summary: hit?.review.summary ?? null,
+          findings: hit ? hit.findings.map(findingRowToDto) : [],
+        };
+      }),
+    };
+  }
+
+  /**
+   * Create the agent_run rows up front and fire the executor in the background.
+   * `multiRunId` links them to a multi-agent run (null for a single review).
+   */
+  private async startRuns(
+    workspaceId: string,
+    pull: NonNullable<Awaited<ReturnType<ReviewRepository['getPull']>>>,
+    repo: NonNullable<Awaited<ReturnType<ReviewRepository['getRepo']>>>,
+    targets: AgentRow[],
+    logger: Logger | undefined,
+    multiRunId: string | null,
+  ): Promise<{ runs: { run_id: string; agent_id: string; agent_name: string }[]; reviews: ReviewDto[] }> {
+    const prId = pull.id;
     // Create the agent_run rows up front so a runId is available IMMEDIATELY —
     // the client persists these in global state and subscribes to the SSE
     // stream. The actual (slow) review runs in the background below.
@@ -123,6 +201,7 @@ export class ReviewService {
         prId,
         provider: agent.provider,
         model: agent.model,
+        multiRunId,
       });
       runs.push({ run_id: runId, agent_id: agent.id, agent_name: agent.name });
       jobs.push({ agent, runId });

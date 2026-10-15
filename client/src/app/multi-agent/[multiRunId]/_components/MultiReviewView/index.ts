@@ -1,0 +1,1 @@
+export { MultiReviewView } from "./MultiReviewView";

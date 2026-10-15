@@ -390,6 +390,8 @@ append-only. Empty sections are expected — append under the one that fits.
   owns the process on :3001 (`Get-CimInstance Win32_Process` command line) and
   whether the paths it resolves actually exist there.
 
+- 2026-10-11 — Spec `Status: approved` is a human action: in auto mode an agent's `sed` that flips `Status: draft` was blocked by the classifier as self-modification, and `/run-plan` stops on `draft`. Ask the person to flip it (or to approve explicitly in chat) before starting the build; spec-creator never changes Status (`.claude/skills/run-plan/SKILL.md` Step 0).
+
 
 ## Tool & Library Notes
 
@@ -932,6 +934,12 @@ used ~40% more output tokens on the checkout case and about 2× wall time on rev
 Haiku series of 2026-10-05 was 4/8 vs 4/8, which is noise. Keep the strict definition.
 Both variants fail "does not comment on naming, style or test coverage" on every run, so that
 practice measures the case, not the edit.
+
+### 2026-10-11 — Multi-Agent Review via /run-plan (3 tracks)
+Spec → plan → step 0 + 3 parallel implementer tracks + integration, all green incl. `--it`. Fresh worktree had no
+`node_modules`; a per-package `pnpm install --frozen-lockfile` / `npm ci` (install scripts blocked) was enough for
+lint/typecheck/vitest. The integration agent reported e2e 0/18 `spawn agent-browser ENOENT` although e2e/INSIGHTS
+(2026-09-27) already gives the fix (`AGENT_BROWSER_BIN`) — pass that env when running `scripts/e2e.sh` on Windows.
 
 ## Open Questions
 

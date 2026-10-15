@@ -1,0 +1,15 @@
+{
+  "name": "Multi-Agent Review — sidebar entry opens the Configure run screen",
+  "description": "AC-4 of specs/2026-10-11-multi-agent-review.md. From the sidebar's GLOBAL group, Multi-Agent Review opens /multi-agent and the Configure run screen renders its title and the 'Pick a pull request first' empty state. The flow never picks a PR and never clicks Run, so no model call is made. Picker, estimates, results page and grouping are covered by the client component tests and server/test/multi-review.it.test.ts. Read-only. Assumes a freshly-seeded DB (guaranteed by e2e-web.yml).",
+  "steps": [
+    { "cmd": ["open", "{BASE}/"], "label": "load the app root" },
+    { "cmd": ["wait", "--url", "/pulls"], "label": "root redirects to the seeded repo's PR list" },
+    { "cmd": ["wait", "--load", "networkidle"], "label": "repos fetch settles" },
+    { "cmd": ["wait", "--text", "Multi-Agent Review"], "label": "the sidebar GLOBAL group lists a Multi-Agent Review entry (nav.ts)" },
+    { "cmd": ["find", "text", "Multi-Agent Review", "click"], "label": "open Multi-Agent Review from the sidebar" },
+    { "cmd": ["wait", "--url", "/multi-agent"], "label": "configure route reached" },
+    { "cmd": ["wait", "--load", "networkidle"], "label": "page fetches settle" },
+    { "cmd": ["wait", "--text", "Run a Multi-Agent Review"], "label": "Configure run title renders (multiReview.json)" },
+    { "cmd": ["wait", "--text", "Pick a pull request first"], "label": "no PR picked yet: empty state (AC-4)" }
+  ]
+}

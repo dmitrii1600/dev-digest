@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { Finding, Verdict } from './findings.js';
 import { Intent, SmartDiff } from './brief.js';
+import { RunSummary } from './trace.js';
 
 /**
  * A2 — Review-Core API surface contracts. These extend the core
@@ -55,6 +56,23 @@ export const ReviewRunResponse = z.object({
   reviews: z.array(ReviewRecord),
 });
 export type ReviewRunResponse = z.infer<typeof ReviewRunResponse>;
+
+/** One agent's slice of a multi-agent run: its run row, summary and findings. */
+export const MultiReviewAgent = z.object({
+  run: RunSummary,
+  summary: z.string().nullable(),
+  findings: z.array(FindingRecord),
+});
+export type MultiReviewAgent = z.infer<typeof MultiReviewAgent>;
+
+/** Response of `GET /multi-reviews/:id`. Carries no grouping: the client groups. */
+export const MultiReviewDetail = z.object({
+  id: z.string(),
+  pr: z.object({ id: z.string(), number: z.number().int(), title: z.string() }),
+  ran_at: z.string(),
+  agents: z.array(MultiReviewAgent),
+});
+export type MultiReviewDetail = z.infer<typeof MultiReviewDetail>;
 
 export const IntentSourceStatus = z.enum(['available', 'partial', 'unavailable']);
 export type IntentSourceStatus = z.infer<typeof IntentSourceStatus>;

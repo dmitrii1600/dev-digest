@@ -68,7 +68,7 @@ per domain · `src/vendor/shared/` canonical Zod contracts.
   code-only changes, no migration. Any skill whose `source !== 'manual'`
   arrives `enabled: false` and is delimiter-wrapped as untrusted in the prompt
   — see `server/specs/02-skills-module.md`. Both `imported_*` bodies are also
-  run through `modules/skills/injection-scan.ts` **on every read** (`security`
+  run through `modules/_shared/injection-scan.ts` **on every read** (`security`
   on the DTO, never persisted); a flagged one cannot be enabled (422). The one
   exception is `source: 'extracted'` (`modules/conventions/`): its rules were
   accepted one by one by the user, so it is trusted like `manual` and honours
@@ -106,6 +106,10 @@ per domain · `src/vendor/shared/` canonical Zod contracts.
   `eval_runs` / `eval_run_cases` shape) → `src/modules/evals/README.md` — **read before
   changing how a case is frozen or authored, how a run is executed, read or scored, or the
   eval tables**
+- Export to CI (the exported file set, the PR/zip install, the pull-based run
+  verification, the `.gitattributes` rule, the one-time `agent-runner` build) →
+  `src/modules/ci/README.md` — **read before changing what is exported or how a CI
+  run is accepted**
 - How a schema-mismatch from a provider is signalled (`StructuredOutputError`,
   `SchemaFailureTagger`) → `README.md#structured-output-failures-are-typed` —
   **read before branching on an LLM adapter error**

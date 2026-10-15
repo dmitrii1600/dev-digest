@@ -29,9 +29,8 @@ export const EXECUTABLE_EXTENSIONS = new Set([
 
 // ---- Injection scan + URL import ----
 
-/** Sources whose bodies are scanned on read and gated on enable. `manual` and
- *  `extracted` were authored or accepted by the user and are never scanned. */
-export const SCANNED_SOURCES: ReadonlySet<string> = new Set(['imported_url', 'imported_file']);
+/** Moved to `_shared/injection-scan.ts` so other modules can use it. */
+export { SCANNED_SOURCES } from '../_shared/injection-scan.js';
 
 /** Message of the 422 thrown when a flagged imported skill is enabled. */
 export const INJECTION_BLOCK_MESSAGE =

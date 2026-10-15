@@ -45,6 +45,8 @@ import { readRepoFile } from '../modules/intent/repository-plans.js';
 import type { ProjectContextPort } from '../modules/project-context/types.js';
 import { ProjectContextService } from '../modules/project-context/service.js';
 import { ProjectContextRepository } from '../modules/project-context/repository.js';
+import type { RunnerBundleSource } from '../modules/ci/types.js';
+import { RunnerBundleReader } from '../modules/ci/repository-bundle.js';
 import { listMarkdown, readDoc } from '../modules/project-context/repository-files.js';
 import * as projectContextWrites from '../modules/project-context/repository-writes.js';
 import { resolveFeatureModel } from '../modules/_shared/feature-models.js';
@@ -83,6 +85,8 @@ export interface ContainerOverrides {
   tokenizer?: Tokenizer;
   /** Skills import-from-URL — tests inject `MockUrlFetcher`, never the network. */
   urlFetcher?: UrlFetcher;
+  /** Export-to-CI: the built `agent-runner/dist/` bundle — tests inject a fixture, never the disk. */
+  runnerBundle?: RunnerBundleSource;
 }
 
 /** Minimal structured logger (pino-compatible) the container hands to services it builds. */
@@ -121,6 +125,7 @@ export class Container {
   private _depgraph?: DepGraph;
   private _tokenizer?: Tokenizer;
   private _urlFetcher?: UrlFetcher;
+  private _runnerBundle?: RunnerBundleSource;
   private _priceBook?: PriceBook;
 
   constructor(
@@ -190,6 +195,13 @@ export class Container {
       fetchLinks: this.config.intentFetchLinks,
     });
     return this._intent;
+  }
+
+  /** The built CI runner bundle (`agent-runner/dist/`), read from disk on demand. */
+  get runnerBundle(): RunnerBundleSource {
+    if (this.overrides.runnerBundle) return this.overrides.runnerBundle;
+    this._runnerBundle ??= new RunnerBundleReader();
+    return this._runnerBundle;
   }
 
   /**
