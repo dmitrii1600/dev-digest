@@ -96,6 +96,21 @@ describe("FindingsPanel — eval confirm wiring", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
+  it("Escape in the same tick as Save, before busy renders, cannot close the dialog", async () => {
+    let release!: (v: unknown) => void;
+    createCase.mockReturnValueOnce(new Promise((r) => (release = r)));
+    open();
+    // One act batch: the modal's Escape listener still holds the busy=false closure.
+    act(() => {
+      screen.getByRole("button", { name: "Save only" }).click();
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    });
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    await act(async () => release({ created: true, case: { id: "c1", owner_id: "a1" } }));
+    expect(createCase).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
   it("NFR-1: Run sends exactly one create and one run request", async () => {
     createCase.mockResolvedValueOnce({ created: true, case: { id: "c1", owner_id: "a1" } });
     runCase.mockResolvedValueOnce({});

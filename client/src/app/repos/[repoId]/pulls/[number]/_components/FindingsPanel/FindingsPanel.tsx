@@ -82,6 +82,14 @@ export function FindingsPanel({
     setModalError(null);
   };
 
+  // User dismissal (Escape / backdrop / Cancel) reads the synchronous ref, not the
+  // `busy` state: between submit() starting and React committing busy=true the
+  // modal still holds a busy=false closure, and closing then would hide a request
+  // that still saves the case.
+  const cancelModal = () => {
+    if (!busyRef.current) closeModal();
+  };
+
   // Save only creates the case; Run also starts a single-case run and opens the
   // owning agent's Evals tab. A second click while a request is in flight is dropped.
   const submit = async (mode: "save" | "run") => {
@@ -164,7 +172,7 @@ export function FindingsPanel({
           error={modalError}
           onSaveOnly={() => void submit("save")}
           onRun={() => void submit("run")}
-          onCancel={closeModal}
+          onCancel={cancelModal}
         />
       )}
     </div>
