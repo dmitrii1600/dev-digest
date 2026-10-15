@@ -1,5 +1,5 @@
 {
-  "id": "cf8706e4-c072-438e-b8a8-e83640d0ed09",
+  "id": "5b4d6001-1553-4260-964d-c4edd05c48ce",
   "prevId": "870142e5-63ae-4053-9e51-cec57b1534eb",
   "version": "7",
   "dialect": "postgresql",
@@ -3417,6 +3417,25 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
+        },
+        "agent_version": {
+          "name": "agent_version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "github_repo_id": {
+          "name": "github_repo_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "export_meta": {
+          "name": "export_meta",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {},
@@ -3499,9 +3518,82 @@
           "type": "text",
           "primaryKey": false,
           "notNull": false
+        },
+        "github_run_id": {
+          "name": "github_run_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "head_sha": {
+          "name": "head_sha",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "pr_title": {
+          "name": "pr_title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "critical": {
+          "name": "critical",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "warning": {
+          "name": "warning",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "suggestion": {
+          "name": "suggestion",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "agent_run_id": {
+          "name": "agent_run_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
         }
       },
-      "indexes": {},
+      "indexes": {
+        "ci_runs_github_run_uq": {
+          "name": "ci_runs_github_run_uq",
+          "columns": [
+            {
+              "expression": "github_run_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "ci_runs_agent_run_idx": {
+          "name": "ci_runs_agent_run_idx",
+          "columns": [
+            {
+              "expression": "agent_run_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "ci_runs_ci_installation_id_ci_installations_id_fk": {
           "name": "ci_runs_ci_installation_id_ci_installations_id_fk",
@@ -3509,6 +3601,19 @@
           "tableTo": "ci_installations",
           "columnsFrom": [
             "ci_installation_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "ci_runs_agent_run_id_agent_runs_id_fk": {
+          "name": "ci_runs_agent_run_id_agent_runs_id_fk",
+          "tableFrom": "ci_runs",
+          "tableTo": "agent_runs",
+          "columnsFrom": [
+            "agent_run_id"
           ],
           "columnsTo": [
             "id"
@@ -3637,12 +3742,6 @@
           "type": "integer",
           "primaryKey": false,
           "notNull": false
-        },
-        "multi_run_id": {
-          "name": "multi_run_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
         }
       },
       "indexes": {
@@ -3711,21 +3810,6 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
-        },
-        "agent_runs_multi_run_idx": {
-          "name": "agent_runs_multi_run_idx",
-          "columns": [
-            {
-              "expression": "multi_run_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
         }
       },
       "foreignKeys": {
@@ -3761,19 +3845,6 @@
           "tableTo": "pull_requests",
           "columnsFrom": [
             "pr_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
-        },
-        "agent_runs_multi_run_id_multi_agent_runs_id_fk": {
-          "name": "agent_runs_multi_run_id_multi_agent_runs_id_fk",
-          "tableFrom": "agent_runs",
-          "tableTo": "multi_agent_runs",
-          "columnsFrom": [
-            "multi_run_id"
           ],
           "columnsTo": [
             "id"

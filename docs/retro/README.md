@@ -51,6 +51,7 @@ Rules the entries follow:
 | Date | Workflow | Sessions | Agents | Cost | Top proposal | Entry |
 |---|---|---|---|---|---|---|
 | 2026-10-11 | spec → plan → /run-plan (3 tracks) → gate ×3 (multi-agent-review) | e23cac2e | 13 | $24.03 est. | `/run-plan` intake surfaces inherited static CRITICALs before build | [ledger/2026-10-11-multi-agent-review.md](ledger/2026-10-11-multi-agent-review.md) |
+| 2026-10-11 | spec → plan → /run-plan (2 tracks) → gate (export-to-ci) | bfd13dc8 | 16 | $29.15 est. | architecture-reviewer also checks `client/` placement | [ledger/2026-10-11-export-to-ci.md](ledger/2026-10-11-export-to-ci.md) |
 | 2026-10-01 | spec → plan → hand-driven build chain (onboarding-generator) | caadeda7 | 14 | $27.04 est. | Planner names boundary inputs for every filter/cap criterion | [ledger/2026-10-01-onboarding-generator.md](ledger/2026-10-01-onboarding-generator.md) |
 | 2026-10-02 | spec → plan → /run-plan → gate → PR (pr-brief) | ca6c687f | 18 | $60.07 est. | `/run-plan` intake checks Docker before building `.it` / e2e work | [ledger/2026-10-02-pr-brief.md](ledger/2026-10-02-pr-brief.md) |
 

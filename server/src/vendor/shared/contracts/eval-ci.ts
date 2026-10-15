@@ -407,16 +407,32 @@ export type AgentManifest = z.infer<typeof AgentManifest>;
 /** Caller-facing input type — `.default()` fields stay optional. */
 export type AgentManifestInput = z.input<typeof AgentManifest>;
 
+/** Byte cap shared by the exported workflow and the `devdigest-result.json` artifact. */
+export const CI_MAX_BYTES = 65_536;
+
+export const CiTrigger = z.enum(['opened', 'synchronize', 'reopened']);
+export type CiTrigger = z.infer<typeof CiTrigger>;
+
+export const CiPostAs = z.enum(['github_review', 'pr_comment', 'none']);
+export type CiPostAs = z.infer<typeof CiPostAs>;
+
 /** Request body for `POST /agents/:id/export-ci`. */
-export const CiExportInput = z.object({
-  repo: z.string().min(1), // "owner/name"
-  target: CiTarget.default('gha'),
-  /** "open_pr" opens a PR with the files; "files" just returns/persists them. */
-  action: z.enum(['open_pr', 'files']).default('open_pr'),
-  post_as: z.enum(['github_review', 'pr_comment', 'none']).default('github_review'),
-  triggers: z.array(z.string()).default(['opened', 'synchronize', 'reopened']),
-  base: z.string().default('main'),
-});
+export const CiExportInput = z
+  .object({
+    repo: z
+      .string()
+      .min(1)
+      .max(200)
+      .regex(/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/), // "owner/name"
+    target: z.literal('gha').default('gha'),
+    /** "open_pr" opens a PR with the files; "files" just returns/persists them. */
+    action: z.enum(['open_pr', 'files']).default('open_pr'),
+    post_as: CiPostAs.default('github_review'),
+    triggers: z.array(CiTrigger).min(1).max(3).default(['opened', 'synchronize']),
+    /** Edited workflow, sent verbatim; the server re-checks size and YAML. */
+    workflow_yaml: z.string().max(CI_MAX_BYTES).optional(),
+  })
+  .strict();
 export type CiExportInput = z.infer<typeof CiExportInput>;
 /** Caller-facing input type — `.default()` fields stay optional (web hooks). */
 export type CiExportInputBody = z.input<typeof CiExportInput>;
@@ -427,6 +443,7 @@ export const CiInstallation = z.object({
   agent_id: z.string(),
   repo: z.string(),
   target_type: CiTarget,
+  agent_version: z.number().int(),
   installed_at: z.string(),
 });
 export type CiInstallation = z.infer<typeof CiInstallation>;
@@ -436,6 +453,7 @@ export const CiExport = z.object({
   installation: CiInstallation,
   files: z.array(CiFile),
   pr_url: z.string().nullable(),
+  zip_base64: z.string().nullable(),
 });
 export type CiExport = z.infer<typeof CiExport>;
 
@@ -455,8 +473,49 @@ export const CiRun = z.object({
   source: z.string().nullable(),
   agent: z.string().nullish(),
   duration_s: z.number().nullish(),
+  repo: z.string().nullish(),
+  pr_title: z.string().nullish(),
+  head_sha: z.string().nullish(),
+  agent_id: z.string().nullish(),
+  critical: z.number().int().nullish(),
+  warning: z.number().int().nullish(),
+  suggestion: z.number().int().nullish(),
+  failure_reason: z.enum(['result_rejected', 'no_result']).nullish(),
 });
 export type CiRun = z.infer<typeof CiRun>;
+
+/** Response of the export preview: the exact file set, before anything is written. */
+export const CiPreview = z.object({
+  files: z.array(CiFile),
+  skipped_skills: z.array(z.string()),
+  bundle_missing: z.boolean(),
+});
+export type CiPreview = z.infer<typeof CiPreview>;
+
+/** Response of `GET /agents/:id/ci`. */
+export const AgentCi = z.object({
+  installations: z.array(CiInstallation),
+  runs: z.array(CiRun),
+});
+export type AgentCi = z.infer<typeof AgentCi>;
+
+/** Response of "Update CI config": one entry per installation. */
+export const CiUpdateResult = z.object({
+  results: z.array(
+    z.object({
+      repo: z.string(),
+      pr_url: z.string().nullable(),
+      error: z.string().nullable(),
+    }),
+  ),
+});
+export type CiUpdateResult = z.infer<typeof CiUpdateResult>;
+
+export const CiRefreshInput = z.object({ agent_id: z.string().uuid().optional() }).strict();
+export type CiRefreshInput = z.infer<typeof CiRefreshInput>;
+
+export const CiRefreshResult = z.object({ ingested: z.number().int() });
+export type CiRefreshResult = z.infer<typeof CiRefreshResult>;
 
 /**
  * The artifact shape uploaded by the CI action (`devdigest-result.json`).

@@ -34,6 +34,8 @@ do that, for three reasons:
 | | `modules/*/helpers.ts`, `modules/*/constants.ts` | pure transforms and literals owned by the slice |
 | | `modules/reviews/{run-executor,findings,diff-loader}.ts` | the review use case, split for size |
 | | `modules/_shared/severity.ts` | a pure cross-module transform |
+| | `modules/_shared/injection-scan.ts` | the pure skill-body injection scan and `SCANNED_SOURCES`, shared by `skills` and `ci` |
+| | `modules/ci/types.ts` | the `CiStore` / `RunnerBundleSource` ports and DTOs shared by the ring-2 service and the ring-3 repositories (type-only) |
 | | `platform/{model-router,run-logger,trace-builder,price-book}.ts` | application services with no I/O of their own |
 | **3 — Infrastructure** | `adapters/**` | one folder per concern, one file per technology |
 | | `db/**` (except the two CLI entrypoints below) | schema, client, rows, migrations |

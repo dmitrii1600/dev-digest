@@ -140,6 +140,27 @@ export interface CommitFilesPayload {
   files: CommitFile[];
 }
 
+/** One completed GitHub Actions workflow run, reduced to what ingest verifies. */
+export interface WorkflowRunMeta {
+  id: number;
+  head_sha: string | null;
+  repository_id: number;
+  /** Workflow path as GitHub reports it (may carry an `@ref` suffix). */
+  path: string;
+  html_url: string;
+  conclusion: string | null;
+  display_title: string;
+  updated_at: string;
+  /** Numbers of the pull requests the run is attached to. */
+  pull_requests: number[];
+}
+
+export type ArtifactDownload =
+  | { kind: 'ok'; text: string }
+  | { kind: 'missing' }
+  | { kind: 'expired' }
+  | { kind: 'too_large' };
+
 export interface GitHubClient {
   listPullRequests(repo: RepoRef): Promise<PrMeta[]>;
   getPullRequest(repo: RepoRef, n: number): Promise<PrDetail>;
@@ -179,6 +200,21 @@ export interface GitHubClient {
     repo: RepoRef,
     sha: string,
   ): Promise<{ number: number; title: string; merged_at: string | null; author: string }[]>;
+  /** Numeric GitHub id of the repository (pins an installation to the repo, not its name). */
+  getRepoId(repo: RepoRef): Promise<number>;
+  /** True when `path` exists on `ref` (default branch). 404 → false; any other error throws. */
+  pathExists(repo: RepoRef, path: string, ref: string): Promise<boolean>;
+  /** Completed `pull_request` runs of one workflow file, newest first. */
+  listWorkflowRuns(repo: RepoRef, workflowFile: string, perPage: number): Promise<WorkflowRunMeta[]>;
+  /**
+   * One file out of a run's named artifact. Refuses (without downloading when it
+   * can) anything larger than `maxBytes`.
+   */
+  downloadRunArtifact(
+    repo: RepoRef,
+    runId: number,
+    opts: { name: string; fileName: string; maxBytes: number },
+  ): Promise<ArtifactDownload>;
 }
 
 // ---------- Git (simple-git, heavy) ----------
